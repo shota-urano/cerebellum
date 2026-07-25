@@ -1,7 +1,3 @@
-# v0 プロトタイプの実行時データ（消し込み記録）
-state/
-server.log
-
 # Rust (server/)
 target/
 
