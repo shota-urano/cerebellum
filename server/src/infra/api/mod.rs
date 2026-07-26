@@ -1,0 +1,50 @@
+use std::sync::Arc;
+
+use axum::{
+    Router, middleware,
+    response::Response,
+    routing::{get, post},
+};
+
+use crate::{
+    config::Config,
+    usecase::{get_day::GetDay, get_summary::GetSummary, toggle_check::ToggleCheck},
+};
+
+mod dto;
+mod error;
+mod handlers;
+
+pub struct AppState {
+    pub get_day: Arc<GetDay>,
+    pub toggle_check: Arc<ToggleCheck>,
+    pub get_summary: Arc<GetSummary>,
+    pub config: Arc<Config>,
+}
+
+pub fn router(state: Arc<AppState>) -> Router {
+    let api_routes = Router::new()
+        .route("/days/{date}", get(handlers::get_day))
+        .route(
+            "/days/{date}/checks/{task_id}",
+            post(handlers::toggle_check),
+        )
+        .route("/summary", get(handlers::get_summary))
+        .fallback(handlers::not_found);
+
+    Router::new()
+        .nest("/api", api_routes)
+        .with_state(state)
+        .layer(middleware::map_response(no_store))
+}
+
+async fn no_store(mut response: Response) -> Response {
+    response.headers_mut().insert(
+        axum::http::header::CACHE_CONTROL,
+        axum::http::HeaderValue::from_static("no-store"),
+    );
+    response
+}
+
+#[cfg(test)]
+mod tests;
