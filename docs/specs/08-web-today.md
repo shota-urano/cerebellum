@@ -15,7 +15,8 @@ DTO は [`03-api.md`](./03-api.md) §3 を正とする。
 
 ## 3. 処理詳細
 
-- **ProgressHeader**: 日付＋曜日（例: `2026-07-26（日）`）と進捗（`progress.done / progress.total`。例: `2 / 9`）。全完了時は完了状態が分かる表示にする
+- **ProgressHeader**: 日付＋曜日（例: `2026-07-26（日）`）と進捗（`progress.done / progress.total`。例: `2 / 9`）。セグメントバー＋PROGRESS/REMAINING 行を含む計器盤様式（正本 `docs/design/02-today.md`）。全完了時は ALL CLEAR バナーを表示する
+- **TaskList ヘッダ行**: `TASKS` / `{n} ITEMS`（デザイン確定 2026-07-26 で追加）
 - **TaskList / TaskItem**: `tasks` を受領順（= sort_no 順）に表示。各行に:
   - チェック状態（done でチェック済みスタイル・打ち消し線等）
   - `time`（あれば）・`effort`（あれば）・`tool`（あれば。`-` と空は非表示）・`content`

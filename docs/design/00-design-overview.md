@@ -25,7 +25,7 @@
 - グロー一括係数 `GLOW`（`lib/theme.ts`。0〜2・既定1、`glowShadow(px, alpha)`）
 - パルスアニメーション `pulse` 2.4s（HUD ドット）
 
-**フォント（system と食い違い・要確認）**: system は「システムフォント＋ui-monospace」だが、プロトタイプは `next/font/google` の **JetBrains Mono（等幅）＋ Noto Sans JP（本文）** をセルフホスト。HUD の計器感は JetBrains Mono に依存しているため**プロトタイプ採用を推奨**（採用時は system/01-tokens.md を更新）。
+**フォント（確定 2026-07-26）**: プロトタイプ採用で **JetBrains Mono（等幅）＋ Noto Sans JP（本文）**・`next/font/google` セルフホスト（system/01-tokens.md 更新済み）。コンテンツ幅も **440px** で確定（specs 07・system 更新済み）。
 
 ## specs との対応・差分
 

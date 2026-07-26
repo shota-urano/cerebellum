@@ -18,8 +18,9 @@
 
 ## タイポグラフィ
 
-- 本文: システムフォントスタック（`system-ui` / SF Pro / Hiragino Sans）
-- **数字・時刻・進捗・日付: 等幅**（`ui-monospace` / SF Mono）＋ `font-variant-numeric: tabular-nums`（計器の桁揃え）
+- 本文: **Noto Sans JP**（`next/font/google` でセルフホスト。フォールバック `system-ui`）
+- **数字・時刻・進捗・日付: JetBrains Mono**（同セルフホスト。フォールバック `ui-monospace`）＋ `font-variant-numeric: tabular-nums`（計器の桁揃え）
+  ※ 2026-07-26 プロトタイプ採用に伴いシステムフォントから変更（ユーザー承認済み）
 - マイクロラベル（バッジ・見出しラベル）: 大文字（英字の場合）＋ `letter-spacing: 0.08em`・13px
 - サイズスケール: 13 / 14 / 16(base) / 18 / 22 px
 
@@ -27,7 +28,7 @@
 
 - スペーシング: 4px スケール（4 / 8 / 12 / 16 / 24 / 32）
 - タップターゲット: 最小 44px（行全体をターゲットにする）
-- コンテンツ幅: `max-width: 42rem`（max-w-2xl）中央寄せ
+- コンテンツ幅: `max-width: 440px` 中央寄せ（2026-07-26 プロトタイプ採用で max-w-2xl から変更）
 
 ## 角丸・効果
 
