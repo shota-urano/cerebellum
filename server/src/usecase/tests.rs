@@ -5,6 +5,11 @@ use std::{
 
 use chrono::{DateTime, FixedOffset};
 
+use crate::domain::{
+    day::SummaryDay,
+    task::{CheckedTask, Task},
+};
+
 use super::{
     get_day::GetDay,
     get_summary::GetSummary,
@@ -35,6 +40,44 @@ impl TaskRepository for InMemoryRepo {
                 .expect("in-memory repository lock should be available"),
         );
         Ok(())
+    }
+
+    fn snapshot_exists(&self, date: &str) -> Result<bool, RepositoryError> {
+        Ok(self
+            .days
+            .lock()
+            .expect("in-memory repository lock should be available")
+            .contains_key(date))
+    }
+
+    fn insert_snapshot(&self, date: &str, tasks: &[Task]) -> Result<(), RepositoryError> {
+        self.days
+            .lock()
+            .expect("in-memory repository lock should be available")
+            .entry(date.to_owned())
+            .or_insert_with(|| tasks.iter().map(|task| task.id.clone()).collect());
+        Ok(())
+    }
+
+    fn get_tasks(&self, _date: &str) -> Result<Vec<CheckedTask>, RepositoryError> {
+        Ok(Vec::new())
+    }
+
+    fn toggle_check(
+        &self,
+        _date: &str,
+        _task_id: &str,
+        _checked_at: DateTime<FixedOffset>,
+    ) -> Result<(), RepositoryError> {
+        Ok(())
+    }
+
+    fn get_summary(
+        &self,
+        _start_date: &str,
+        _end_date: &str,
+    ) -> Result<Vec<SummaryDay>, RepositoryError> {
+        Ok(Vec::new())
     }
 }
 
