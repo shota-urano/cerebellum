@@ -17,7 +17,7 @@ Next.js 15 / React 19 / TypeScript strict / App Router / `output: 'export'` / Ta
 
 ```
 web/
-├ next.config.ts             # output:'export'／devは rewrites で /api → localhost:3210
+├ next.config.ts             # output:'export'／devは rewrites で /api → localhost:48210
 ├ public/
 │ ├ manifest.webmanifest     # PWA下準備（ホーム画面追加まで）
 │ └ icons/
@@ -58,7 +58,8 @@ web/
 ## 5. インターフェース
 
 - fetcher は `shared/api/client.ts` に集約。エラーレスポンス（[`03-api.md`](./03-api.md) §4）を型付きで throw し、各画面が表示を決める
-- dev: `next dev` ＋ rewrites → `localhost:3210`。本番: 同一オリジン
+- dev: `next dev`（**ポート 48211 固定**。`web/package.json` の `dev` スクリプトに `-p` で指定）＋ rewrites → `localhost:48210`。本番: 同一オリジン
+  - 常駐ポート 48210 / dev ポート 48211 はいずれも **macOS の ephemeral 範囲（49152 以上）を避けた値**。ephemeral 帯に置くと、再起動直後に他プロセスが一時ポートとして先に掴んでいて bind に失敗することがある（[`06-cli-serve.md`](./06-cli-serve.md) §6 の「ポート使用中: 起動失敗」を散発的に踏む）
 
 ## 6. エラー処理
 

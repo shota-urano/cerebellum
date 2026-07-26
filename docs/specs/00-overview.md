@@ -47,7 +47,7 @@ Phase 1（本仕様の範囲）= 今日のタスク表示・消し込み・履�
 | Vault パス | env `CEREBELLUM_VAULT`（既定 `$HOME/second-brain`）。実パスは環境固有のためリポジトリに書かない | [06](./06-cli-serve.md) |
 | task_id | `sha1("間隔|時刻|内容")` 先頭12桁（16進小文字。実施・ツール列は含めない） | [02](./02-data-model.md) |
 | 曜日文字列 | `"月火水木金土日"`（`weekday()` 0=月 に対応） | [04](./04-routine-parse.md) |
-| ポート | 3210 | [06](./06-cli-serve.md) |
+| ポート | 48210 | [06](./06-cli-serve.md) |
 | 時刻 | 常にローカルタイム（Asia/Tokyo）。日付境界は深夜0時。日付書式 `%Y-%m-%d` | [05](./05-day-usecase.md) |
 | 過去日 | 読み取り専用（消し込みの後日変更は不可） | [05](./05-day-usecase.md) |
 | スナップショット | `/api/days/today` 初回アクセス時に ensure（冪等）。日次ジョブは持たない | [05](./05-day-usecase.md) |

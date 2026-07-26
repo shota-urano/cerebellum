@@ -78,7 +78,7 @@ fn test_app() -> axum::Router {
         )),
         get_summary: Arc::new(GetSummary::new(repository, clock)),
         config: Arc::new(Config {
-            port: 3210,
+            port: 48210,
             vault_path: PathBuf::from("/unused"),
             db_path: PathBuf::from(":memory:"),
         }),

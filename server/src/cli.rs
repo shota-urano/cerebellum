@@ -1,6 +1,6 @@
 use clap::{Parser, Subcommand};
 
-pub const DEFAULT_PORT: u16 = 3210;
+pub const DEFAULT_PORT: u16 = 48210;
 
 #[derive(Debug, Parser)]
 #[command(name = "cerebellum", version, about)]

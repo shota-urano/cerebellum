@@ -9,10 +9,10 @@ const nextConfig: NextConfig = {
   output: "export",
   ...(isDev
     ? {
-        // docs/specs/07 §5 / docs/specs/03 §5: dev 時のみ localhost:3210 へ
+        // docs/specs/07 §5 / docs/specs/03 §5: dev 時のみ localhost:48210 へ
         async rewrites() {
           return [
-            { source: "/api/:path*", destination: "http://localhost:3210/api/:path*" },
+            { source: "/api/:path*", destination: "http://localhost:48210/api/:path*" },
           ];
         },
       }
