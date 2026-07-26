@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import type { KeyedMutator } from 'swr';
 import { ApiError, apiPost, type DayResponse } from '@/shared/api';
 import { toggleTaskDone } from '../lib/toggle';
@@ -18,14 +18,29 @@ function checkKey(taskId: string) {
  */
 export function useToggleCheck(day: DayResponse | undefined, mutate: KeyedMutator<DayResponse>) {
   const [error, setError] = useState<ApiError | null>(null);
+  const requestQueue = useRef<Promise<void>>(Promise.resolve());
 
   const toggle = useCallback(
     async (taskId: string) => {
       if (!day) return;
       setError(null);
+
+      // 同じ SWR キーへ複数の mutation を並行実行すると、後発開始後に完了した先発応答は
+      // SWR が競合として破棄する。POST 自体を直列化し、最後の応答が必ずサーバーの最終状態にする。
+      const request = requestQueue.current.then(
+        () => apiPost<DayResponse>(checkKey(taskId)),
+        () => apiPost<DayResponse>(checkKey(taskId)),
+      );
+      requestQueue.current = request.then(
+        () => undefined,
+        () => undefined,
+      );
+
       try {
-        await mutate(apiPost<DayResponse>(checkKey(taskId)), {
-          optimisticData: toggleTaskDone(day, taskId),
+        await mutate(request, {
+          // 連続タップ時は、前の optimistic 表示を含む最新表示へ次の反転を重ねる。
+          optimisticData: (committed, displayed) =>
+            toggleTaskDone(displayed ?? committed ?? day, taskId),
           rollbackOnError: true,
           populateCache: true,
           // POST がその日の最新状態を返すので、成功時は追加の GET を投げない
