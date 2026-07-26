@@ -8,7 +8,13 @@ use axum::{
 
 use crate::{
     config::Config,
-    usecase::{get_day::GetDay, get_summary::GetSummary, toggle_check::ToggleCheck},
+    infra::assets,
+    usecase::{
+        get_day::GetDay,
+        get_summary::GetSummary,
+        ports::{TaskRepository, VaultReader},
+        toggle_check::ToggleCheck,
+    },
 };
 
 mod dto;
@@ -19,23 +25,27 @@ pub struct AppState {
     pub get_day: Arc<GetDay>,
     pub toggle_check: Arc<ToggleCheck>,
     pub get_summary: Arc<GetSummary>,
+    pub vault_reader: Arc<dyn VaultReader>,
+    pub task_repository: Arc<dyn TaskRepository>,
     pub config: Arc<Config>,
 }
 
 pub fn router(state: Arc<AppState>) -> Router {
     let api_routes = Router::new()
+        .route("/health", get(handlers::health))
         .route("/days/{date}", get(handlers::get_day))
         .route(
             "/days/{date}/checks/{task_id}",
             post(handlers::toggle_check),
         )
         .route("/summary", get(handlers::get_summary))
-        .fallback(handlers::not_found);
+        .fallback(handlers::not_found)
+        .layer(middleware::map_response(no_store));
 
     Router::new()
         .nest("/api", api_routes)
         .with_state(state)
-        .layer(middleware::map_response(no_store))
+        .fallback(assets::serve)
 }
 
 async fn no_store(mut response: Response) -> Response {

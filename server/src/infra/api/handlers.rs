@@ -11,9 +11,26 @@ use serde::Deserialize;
 
 use super::{
     AppState,
-    dto::{DayDto, SummaryDto},
+    dto::{DayDto, HealthDto, SummaryDto},
     error::ApiError,
 };
+
+pub(super) async fn health(State(state): State<Arc<AppState>>) -> Json<HealthDto> {
+    let vault_reader = Arc::clone(&state.vault_reader);
+    let task_repository = Arc::clone(&state.task_repository);
+    let version = env!("CARGO_PKG_VERSION");
+
+    let (vault_ok, db_ok) = tokio::task::spawn_blocking(move || {
+        (
+            vault_reader.read_routine_markdown().is_ok(),
+            task_repository.health_check().is_ok(),
+        )
+    })
+    .await
+    .unwrap_or((false, false));
+
+    Json(HealthDto::new(vault_ok, db_ok, version))
+}
 
 pub(super) async fn get_day(
     State(state): State<Arc<AppState>>,

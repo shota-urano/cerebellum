@@ -6,6 +6,27 @@ use crate::domain::{
 };
 
 #[derive(Debug, Serialize)]
+pub(super) struct HealthDto {
+    vault: &'static str,
+    db: &'static str,
+    version: &'static str,
+}
+
+impl HealthDto {
+    pub(super) fn new(vault_ok: bool, db_ok: bool, version: &'static str) -> Self {
+        Self {
+            vault: status(vault_ok),
+            db: status(db_ok),
+            version,
+        }
+    }
+}
+
+fn status(ok: bool) -> &'static str {
+    if ok { "ok" } else { "ng" }
+}
+
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct DayDto {
     date: String,

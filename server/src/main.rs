@@ -20,22 +20,27 @@ use usecase::{
     ports::VaultReader, toggle_check::ToggleCheck,
 };
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     init_tracing();
 
     let cli = Cli::parse();
     match cli.command {
-        Command::Serve { port } => compose(port),
+        Command::Serve { port } => serve(port).await,
     }
 }
 
-fn compose(port: u16) -> Result<()> {
+async fn serve(port: u16) -> Result<()> {
     let config = Arc::new(Config::from_env(port).context("failed to resolve configuration")?);
 
     let vault_reader: Arc<dyn VaultReader> = Arc::new(FsVaultReader::new(config.routine_path()));
     // SQLite は親ディレクトリを作らないため、初回起動（~/Library/Application Support/cerebellum/
     // が未作成）では Connection::open が失敗する。DB を開く前にここで用意する。
-    if let Some(parent) = config.db_path.parent() {
+    if let Some(parent) = config
+        .db_path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
         std::fs::create_dir_all(parent).with_context(|| {
             format!(
                 "failed to create database directory at {}",
@@ -55,21 +60,30 @@ fn compose(port: u16) -> Result<()> {
         Arc::clone(&clock),
     ));
     let toggle_check = Arc::new(ToggleCheck::new(
-        vault_reader,
+        Arc::clone(&vault_reader),
         Arc::clone(&task_repository),
         Arc::clone(&clock),
     ));
-    let get_summary = Arc::new(GetSummary::new(task_repository, clock));
+    let get_summary = Arc::new(GetSummary::new(Arc::clone(&task_repository), clock));
 
-    let _state = Arc::new(AppState {
+    let state = Arc::new(AppState {
         get_day,
         toggle_check,
         get_summary,
+        vault_reader,
+        task_repository,
         config: Arc::clone(&config),
     });
 
-    tracing::info!(port = config.port, "composition root initialized");
-    Ok(())
+    let address = format!("0.0.0.0:{}", config.port);
+    let listener = tokio::net::TcpListener::bind(&address)
+        .await
+        .with_context(|| format!("failed to listen on {address}"))?;
+
+    tracing::info!(address, "cerebellum server listening");
+    axum::serve(listener, infra::api::router(state))
+        .await
+        .context("server stopped unexpectedly")
 }
 
 fn init_tracing() {
