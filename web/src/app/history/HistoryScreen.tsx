@@ -66,8 +66,15 @@ export function HistoryScreen() {
         onNext={() => canNext && iso !== null && goto(shiftDate(iso, 1))}
       />
 
-      {/* 今日だけトグル可（docs/specs/09 §3）。過去日はサーバーも readonly:true を返す */}
-      <DayView date={dateParam ?? 'today'} readonly={iso === null || iso !== today} />
+      {/*
+        今日だけトグル可（docs/specs/09 §3）。
+        「今日」が未取得のうちは readonly を主張しない（false を渡す）。DayView は
+        `readonly || day.readonly === true` で判定し、`day.readonly` は当日のみ false
+        （docs/specs/03 §3）なので、確証が無いときはサーバーの DTO に委ねるのが正しい。
+        ここで true を渡すと、`/api/days/today` だけが落ちている当日を読み取り専用と偽る
+        （ロード中スケルトンの見た目が一瞬変わるのは許容する）。
+      */}
+      <DayView date={dateParam ?? 'today'} readonly={today !== undefined && iso !== today} />
 
       <WeekSummary selected={iso} onSelect={goto} />
     </main>

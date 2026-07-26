@@ -43,7 +43,20 @@ export function WeekSummary({ selected, onSelect }: Props) {
   const { today, error: todayError } = useToday();
   const { summary, error: summaryError } = useSummary();
 
-  const rows = today === undefined ? null : buildWeek(today, summary ?? []);
+  /*
+   * 「取得できていない」と「記録が無い」を混同しない（履歴は過去記録の正を見せる画面）。
+   *
+   * - `summary === undefined`（未取得＝ loading でもエラーでも）のときは行を作らない。
+   *   `summary ?? []` で埋めると、取得できていないだけの7日が実在する「記録なし」に化ける。
+   * - `days: []` は正常な空レスポンス（期間内の記録がゼロ）なので、7日すべて「記録なし」で正しい
+   *   （docs/specs/03 §3「存在する日のみ返す」＋ docs/specs/09 §3「レスポンスに無い日は記録なし」）。
+   * - `today` も未取得なら行を作らない（日付列の起点が決まらない）。
+   * - SWR は再検証が失敗しても直前の data を保持するので、エラーでも一度取れていれば行は残す
+   *   （バナーだけ出す。docs/specs/07 §6 の「描画済みを消さない」と同じ扱い）。
+   */
+  const rows = today !== undefined && summary !== undefined ? buildWeek(today, summary) : null;
+  /** 行を作れない理由がまだ取得中か（エラー確定なら取得済みデータも無いので何も出さない） */
+  const fetching = todayError === undefined && summaryError === undefined;
 
   return (
     <section className="panel week">
@@ -52,7 +65,7 @@ export function WeekSummary({ selected, onSelect }: Props) {
       {rows === null ? (
         // 一度も取れていないままエラーになったら行は出さない（永久スケルトンにしない。docs/specs/08 §6 と同じ扱い）。
         // 理由は画面側のバナーが示す。
-        summaryError || todayError ? null : <SkeletonRows />
+        fetching ? <SkeletonRows /> : null
       ) : (
         rows.map((row) => (
           <button
@@ -64,6 +77,8 @@ export function WeekSummary({ selected, onSelect }: Props) {
             <span className="mono week__date">{row.date}</span>
             <span className="mono week__ratio">{row.done === null ? '記録なし' : row.done + '/' + row.total}</span>
             <span className="week__bar">
+              {/* done === null（記録なし）のときだけ ?? が効き、その場合は voided で全区画 void になる
+                  ＝ 件数を偽らない（素材 WeekSummary.tsx の `day.total ?? 11` と同じ扱い） */}
               <SegmentBar
                 done={row.done ?? 0}
                 total={row.total ?? VOID_SEGMENTS}
