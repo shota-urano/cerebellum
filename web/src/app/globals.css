@@ -104,8 +104,9 @@ a:hover { color: #8FF2FF; }
 .skel { display: inline-block; border-radius: var(--radius-sm); background: var(--border); color: transparent; transform: scaleY(.55); animation: pulse 1.8s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) {
   .skel { animation: none; }
+  .hud__dot { animation: none; box-shadow: none; }
   .ring, .ring__dot { transition: none; }
-  .ring--done, .ring--done .ring__dot, .seg--on, .allclear { box-shadow: none !important; }
+  .ring--done, .ring--done .ring__dot, .seg--on, .allclear, .tab--active { box-shadow: none !important; }
   .allclear__tag { text-shadow: none; }
 }
 
