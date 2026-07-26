@@ -27,6 +27,10 @@ verify-fast: $(FAST_CHECKS)
 	@echo "VERIFY-FAST: PASS"
 
 typecheck:
+	@# Next.js の .next/types/*.ts は build 時に生成され、ブランチ切替後もそのまま残る。
+	@# 別ブランチにしか無いページ（例 src/app/history/page.tsx）を参照したまま stale 化し、
+	@# TS2307 で偽 FAIL する（2026-07-26 実測。検証ブランチで統合 verify → main へ戻ると再現）。
+	@rm -rf .next/types
 	$(PM) run typecheck
 
 lint:

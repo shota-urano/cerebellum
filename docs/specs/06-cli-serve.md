@@ -4,7 +4,7 @@
 
 ## 1. 目的
 
-`cerebellum serve --port 3210` の1コマンド・1プロセスで API＋フロントを配信し、launchd で常駐させる。デプロイ＝バイナリ1個。
+`cerebellum serve --port 48210` の1コマンド・1プロセスで API＋フロントを配信し、launchd で常駐させる。デプロイ＝バイナリ1個。
 
 ## 2. 入出力
 
@@ -16,7 +16,7 @@
 ### 3.1 CLI（clap derive）
 
 ```
-cerebellum serve [--port 3210]     # Phase 1 はこれのみ
+cerebellum serve [--port 48210]     # Phase 1 はこれのみ
 ```
 
 将来 `notify` 等のサブコマンドを追加する前提の構造にする（`enum Command`）。
@@ -43,10 +43,10 @@ cerebellum serve [--port 3210]     # Phase 1 はこれのみ
 
 | 項目 | 値 | 備考 |
 |---|---|---|
-| ポート | 3210（`--port` で上書き可） | 確定 |
-| Vault パス | `/Users/orion/Library/CloudStorage/GoogleDrive-urano.shota@uslab.jp/マイドライブ/second-brain`（既定値。env `CEREBELLUM_VAULT` で上書き可） | 既定値は確定・上書き手段は実装時に確定 |
+| ポート | 48210（`--port` で上書き可） | 確定（2026-07-26 に 3210 から変更）。**49152 以上（macOS の ephemeral 範囲）に置かないこと** — 再起動直後に他プロセスが一時ポートとして先に掴み、§6 の「ポート使用中: 起動失敗」を散発的に踏むため。dev サーバは 48211（[`07-web-foundation.md`](./07-web-foundation.md) §5） |
+| Vault パス | **env `CEREBELLUM_VAULT` で与える**（launchd plist に記載）。既定値は `$HOME/second-brain` | 確定。実運用の Vault は Google Drive 上でアカウント名を含む絶対パスになるため、**個人を特定できる値をリポジトリに置かない**（本リポジトリは公開。2026-07-26 改訂） |
 | ルーティン md | `{vault}/80_運用ガイド/人間のルーティン.md` | 確定 |
-| DB パス | 既定 `~/Library/Application Support/cerebellum/cerebellum.db`（env `CEREBELLUM_DB` で上書き可） | **実装時に確定**（§7 要確認） |
+| DB パス | 既定 `~/Library/Application Support/cerebellum/cerebellum.db`（env `CEREBELLUM_DB` で上書き可）。**親ディレクトリは起動時に `create_dir_all` で用意する**（SQLite は作らないため初回起動が失敗する） | 確定（2026-07-26 実装時に確定） |
 | bind | `0.0.0.0`（Tailscale 経由アクセスのため） | 確定 |
 
 ## 5. インターフェース

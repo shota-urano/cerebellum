@@ -96,7 +96,7 @@ make verify:
   3. release: cargo build --release（embed 込みで通ること）
 ```
 
-dev 中は `next dev`（rewrites で Rust へプロキシ）＋ `cargo run -- serve` の2プロセス。本番は `cerebellum serve --port 3210` を launchd 常駐。
+dev 中は `next dev`（rewrites で Rust へプロキシ）＋ `cargo run -- serve` の2プロセス。本番は `cerebellum serve --port 48210` を launchd 常駐。
 
 ## 8. 関連仕様
 

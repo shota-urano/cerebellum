@@ -20,7 +20,7 @@ second-brain のルーティンを消し込む自分専用ダッシュボード�
 1. **Vault 配下に書き込まない**（読み取りのみ）。書き込みコードを書いた時点で仕様違反
 2. パース・due 判定・task_id の仕様（`docs/specs/04`・`02` §3）を変更しない。daily-tasks の post.py と同一仕様が Slack 通知との整合契約。fixture テストの期待値を実装に合わせて書き換えない
 3. 一度確定した `task_days` を更新・削除するコードを書かない（過去記録の不変性）。過去日の消し込み変更も不可
-4. 確定済み技術選定を置き換えない: rusqlite（sqlx 不可）・rust-embed・SWR・クエリパラメータ方式・ポート3210 ほか `docs/specs/00` §4 の表
+4. 確定済み技術選定を置き換えない: rusqlite（sqlx 不可）・rust-embed・SWR・クエリパラメータ方式・ポート48210 ほか `docs/specs/00` §4 の表
 5. 依存方向を守る: Rust は `domain ← usecase ← adapters/infra`（domain に I/O 依存ゼロ、ガード類は usecase 層）。Web は `app → features → shared` 一方向・feature 間 import 禁止・barrel 経由のみ
 6. スキーマは `docs/specs/02`、API/DTO は `docs/specs/03` だけで定義する。他ファイル・実装コメントで二重定義しない。`web/src/shared/api/types.ts` は `03` と手動同期
 7. Phase 2 機能（下書き・承認・digest・通知・単発TODO）を先取り実装しない
