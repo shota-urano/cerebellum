@@ -1,6 +1,5 @@
 'use client';
 
-import { ErrorBanner, VAULT_UNAVAILABLE_MESSAGE } from '@/shared/ui';
 import { useSummary } from '../hooks/useSummary';
 import { useToday } from '../hooks/useToday';
 import { WEEK_DAYS, buildWeek } from '../lib/week';
@@ -35,6 +34,9 @@ function SkeletonRows() {
 /**
  * 直近7日サマリ（docs/specs/09 §3）。行タップでその日の表示へ移動する。
  * 様式の正本は `docs/design/03-history.md`（`.week` in globals.css）。
+ *
+ * エラー表示は持たない。`useSummary` / `useToday` の失敗は画面側（`app/history/HistoryScreen.tsx`）が
+ * 1枚の ErrorBanner に集約する（同じ Vault 断で何枚も並べないため。docs/specs/09 §6）。
  */
 export function WeekSummary({ selected, onSelect }: Props) {
   // 7日分の日付は「今日」起点で組む（サーバー由来。docs/specs/09 §3）
@@ -47,14 +49,9 @@ export function WeekSummary({ selected, onSelect }: Props) {
     <section className="panel week">
       <div className="mono label" style={{ marginBottom: 12 }}>LAST 7 DAYS</div>
 
-      {summaryError && (
-        <ErrorBanner
-          message={summaryError.code === 'vault_unavailable' ? VAULT_UNAVAILABLE_MESSAGE : summaryError.message}
-        />
-      )}
-
       {rows === null ? (
-        // 一度も取れていないままエラーになったら行は出さない（永久スケルトンにしない。docs/specs/08 §6 と同じ扱い）
+        // 一度も取れていないままエラーになったら行は出さない（永久スケルトンにしない。docs/specs/08 §6 と同じ扱い）。
+        // 理由は画面側のバナーが示す。
         summaryError || todayError ? null : <SkeletonRows />
       ) : (
         rows.map((row) => (
