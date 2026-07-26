@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "cerebellum",
+  "project_id": "22b74425-7d88-4344-b7b7-dd56930b7fc1"
+}
