@@ -20,7 +20,7 @@ npm run dev   # http://localhost:3000
 
 | 画面 | ファイル | 対応する要素／ロジック |
 | --- | --- | --- |
-| 共通シェル（中央寄せ・上部 HUD 行・下部タブ） | `app/layout.tsx`, `components/HudStatus.tsx`, `components/TabBar.tsx`, `app/globals.css` | max-width 440px の中央寄せ、`ROUTINE / DAILY` ステータス行、今日⇄履歴の固定タブ（`next/link` + `usePathname`） |
+| 共通シェル（中央寄せ・上部 HUD 行・下部タブ） | `app/layout.tsx`, `components/HudStatus.tsx`, `components/TabBar.tsx`, `app/globals.css` | max-width 1024px の中央寄せ（それ以下は画面幅追従）、`ROUTINE / DAILY` ステータス行、今日⇄履歴の固定タブ（`next/link` + `usePathname`） |
 | 1. 今日（`/`） | `app/page.tsx` | 画面組み立て・完了数集計・エラー/空/全完了の出し分け（`VAULT_ERROR` フラグ） |
 | 1. 今日 — ヘッダ計器盤 | `components/HeaderPanel.tsx`, `components/SegmentBar.tsx` | 日付「2026-07-26（日）」／進捗「4 / 13」／13区画セグメントバー／PROGRESS・REMAINING、コーナーブラケット |
 | 1. 今日 — タスクリスト | `components/TaskList.tsx`, `components/TaskRow.tsx`, `components/CheckRing.tsx` | 1列・行高44px以上、行全体タップでトグル、完了はリング発光＋打ち消し線、時刻/ツール名は等幅・補助色（空や `-` は非表示） |

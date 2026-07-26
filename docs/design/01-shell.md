@@ -15,11 +15,11 @@
 
 ```
 .shell（min-height:100dvh・中央寄せ・下部タブ分 padding-bottom:96px）
-└ .col（width:100%・max-width:440px・padding:0 16px）
+└ .col（width:100%・max-width:1024px・padding:0 16px）
    ├ HudStatus（上部ステータス行）
    └ {画面コンテンツ（今日 / 履歴）}
 .tabs（position:fixed 下端・背景は bg への上方向グラデ）
-└ .tabs__inner（max-width:440px・2列グリッド・gap:8px）
+└ .tabs__inner（max-width:1024px・2列グリッド・gap:8px）
 ```
 
 - 常時ダーク（`color-scheme: dark`）。背景 `--bg`・文字 `--text`
@@ -44,4 +44,4 @@
 
 ## 未定事項
 
-- なし（max-width 440px は 2026-07-26 確定。specs 07 も同値に改訂済み）
+- なし（コンテンツ幅は 2026-07-26 に max-width 1024px へ改訂。実機 iPad で 440px 固定が狭かったため画面幅追従に変更。specs 07・system/01-tokens.md・デザイン素材も同値に改訂済み）

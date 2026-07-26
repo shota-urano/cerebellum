@@ -25,7 +25,7 @@
 - グロー一括係数 `GLOW`（`lib/theme.ts`。0〜2・既定1、`glowShadow(px, alpha)`）
 - パルスアニメーション `pulse` 2.4s（HUD ドット）
 
-**フォント（確定 2026-07-26）**: プロトタイプ採用で **JetBrains Mono（等幅）＋ Noto Sans JP（本文）**・`next/font/google` セルフホスト（system/01-tokens.md 更新済み）。コンテンツ幅も **440px** で確定（specs 07・system 更新済み）。
+**フォント（確定 2026-07-26）**: プロトタイプ採用で **JetBrains Mono（等幅）＋ Noto Sans JP（本文）**・`next/font/google` セルフホスト（system/01-tokens.md 更新済み）。コンテンツ幅は **1024px 上限・それ以下は画面幅追従**（2026-07-26 改訂。当初 440px 固定だったが実機 iPad で狭く、画面幅追従に変更。specs 07・system・デザイン素材 更新済み）。
 
 ## specs との対応・差分
 
