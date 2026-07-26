@@ -102,7 +102,12 @@ a:hover { color: #8FF2FF; }
    実表示と同じクラス（.hdr / .row 等）の中に置き、`&nbsp;` で本文と同じ行ボックスを作る。
    細く見せる scaleY は transform なのでレイアウトに影響しない（＝取得完了時に枠がずれない）。 */
 .skel { display: inline-block; border-radius: var(--radius-sm); background: var(--border); color: transparent; transform: scaleY(.55); animation: pulse 1.8s ease-in-out infinite; }
-@media (prefers-reduced-motion: reduce) { .skel { animation: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .skel { animation: none; }
+  .ring, .ring__dot { transition: none; }
+  .ring--done, .ring--done .ring__dot, .seg--on, .allclear { box-shadow: none !important; }
+  .allclear__tag { text-shadow: none; }
+}
 
 /* ---- history ---- */
 .nav { display: flex; align-items: center; justify-content: space-between; padding: 8px; }
