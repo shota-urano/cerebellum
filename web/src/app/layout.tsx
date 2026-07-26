@@ -9,6 +9,13 @@ const sans = Noto_Sans_JP({ subsets: ['latin'], weight: ['400', '500', '700'], v
 export const metadata: Metadata = {
   title: '日次ルーティン',
   description: '日次ルーティン消し込みダッシュボード',
+  // PWA はホーム画面追加まで（docs/specs/07 §4）
+  manifest: '/manifest.webmanifest',
+  appleWebApp: { capable: true, title: '日次ルーティン', statusBarStyle: 'black-translucent' },
+  icons: {
+    icon: '/icons/icon-192.png',
+    apple: '/icons/apple-touch-icon.png',
+  },
 };
 
 export const viewport: Viewport = {
