@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>jp.uslab.cerebellum</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>REPLACE_WITH_HOME/bin/cerebellum</string>
+    <string>serve</string>
+    <string>--port</string>
+    <string>48210</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>REPLACE_WITH_HOME</string>
+    <key>CEREBELLUM_VAULT</key>
+    <string>REPLACE_WITH_VAULT</string>
+    <key>CEREBELLUM_DB</key>
+    <string>REPLACE_WITH_HOME/Library/Application Support/cerebellum/cerebellum.db</string>
+    <key>RUST_LOG</key>
+    <string>cerebellum=info</string>
+  </dict>
+
+  <key>WorkingDirectory</key>
+  <string>REPLACE_WITH_HOME</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+
+  <key>StandardOutPath</key>
+  <string>REPLACE_WITH_HOME/Library/Logs/cerebellum/stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>REPLACE_WITH_HOME/Library/Logs/cerebellum/stderr.log</string>
+</dict>
+</plist>

@@ -46,18 +46,30 @@ impl Clock for FakeClock {
 
 struct FakeVaultReader {
     read_count: AtomicUsize,
+    available: bool,
 }
 
 impl VaultReader for FakeVaultReader {
     fn read_routine_markdown(&self) -> Result<String, VaultReaderError> {
         self.read_count.fetch_add(1, Ordering::SeqCst);
-        Ok(ROUTINE_MARKDOWN.to_owned())
+        if self.available {
+            Ok(ROUTINE_MARKDOWN.to_owned())
+        } else {
+            Err(VaultReaderError::new(std::io::Error::other(
+                "routine markdown is unavailable",
+            )))
+        }
     }
 }
 
 fn test_app() -> axum::Router {
+    test_app_with_vault(true)
+}
+
+fn test_app_with_vault(available: bool) -> axum::Router {
     let vault_reader: Arc<dyn VaultReader> = Arc::new(FakeVaultReader {
         read_count: AtomicUsize::new(0),
+        available,
     });
     let repository: Arc<dyn TaskRepository> = Arc::new(
         SqliteTaskRepository::open(std::path::Path::new(":memory:"))
@@ -72,11 +84,13 @@ fn test_app() -> axum::Router {
             Arc::clone(&clock),
         )),
         toggle_check: Arc::new(ToggleCheck::new(
-            vault_reader,
+            Arc::clone(&vault_reader),
             Arc::clone(&repository),
             Arc::clone(&clock),
         )),
-        get_summary: Arc::new(GetSummary::new(repository, clock)),
+        get_summary: Arc::new(GetSummary::new(Arc::clone(&repository), clock)),
+        vault_reader,
+        task_repository: repository,
         config: Arc::new(Config {
             port: 48210,
             vault_path: PathBuf::from("/unused"),
@@ -102,6 +116,56 @@ async fn json_body(response: Response) -> Value {
         .await
         .expect("response body should be readable");
     serde_json::from_slice(&bytes).expect("response body should be JSON")
+}
+
+#[tokio::test]
+async fn health_is_always_200_and_reports_each_dependency() {
+    let healthy_response = call(test_app(), "GET", "/api/health").await;
+    assert_eq!(healthy_response.status(), StatusCode::OK);
+    assert_eq!(healthy_response.headers()[CACHE_CONTROL], "no-store");
+    assert_eq!(
+        json_body(healthy_response).await,
+        json!({
+            "vault": "ok",
+            "db": "ok",
+            "version": env!("CARGO_PKG_VERSION")
+        })
+    );
+
+    let unavailable_response = call(test_app_with_vault(false), "GET", "/api/health").await;
+    assert_eq!(unavailable_response.status(), StatusCode::OK);
+    assert_eq!(unavailable_response.headers()[CACHE_CONTROL], "no-store");
+    assert_eq!(
+        json_body(unavailable_response).await,
+        json!({
+            "vault": "ng",
+            "db": "ok",
+            "version": env!("CARGO_PKG_VERSION")
+        })
+    );
+}
+
+#[tokio::test]
+async fn static_routes_use_asset_specific_cache_headers_and_spa_fallback() {
+    let app = test_app();
+
+    for uri in ["/", "/history", "/missing/route"] {
+        let response = call(app.clone(), "GET", uri).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()[CACHE_CONTROL], "no-cache");
+        assert_eq!(
+            response.headers()[axum::http::header::CONTENT_TYPE],
+            "text/html; charset=utf-8"
+        );
+    }
+
+    let manifest = call(app, "GET", "/manifest.webmanifest").await;
+    assert_eq!(manifest.status(), StatusCode::OK);
+    assert_eq!(manifest.headers()[CACHE_CONTROL], "public, max-age=3600");
+    assert_eq!(
+        manifest.headers()[axum::http::header::CONTENT_TYPE],
+        "application/manifest+json"
+    );
 }
 
 #[tokio::test]
@@ -163,7 +227,7 @@ async fn summary_and_api_errors_use_the_contract_shape() {
         })
     );
 
-    for uri in ["/api/summary?days=nope", "/api/unknown"] {
+    for uri in ["/api/summary?days=nope", "/api", "/api/unknown"] {
         let response = call(app.clone(), "GET", uri).await;
         let expected_status = if uri.contains("summary") {
             StatusCode::BAD_REQUEST
