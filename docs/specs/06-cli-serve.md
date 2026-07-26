@@ -44,9 +44,9 @@ cerebellum serve [--port 3210]     # Phase 1 はこれのみ
 | 項目 | 値 | 備考 |
 |---|---|---|
 | ポート | 3210（`--port` で上書き可） | 確定 |
-| Vault パス | `/Users/orion/Library/CloudStorage/GoogleDrive-urano.shota@uslab.jp/マイドライブ/second-brain`（既定値。env `CEREBELLUM_VAULT` で上書き可） | 既定値は確定・上書き手段は実装時に確定 |
+| Vault パス | **env `CEREBELLUM_VAULT` で与える**（launchd plist に記載）。既定値は `$HOME/second-brain` | 確定。実運用の Vault は Google Drive 上でアカウント名を含む絶対パスになるため、**個人を特定できる値をリポジトリに置かない**（本リポジトリは公開。2026-07-26 改訂） |
 | ルーティン md | `{vault}/80_運用ガイド/人間のルーティン.md` | 確定 |
-| DB パス | 既定 `~/Library/Application Support/cerebellum/cerebellum.db`（env `CEREBELLUM_DB` で上書き可） | **実装時に確定**（§7 要確認） |
+| DB パス | 既定 `~/Library/Application Support/cerebellum/cerebellum.db`（env `CEREBELLUM_DB` で上書き可）。**親ディレクトリは起動時に `create_dir_all` で用意する**（SQLite は作らないため初回起動が失敗する） | 確定（2026-07-26 実装時に確定） |
 | bind | `0.0.0.0`（Tailscale 経由アクセスのため） | 確定 |
 
 ## 5. インターフェース
