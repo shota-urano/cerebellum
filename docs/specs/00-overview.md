@@ -44,7 +44,7 @@ Phase 1（本仕様の範囲）= 今日のタスク表示・消し込み・履�
 | 項目 | 確定値 | 詳細 |
 |---|---|---|
 | ルーティン表の正本 | Vault `80_運用ガイド/人間のルーティン.md`（読み取りのみ・書き込み禁止） | [04](./04-routine-parse.md) |
-| Vault パス | `/Users/orion/Library/CloudStorage/GoogleDrive-urano.shota@uslab.jp/マイドライブ/second-brain` | [06](./06-cli-serve.md) |
+| Vault パス | env `CEREBELLUM_VAULT`（既定 `$HOME/second-brain`）。実パスは環境固有のためリポジトリに書かない | [06](./06-cli-serve.md) |
 | task_id | `sha1("間隔|時刻|内容")` 先頭12桁（16進小文字。実施・ツール列は含めない） | [02](./02-data-model.md) |
 | 曜日文字列 | `"月火水木金土日"`（`weekday()` 0=月 に対応） | [04](./04-routine-parse.md) |
 | ポート | 3210 | [06](./06-cli-serve.md) |
