@@ -192,6 +192,7 @@ dependencies = [
  "sha1_smol",
  "thiserror",
  "tokio",
+ "tower",
  "tracing",
  "tracing-subscriber",
 ]
