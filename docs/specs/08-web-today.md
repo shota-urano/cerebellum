@@ -19,7 +19,8 @@ DTO は [`03-api.md`](./03-api.md) §3 を正とする。
 - **TaskList ヘッダ行**: `TASKS` / `{n} ITEMS`（デザイン確定 2026-07-26 で追加）
 - **TaskList / TaskItem**: `tasks` を受領順（= sort_no 順）に表示。各行に:
   - チェック状態（done でチェック済みスタイル・打ち消し線等）
-  - `time`（あれば）・`effort`（あれば）・`tool`（あれば。`-` と空は非表示）・`content`
+  - `content` と、メタ行 `{time}  [{tool}]`（区切りは半角空白2つ。`tool` が空または `-` のときはツール部を出さない。両方無ければメタ行ごと非表示）。正本は `docs/design/02-today.md` のコンポーネント一覧
+  - **`effort`（実施列）は画面に表示しない**（2026-07-26 裁定）。行のメタは時刻とツールに絞り、所要時間を出したい場合は Vault 側で内容に含める運用とする（例: `英語学習（1時間）`）。API・スキーマ・パースは従来どおり `effort` を保持する（[`03-api.md`](./03-api.md) §3・[`02-data-model.md`](./02-data-model.md)・[`04-routine-parse.md`](./04-routine-parse.md) は変更しない）
   - 行全体がタップターゲット（44px 以上）。タップで `useToggleCheck` を呼びトグル
 - optimistic update: タップ即時に UI 反映 → POST 失敗時ロールバック＋ErrorBanner（[`07-web-foundation.md`](./07-web-foundation.md) §6）
 - `tasks` が空（今日 due 0件）: 「今日のタスクはありません」の空状態表示（エラーにしない）
