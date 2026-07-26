@@ -50,7 +50,7 @@ web/
 - SWR 標準設定＋`revalidateOnFocus: true`（スマホでアプリに戻った瞬間に最新化）
 - トグルは optimistic update: `mutate` で UI 即時反映 → POST → 失敗時ロールバック
 - モバイルファースト: `max-w-2xl` 中央寄せ・タップターゲット 44px 以上
-- ダークモードは `prefers-color-scheme` 追従（Tailwind `dark:`）
+- 常時ダーク（OS追従しない・light テーマなし。トークンの正本は `docs/design/system/01-tokens.md`）
 - PWA は manifest＋ホーム画面追加まで（プッシュ通知は Phase 後半・スコープ外）
 
 ## 5. インターフェース
