@@ -7,16 +7,16 @@ use crate::domain::{
 
 #[derive(Debug, Serialize)]
 pub(super) struct HealthDto {
-    vault: &'static str,
     db: &'static str,
+    routines: usize,
     version: &'static str,
 }
 
 impl HealthDto {
-    pub(super) fn new(vault_ok: bool, db_ok: bool, version: &'static str) -> Self {
+    pub(super) fn new(db_ok: bool, routines: usize, version: &'static str) -> Self {
         Self {
-            vault: status(vault_ok),
             db: status(db_ok),
+            routines,
             version,
         }
     }

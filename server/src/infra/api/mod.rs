@@ -12,7 +12,7 @@ use crate::{
     usecase::{
         get_day::GetDay,
         get_summary::GetSummary,
-        ports::{TaskRepository, VaultReader},
+        ports::{RoutineRepository, TaskRepository},
         toggle_check::ToggleCheck,
     },
 };
@@ -25,7 +25,7 @@ pub struct AppState {
     pub get_day: Arc<GetDay>,
     pub toggle_check: Arc<ToggleCheck>,
     pub get_summary: Arc<GetSummary>,
-    pub vault_reader: Arc<dyn VaultReader>,
+    pub routine_repository: Arc<dyn RoutineRepository>,
     pub task_repository: Arc<dyn TaskRepository>,
     pub config: Arc<Config>,
 }

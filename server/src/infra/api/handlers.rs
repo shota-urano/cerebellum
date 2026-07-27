@@ -16,20 +16,20 @@ use super::{
 };
 
 pub(super) async fn health(State(state): State<Arc<AppState>>) -> Json<HealthDto> {
-    let vault_reader = Arc::clone(&state.vault_reader);
+    let routine_repository = Arc::clone(&state.routine_repository);
     let task_repository = Arc::clone(&state.task_repository);
     let version = env!("CARGO_PKG_VERSION");
 
-    let (vault_ok, db_ok) = tokio::task::spawn_blocking(move || {
+    let (db_ok, routines) = tokio::task::spawn_blocking(move || {
         (
-            vault_reader.read_routine_markdown().is_ok(),
             task_repository.health_check().is_ok(),
+            routine_repository.count_active_routines().unwrap_or(0),
         )
     })
     .await
-    .unwrap_or((false, false));
+    .unwrap_or((false, 0));
 
-    Json(HealthDto::new(vault_ok, db_ok, version))
+    Json(HealthDto::new(db_ok, routines, version))
 }
 
 pub(super) async fn get_day(

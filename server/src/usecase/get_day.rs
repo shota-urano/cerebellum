@@ -4,42 +4,43 @@ use chrono::{Datelike, NaiveDate, Weekday};
 
 use crate::domain::{
     day::{DaySnapshot, Progress},
-    routine::routine_rows_for_day,
+    due::{due_today, sort_rows_by_time},
+    routine::RoutineRow,
     task::{CheckedTask, Task, task_id},
 };
 
 use super::{
     error::UsecaseError,
-    ports::{Clock, RepositoryError, TaskRepository, VaultReader},
+    ports::{Clock, RepositoryError, RoutineRepository, RoutineRepositoryError, TaskRepository},
 };
 
 pub type GetDayDependencies<'a> = (
-    &'a Arc<dyn VaultReader>,
+    &'a Arc<dyn RoutineRepository>,
     &'a Arc<dyn TaskRepository>,
     &'a Arc<dyn Clock>,
 );
 
 pub struct GetDay {
-    vault_reader: Arc<dyn VaultReader>,
+    routine_repository: Arc<dyn RoutineRepository>,
     task_repository: Arc<dyn TaskRepository>,
     clock: Arc<dyn Clock>,
 }
 
 impl GetDay {
     pub fn new(
-        vault_reader: Arc<dyn VaultReader>,
+        routine_repository: Arc<dyn RoutineRepository>,
         task_repository: Arc<dyn TaskRepository>,
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
-            vault_reader,
+            routine_repository,
             task_repository,
             clock,
         }
     }
 
     pub fn dependencies(&self) -> GetDayDependencies<'_> {
-        (&self.vault_reader, &self.task_repository, &self.clock)
+        (&self.routine_repository, &self.task_repository, &self.clock)
     }
 
     pub fn execute(&self, date: &str) -> Result<DaySnapshot, UsecaseError> {
@@ -48,7 +49,7 @@ impl GetDay {
 
         if date == today {
             ensure_snapshot(
-                self.vault_reader.as_ref(),
+                self.routine_repository.as_ref(),
                 self.task_repository.as_ref(),
                 date,
             )?;
@@ -80,7 +81,7 @@ pub(crate) fn resolve_date(date: &str, today: NaiveDate) -> Result<NaiveDate, Us
 }
 
 pub(crate) fn ensure_snapshot(
-    vault_reader: &dyn VaultReader,
+    routine_repository: &dyn RoutineRepository,
     task_repository: &dyn TaskRepository,
     date: NaiveDate,
 ) -> Result<(), UsecaseError> {
@@ -92,10 +93,23 @@ pub(crate) fn ensure_snapshot(
         return Ok(());
     }
 
-    let markdown = vault_reader
-        .read_routine_markdown()
-        .map_err(UsecaseError::VaultUnavailable)?;
-    let tasks = routine_rows_for_day(&markdown, date.weekday().num_days_from_monday())
+    let weekday = date.weekday().num_days_from_monday();
+    let mut rows = routine_repository
+        .list_routines(false)
+        .map_err(routine_repository_error)?
+        .into_iter()
+        .filter(|routine| due_today(&routine.interval, weekday))
+        .map(|routine| RoutineRow {
+            interval: routine.interval,
+            time: routine.time,
+            effort: routine.effort,
+            tool: routine.tool,
+            content: routine.content,
+        })
+        .collect::<Vec<_>>();
+    sort_rows_by_time(&mut rows);
+
+    let tasks = rows
         .into_iter()
         .enumerate()
         .map(|(sort_no, row)| Task {
@@ -157,5 +171,9 @@ fn weekday_label(weekday: Weekday) -> char {
 }
 
 pub(crate) fn repository_error(error: RepositoryError) -> UsecaseError {
+    UsecaseError::Internal(Box::new(error))
+}
+
+fn routine_repository_error(error: RoutineRepositoryError) -> UsecaseError {
     UsecaseError::Internal(Box::new(error))
 }

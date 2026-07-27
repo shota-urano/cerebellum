@@ -5,36 +5,36 @@ use crate::domain::day::DaySnapshot;
 use super::{
     error::UsecaseError,
     get_day::{ensure_snapshot, load_snapshot, repository_error, resolve_date},
-    ports::{Clock, TaskRepository, VaultReader},
+    ports::{Clock, RoutineRepository, TaskRepository},
 };
 
 pub type ToggleCheckDependencies<'a> = (
-    &'a Arc<dyn VaultReader>,
+    &'a Arc<dyn RoutineRepository>,
     &'a Arc<dyn TaskRepository>,
     &'a Arc<dyn Clock>,
 );
 
 pub struct ToggleCheck {
-    vault_reader: Arc<dyn VaultReader>,
+    routine_repository: Arc<dyn RoutineRepository>,
     task_repository: Arc<dyn TaskRepository>,
     clock: Arc<dyn Clock>,
 }
 
 impl ToggleCheck {
     pub fn new(
-        vault_reader: Arc<dyn VaultReader>,
+        routine_repository: Arc<dyn RoutineRepository>,
         task_repository: Arc<dyn TaskRepository>,
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
-            vault_reader,
+            routine_repository,
             task_repository,
             clock,
         }
     }
 
     pub fn dependencies(&self) -> ToggleCheckDependencies<'_> {
-        (&self.vault_reader, &self.task_repository, &self.clock)
+        (&self.routine_repository, &self.task_repository, &self.clock)
     }
 
     pub fn execute(&self, date: &str, task_id: &str) -> Result<DaySnapshot, UsecaseError> {
@@ -49,7 +49,7 @@ impl ToggleCheck {
         }
 
         ensure_snapshot(
-            self.vault_reader.as_ref(),
+            self.routine_repository.as_ref(),
             self.task_repository.as_ref(),
             date,
         )?;

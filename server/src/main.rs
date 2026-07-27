@@ -17,8 +17,8 @@ use config::Config;
 use infra::api::AppState;
 use usecase::import_routines::ImportRoutines;
 use usecase::{
-    get_day::GetDay, get_summary::GetSummary, ports::Clock, ports::TaskRepository,
-    ports::VaultReader, toggle_check::ToggleCheck,
+    get_day::GetDay, get_summary::GetSummary, ports::Clock, ports::RoutineRepository,
+    ports::TaskRepository, ports::VaultReader, toggle_check::ToggleCheck,
 };
 
 #[tokio::main]
@@ -88,7 +88,6 @@ fn print_routines(label: &str, rows: &[domain::routine::RoutineRow]) {
 async fn serve(port: u16) -> Result<()> {
     let config = Arc::new(Config::from_env(port).context("failed to resolve configuration")?);
 
-    let vault_reader: Arc<dyn VaultReader> = Arc::new(FsVaultReader::new(config.routine_path()));
     // SQLite は親ディレクトリを作らないため、初回起動（~/Library/Application Support/cerebellum/
     // が未作成）では Connection::open が失敗する。DB を開く前にここで用意する。
     if let Some(parent) = config
@@ -103,19 +102,21 @@ async fn serve(port: u16) -> Result<()> {
             )
         })?;
     }
-    let task_repository: Arc<dyn TaskRepository> = Arc::new(
+    let repository = Arc::new(
         SqliteTaskRepository::open(&config.db_path)
             .with_context(|| format!("failed to open database at {}", config.db_path.display()))?,
     );
+    let routine_repository: Arc<dyn RoutineRepository> = repository.clone();
+    let task_repository: Arc<dyn TaskRepository> = repository;
     let clock: Arc<dyn Clock> = Arc::new(SystemClock);
 
     let get_day = Arc::new(GetDay::new(
-        Arc::clone(&vault_reader),
+        Arc::clone(&routine_repository),
         Arc::clone(&task_repository),
         Arc::clone(&clock),
     ));
     let toggle_check = Arc::new(ToggleCheck::new(
-        Arc::clone(&vault_reader),
+        Arc::clone(&routine_repository),
         Arc::clone(&task_repository),
         Arc::clone(&clock),
     ));
@@ -125,7 +126,7 @@ async fn serve(port: u16) -> Result<()> {
         get_day,
         toggle_check,
         get_summary,
-        vault_reader,
+        routine_repository,
         task_repository,
         config: Arc::clone(&config),
     });

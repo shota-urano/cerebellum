@@ -1,9 +1,6 @@
 use std::{
     collections::{BTreeMap, HashMap},
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicUsize, Ordering},
-    },
+    sync::{Arc, Mutex},
 };
 
 use chrono::{DateTime, FixedOffset};
@@ -18,21 +15,9 @@ use super::{
     error::UsecaseError,
     get_day::GetDay,
     get_summary::GetSummary,
-    ports::{
-        Clock, RepositoryError, RoutineRepository, RoutineRepositoryError, TaskRepository,
-        VaultReader, VaultReaderError,
-    },
+    ports::{Clock, RepositoryError, RoutineRepository, RoutineRepositoryError, TaskRepository},
     toggle_check::ToggleCheck,
 };
-
-const ROUTINE_MARKDOWN: &str = r#"
-| 間隔 | 時間 | 実施 | 確認ツール | 内容 |
-| --- | --- | --- | --- | --- |
-| 毎日 | 8:30 | 10分 | slack | daily later |
-| 日曜 | 6:00 | | obsidian | sunday only |
-| 毎日 | 7:30 | | slack | daily earlier |
-| 土曜 | 6:30 | | obsidian | saturday only |
-"#;
 
 struct FakeClock {
     now: DateTime<FixedOffset>,
@@ -44,46 +29,13 @@ impl Clock for FakeClock {
     }
 }
 
-struct FakeVaultReader {
-    markdown: Option<String>,
-    read_count: AtomicUsize,
-}
-
-impl FakeVaultReader {
-    fn readable(markdown: &str) -> Self {
-        Self {
-            markdown: Some(markdown.to_owned()),
-            read_count: AtomicUsize::new(0),
-        }
-    }
-
-    fn unavailable() -> Self {
-        Self {
-            markdown: None,
-            read_count: AtomicUsize::new(0),
-        }
-    }
-
-    fn read_count(&self) -> usize {
-        self.read_count.load(Ordering::SeqCst)
-    }
-}
-
-impl VaultReader for FakeVaultReader {
-    fn read_routine_markdown(&self) -> Result<String, VaultReaderError> {
-        self.read_count.fetch_add(1, Ordering::SeqCst);
-        self.markdown.clone().ok_or_else(|| {
-            VaultReaderError::new(std::io::Error::other("routine markdown is unavailable"))
-        })
-    }
-}
-
 #[derive(Default)]
 struct RepoState {
     days: BTreeMap<String, Vec<Task>>,
     checks: HashMap<(String, String), (bool, String)>,
     routines: BTreeMap<i64, Routine>,
     next_routine_id: i64,
+    routine_list_count: usize,
     insert_count: usize,
     toggle_count: usize,
 }
@@ -115,6 +67,13 @@ impl InMemoryRepo {
             .lock()
             .expect("in-memory repository lock should be available")
             .toggle_count
+    }
+
+    fn routine_list_count(&self) -> usize {
+        self.state
+            .lock()
+            .expect("in-memory repository lock should be available")
+            .routine_list_count
     }
 }
 
@@ -227,10 +186,12 @@ impl RoutineRepository for InMemoryRepo {
         &self,
         include_inactive: bool,
     ) -> Result<Vec<Routine>, RoutineRepositoryError> {
-        Ok(self
+        let mut state = self
             .state
             .lock()
-            .expect("in-memory repository lock should be available")
+            .expect("in-memory repository lock should be available");
+        state.routine_list_count += 1;
+        Ok(state
             .routines
             .values()
             .filter(|routine| include_inactive || routine.active)
@@ -358,6 +319,46 @@ fn clock(now: &str) -> Arc<dyn Clock> {
     })
 }
 
+fn routine_fields(
+    interval: &str,
+    time: &str,
+    effort: &str,
+    tool: &str,
+    content: &str,
+) -> RoutineFields {
+    RoutineFields {
+        interval: interval.to_owned(),
+        time: time.to_owned(),
+        effort: effort.to_owned(),
+        tool: tool.to_owned(),
+        content: content.to_owned(),
+    }
+}
+
+fn seeded_repository() -> Arc<InMemoryRepo> {
+    let repository = Arc::new(InMemoryRepo::default());
+    for fields in [
+        routine_fields("毎日", "8:30", "10分", "slack", "daily later"),
+        routine_fields("日曜", "6:00", "", "obsidian", "sunday only"),
+        routine_fields("毎日", "7:30", "", "slack", "daily earlier"),
+        routine_fields("土曜", "6:30", "", "obsidian", "saturday only"),
+    ] {
+        repository
+            .insert_routine(&fields, "2026-07-24T12:00:00+09:00")
+            .expect("test routine should insert");
+    }
+    let inactive = repository
+        .insert_routine(
+            &routine_fields("毎日", "6:00", "", "slack", "inactive"),
+            "2026-07-24T12:00:00+09:00",
+        )
+        .expect("inactive test routine should insert");
+    repository
+        .deactivate_routine(inactive.id, "2026-07-24T13:00:00+09:00")
+        .expect("inactive test routine should deactivate");
+    repository
+}
+
 fn task(id: &str, sort_no: usize) -> Task {
     Task {
         id: id.to_owned(),
@@ -372,14 +373,17 @@ fn task(id: &str, sort_no: usize) -> Task {
 
 #[test]
 fn today_uses_the_local_midnight_boundary_and_correct_weekday() {
-    let vault = Arc::new(FakeVaultReader::readable(ROUTINE_MARKDOWN));
-    let repository = Arc::new(InMemoryRepo::default());
+    let repository = seeded_repository();
     let before_midnight = GetDay::new(
-        vault.clone(),
+        repository.clone(),
         repository.clone(),
         clock("2026-07-25T23:59:59+09:00"),
     );
-    let after_midnight = GetDay::new(vault, repository, clock("2026-07-26T00:00:00+09:00"));
+    let after_midnight = GetDay::new(
+        repository.clone(),
+        repository,
+        clock("2026-07-26T00:00:00+09:00"),
+    );
 
     let saturday = before_midnight
         .execute("today")
@@ -421,10 +425,9 @@ fn today_uses_the_local_midnight_boundary_and_correct_weekday() {
 
 #[test]
 fn get_day_ensures_the_today_snapshot_once_with_fixed_sort_numbers() {
-    let vault = Arc::new(FakeVaultReader::readable(ROUTINE_MARKDOWN));
-    let repository = Arc::new(InMemoryRepo::default());
+    let repository = seeded_repository();
     let usecase = GetDay::new(
-        vault.clone(),
+        repository.clone(),
         repository.clone(),
         clock("2026-07-25T08:01:00+09:00"),
     );
@@ -444,24 +447,29 @@ fn get_day_ensures_the_today_snapshot_once_with_fixed_sort_numbers() {
         first
             .tasks
             .iter()
-            .map(|task| (task.task.content.as_str(), task.task.sort_no))
+            .map(|task| {
+                (
+                    task.task.content.as_str(),
+                    task.task.sort_no,
+                    task.task.id.as_str(),
+                )
+            })
             .collect::<Vec<_>>(),
         vec![
-            ("saturday only", 0),
-            ("daily earlier", 1),
-            ("daily later", 2),
+            ("saturday only", 0, "2872f07f93f0"),
+            ("daily earlier", 1, "ad0cf3cef272"),
+            ("daily later", 2, "ae44fe59debc"),
         ]
     );
-    assert_eq!(vault.read_count(), 1);
+    assert_eq!(repository.routine_list_count(), 1);
     assert_eq!(repository.insert_count(), 1);
 }
 
 #[test]
 fn past_and_future_days_are_readonly_and_are_never_ensured() {
-    let vault = Arc::new(FakeVaultReader::readable(ROUTINE_MARKDOWN));
-    let repository = Arc::new(InMemoryRepo::default());
+    let repository = seeded_repository();
     let usecase = GetDay::new(
-        vault.clone(),
+        repository.clone(),
         repository.clone(),
         clock("2026-07-25T08:01:00+09:00"),
     );
@@ -477,15 +485,18 @@ fn past_and_future_days_are_readonly_and_are_never_ensured() {
         assert!(snapshot.tasks.is_empty());
     }
 
-    assert_eq!(vault.read_count(), 0);
+    assert_eq!(repository.routine_list_count(), 0);
     assert_eq!(repository.insert_count(), 0);
 }
 
 #[test]
 fn get_day_rejects_dates_outside_the_exact_calendar_format() {
-    let vault = Arc::new(FakeVaultReader::readable(ROUTINE_MARKDOWN));
-    let repository = Arc::new(InMemoryRepo::default());
-    let usecase = GetDay::new(vault, repository, clock("2026-07-25T08:01:00+09:00"));
+    let repository = seeded_repository();
+    let usecase = GetDay::new(
+        repository.clone(),
+        repository,
+        clock("2026-07-25T08:01:00+09:00"),
+    );
 
     for date in ["2026-7-25", "2026-02-30", "tomorrow"] {
         assert!(matches!(
@@ -496,30 +507,30 @@ fn get_day_rejects_dates_outside_the_exact_calendar_format() {
 }
 
 #[test]
-fn vault_failure_does_not_create_a_partial_snapshot() {
-    let vault = Arc::new(FakeVaultReader::unavailable());
+fn empty_routine_master_returns_an_empty_today_without_error() {
     let repository = Arc::new(InMemoryRepo::default());
     let usecase = GetDay::new(
-        vault.clone(),
+        repository.clone(),
         repository.clone(),
         clock("2026-07-25T08:01:00+09:00"),
     );
 
-    assert!(matches!(
-        usecase.execute("today"),
-        Err(UsecaseError::VaultUnavailable(_))
-    ));
-    assert_eq!(vault.read_count(), 1);
-    assert_eq!(repository.insert_count(), 0);
-    assert!(repository.snapshot("2026-07-25").is_none());
+    let snapshot = usecase
+        .execute("today")
+        .expect("an empty routine master should be a taskless day");
+    assert!(snapshot.tasks.is_empty());
+    assert_eq!(snapshot.progress.done, 0);
+    assert_eq!(snapshot.progress.total, 0);
+    assert_eq!(repository.routine_list_count(), 1);
+    assert_eq!(repository.insert_count(), 1);
+    assert_eq!(repository.snapshot("2026-07-25"), Some(Vec::new()));
 }
 
 #[test]
 fn toggle_ensures_today_first_then_flips_and_returns_the_day_shape() {
-    let vault = Arc::new(FakeVaultReader::readable(ROUTINE_MARKDOWN));
-    let repository = Arc::new(InMemoryRepo::default());
+    let repository = seeded_repository();
     let usecase = ToggleCheck::new(
-        vault.clone(),
+        repository.clone(),
         repository.clone(),
         clock("2026-07-25T08:01:00+09:00"),
     );
@@ -541,7 +552,7 @@ fn toggle_ensures_today_first_then_flips_and_returns_the_day_shape() {
     assert_eq!(checked.progress.done, 1);
     assert_eq!(checked.progress.total, 3);
     assert!(!checked.readonly);
-    assert_eq!(vault.read_count(), 1);
+    assert_eq!(repository.routine_list_count(), 1);
     assert_eq!(repository.insert_count(), 1);
 
     let unchecked = usecase
@@ -556,17 +567,16 @@ fn toggle_ensures_today_first_then_flips_and_returns_the_day_shape() {
             .done
     );
     assert_eq!(unchecked.progress.done, 0);
-    assert_eq!(vault.read_count(), 1);
+    assert_eq!(repository.routine_list_count(), 1);
     assert_eq!(repository.insert_count(), 1);
     assert_eq!(repository.toggle_count(), 2);
 }
 
 #[test]
 fn toggle_rejects_non_today_days_before_ensure() {
-    let vault = Arc::new(FakeVaultReader::readable(ROUTINE_MARKDOWN));
-    let repository = Arc::new(InMemoryRepo::default());
+    let repository = seeded_repository();
     let usecase = ToggleCheck::new(
-        vault.clone(),
+        repository.clone(),
         repository.clone(),
         clock("2026-07-25T08:01:00+09:00"),
     );
@@ -577,17 +587,16 @@ fn toggle_rejects_non_today_days_before_ensure() {
             Err(UsecaseError::ReadonlyDay(_))
         ));
     }
-    assert_eq!(vault.read_count(), 0);
+    assert_eq!(repository.routine_list_count(), 0);
     assert_eq!(repository.insert_count(), 0);
     assert_eq!(repository.toggle_count(), 0);
 }
 
 #[test]
 fn toggle_returns_not_found_for_a_task_outside_todays_snapshot() {
-    let vault = Arc::new(FakeVaultReader::readable(ROUTINE_MARKDOWN));
-    let repository = Arc::new(InMemoryRepo::default());
+    let repository = seeded_repository();
     let usecase = ToggleCheck::new(
-        vault,
+        repository.clone(),
         repository.clone(),
         clock("2026-07-25T08:01:00+09:00"),
     );
