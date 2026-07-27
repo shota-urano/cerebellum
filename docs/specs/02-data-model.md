@@ -18,6 +18,7 @@ CREATE TABLE routines (
   tool       TEXT NOT NULL,          -- 確認ツール（例: "slack | obsidian"。空・"-" 可）
   content    TEXT NOT NULL,          -- 内容。空不可
   active     INTEGER NOT NULL DEFAULT 1,  -- 0=削除済み（論理削除）
+  detail_ref TEXT,                   -- 詳細ビューへの結び付け（NULL 可。§6 の語彙のみ）
   created_at TEXT NOT NULL,          -- ISO8601 オフセット付き
   updated_at TEXT NOT NULL
 );
@@ -28,15 +29,23 @@ CREATE UNIQUE INDEX routines_identity
 
 -- その日のスナップショット（過去日表示の正）
 CREATE TABLE task_days (
-  date     TEXT NOT NULL,          -- "YYYY-MM-DD"（ローカルタイム）
-  task_id  TEXT NOT NULL,          -- §3
-  interval TEXT NOT NULL,          -- 間隔列の原文（例: "毎日", "土曜"）
-  time     TEXT NOT NULL,          -- 時間列の原文（例: "7:30"。空文字あり）
-  effort   TEXT NOT NULL,          -- 実施列の原文（例: "1時間"。空文字あり）
-  tool     TEXT NOT NULL,          -- 確認ツール列の原文（例: "slack | obsidian"。空文字・"-" あり）
-  content  TEXT NOT NULL,          -- 内容列（<br> は " / " に変換済み）
-  sort_no  INTEGER NOT NULL,       -- スナップショット確定時の表示順（0起点）
+  date       TEXT NOT NULL,        -- "YYYY-MM-DD"（ローカルタイム）
+  task_id    TEXT NOT NULL,        -- §3
+  interval   TEXT NOT NULL,        -- 間隔列の原文（例: "毎日", "土曜"）
+  time       TEXT NOT NULL,        -- 時間列の原文（例: "7:30"。空文字あり）
+  effort     TEXT NOT NULL,        -- 実施列の原文（例: "1時間"。空文字あり）
+  tool       TEXT NOT NULL,        -- 確認ツール列の原文（例: "slack | obsidian"。空文字・"-" あり）
+  content    TEXT NOT NULL,        -- 内容列（<br> は " / " に変換済み）
+  sort_no    INTEGER NOT NULL,     -- スナップショット確定時の表示順（0起点）
+  detail_ref TEXT,                 -- 確定時の routines.detail_ref のコピー（NULL 可。§6）
   PRIMARY KEY (date, task_id)
+);
+
+-- 朝のダイジェスト（second-brain の daily-digest が POST してくる。§6）
+CREATE TABLE digests (
+  date        TEXT PRIMARY KEY,    -- "YYYY-MM-DD"（ローカルタイム）
+  body        TEXT NOT NULL,       -- 受信した原文（Slack mrkdwn）をそのまま保持
+  received_at TEXT NOT NULL        -- ISO8601 オフセット付き
 );
 
 -- 消し込み状態
@@ -85,25 +94,39 @@ task_id = hex(sha1("{間隔}|{時刻}|{内容}"))[0..12]   # 16進小文字・�
 |---|---|
 | 1 | 初版（`task_days` / `task_checks`） |
 | 2 | `routines` と `routines_identity` を追加（マスタの SQLite 移管。2026-07-27） |
+| 3 | `digests` を追加、`routines.detail_ref` / `task_days.detail_ref` を追加（ダイジェスト取り込み。2026-07-27） |
+
+- v3 の列追加は `ALTER TABLE ... ADD COLUMN`（既定 NULL）。**既存 `task_days` 行の値は書き換えない**（追加列が NULL のまま残るのは正常。過去日に詳細は無い）
 
 - 既存 DB（user_version=1）にも適用できること。`routines` は空で作成され、中身は `cerebellum import-routines`（[`06-cli-serve.md`](./06-cli-serve.md) §3.1）で md から一度だけ流し込む
 - DB ファイルの置き場所は [`06-cli-serve.md`](./06-cli-serve.md) §設定 を参照
 
-## 6. エラー処理
+## 6. detail_ref とダイジェスト（確定・変更禁止）
+
+タスク行から「その日の詳細」を開くための結び付け。
+
+- `detail_ref` の語彙は**次の4つのみ**（これ以外は保存時に `bad_request`）:
+  `digest.connection` ／ `digest.derive` ／ `digest.idea` ／ `digest.consolidate`
+- スナップショット確定時に `routines.detail_ref` を `task_days.detail_ref` へコピーする。以後マスタ側を変えても過去日の結び付きは変わらない（§4 不変性と同じ理由）
+- `digests.body` は**受信原文をそのまま保存**する。セクション分割・整形は表示時のパースで行い、保存時には行わない（[`11-digest.md`](./11-digest.md) §3）。フォーマットが変わっても再パースで救えるようにするため
+- 同じ date への再 POST は**上書き**（`received_at` を更新）。ダイジェストは生成物であり、`task_days` のような不変記録ではない
+
+## 7. エラー処理
 
 - DB オープン・クエリ失敗は adapter エラー → usecase → API で 500（[`03-api.md`](./03-api.md)）
 - health チェックは軽量クエリ（`SELECT 1`）で DB 可否を返す
 
-## 7. スコープ外
+## 8. スコープ外
 
 - Phase 2 のテーブル（下書き・承認・digest）。追加は migration 版数を上げて行う
 - チェック履歴の監査ログ（トグルは最新状態のみ保持）
 - ルーティン編集の履歴・世代管理（`updated_at` の最新値のみ保持）
 - 単発 TODO（`routines` は繰り返しタスクのマスタ。日付指定の単発は Phase 2）
 
-## 8. 関連仕様
+## 9. 関連仕様
 
 - 全体: [`00-overview.md`](./00-overview.md) ／ 構成: [`01-architecture.md`](./01-architecture.md)
+- ダイジェストの取り込み・パース: [`11-digest.md`](./11-digest.md) ／ 表示: [`12-web-digest.md`](./12-web-digest.md)
 - スナップショットを ensure する処理・マスタ CRUD: [`05-day-usecase.md`](./05-day-usecase.md)
 - due 判定・ソート・task_id の材料（および初期 import のパース）: [`04-routine-parse.md`](./04-routine-parse.md)
 - API への露出形: [`03-api.md`](./03-api.md)

@@ -9,6 +9,7 @@ second-brain の日次ルーティンを消し込む**自分専用の運用ダ�
 
 Phase 1 = 今日のタスク表示・消し込み・履歴閲覧・スナップショット確定（実装済み）。
 Phase 1.5（進行中）= ルーティン表マスタの SQLite 移管とブラウザからの編集。
+Phase 1.6 = 朝ダイジェストの取り込みと詳細ビュー（Slack 停止に伴い、Phase 2 の digest を一部前倒し）。
 
 ## 2. システム全体像
 
@@ -41,6 +42,8 @@ Phase 1.5（進行中）= ルーティン表マスタの SQLite 移管とブラ�
 | 08 | [`08-web-today.md`](./08-web-today.md) | 「今日」画面（表示・消し込み） | Frontend |
 | 09 | [`09-web-history.md`](./09-web-history.md) | 「履歴」画面（日付ナビ・過去日読み取り専用・サマリ） | Frontend |
 | 10 | [`10-web-routines.md`](./10-web-routines.md) | 「ルーティン」画面（マスタ編集） | Frontend |
+| 11 | [`11-digest.md`](./11-digest.md) | 朝ダイジェストの取り込み・パース（domain/usecase/API） | Backend |
+| 12 | [`12-web-digest.md`](./12-web-digest.md) | ダイジェスト詳細ビュー（タスクからの導線・読了チェック） | Frontend |
 
 ## 4. 確定済みの初期値（横断・変更禁止）
 
@@ -48,6 +51,8 @@ Phase 1.5（進行中）= ルーティン表マスタの SQLite 移管とブラ�
 |---|---|---|
 | ルーティン表の正本 | SQLite `routines`（2026-07-27 に Vault md から移管）。編集は `/api/routines` と「ルーティン」画面から | [02](./02-data-model.md)・[10](./10-web-routines.md) |
 | Vault の扱い | `import-routines`（初期移行）でのみ読む。`serve` は参照しない。**書き込みは常に禁止** | [06](./06-cli-serve.md) |
+| ダイジェスト | second-brain 側が生成し `POST /api/digests` で送る（push）。cerebellum は生成も Slack 送信もしない | [11](./11-digest.md) |
+| detail_ref | `digest.connection` / `digest.derive` / `digest.idea` / `digest.consolidate` の4語彙のみ | [02](./02-data-model.md) §6 |
 | Vault パス | env `CEREBELLUM_VAULT`（既定 `$HOME/second-brain`）。実パスは環境固有のためリポジトリに書かない | [06](./06-cli-serve.md) |
 | task_id | `sha1("間隔|時刻|内容")` 先頭12桁（16進小文字。実施・ツール列は含めない） | [02](./02-data-model.md) |
 | 曜日文字列 | `"月火水木金土日"`（`weekday()` 0=月 に対応） | [04](./04-routine-parse.md) |
@@ -62,7 +67,8 @@ Phase 1.5（進行中）= ルーティン表マスタの SQLite 移管とブラ�
 
 ## 5. スコープ外（Phase 1 / 1.5 では実装しない）
 
-- 下書き一覧・承認フロー・digest/朝レポ・通知の自前実装・メトリクス可視化（Phase 2 以降）
+- 下書き一覧・承認フロー・通知の自前実装・メトリクス可視化（Phase 2 以降）
+- digest の**生成**（second-brain の `daily-digest` skill が持つ。cerebellum は受け取って表示するだけ → [11](./11-digest.md)）
 - **時計駆動の仕組み全般**（日次 ensure・リマインド・launchd の定期実行）。Phase 2 の通知と一体で設計する（[05](./05-day-usecase.md) §7 にトレードオフを記載）
 - 単発 TODO の追加（対象は繰り返しのルーティンのみ）
 - 過去日の消し込み変更・確定済みスナップショットの当日書き換え
