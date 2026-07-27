@@ -5,7 +5,7 @@ import { DayView } from '@/features/day';
 import { DateNav, InvalidDate, WeekSummary, isValidDateParam, useSummary, useToday } from '@/features/history';
 import type { ApiError } from '@/shared/api';
 import { shiftDate } from '@/shared/lib';
-import { ErrorBanner, VAULT_UNAVAILABLE_MESSAGE } from '@/shared/ui';
+import { ErrorBanner } from '@/shared/ui';
 
 /**
  * 「履歴」画面の合成（docs/specs/09）。app 層が day / history の両 feature を並べる
@@ -38,7 +38,7 @@ export function HistoryScreen() {
    * - `todayError`（`/api/days/today`）も対象に含める。これが落ちると翌日ナビの判定と
    *   7日サマリの日付列が組めず機能が欠ける。落ちること自体は構造上避けられないので、
    *   無言に欠落させずバナーで理由を出す。
-   * - `todayError` と `summaryError` は Vault 断で同時に落ちるのが普通。同一原因を並べても
+   * - `todayError` と `summaryError` は通信断・サーバー障害で同時に落ちるのが普通。同一原因を並べても
    *   情報が増えないので、history 側のバナーは常に最大1枚にする。
    * - date 省略時は DayView も同じキー（`/api/days/today`）を取るので、その失敗は DayView が
    *   自前のバナーで既に出している。同一原因ならここでは出さない
@@ -53,11 +53,8 @@ export function HistoryScreen() {
 
   return (
     <main>
-      {historyError && (
-        <ErrorBanner
-          message={historyError.code === 'vault_unavailable' ? VAULT_UNAVAILABLE_MESSAGE : historyError.message}
-        />
-      )}
+      {/* 文言はサーバーの message をそのまま出す（docs/specs/07 §6） */}
+      {historyError && <ErrorBanner message={historyError.message} />}
 
       <DateNav
         iso={iso}

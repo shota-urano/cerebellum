@@ -61,9 +61,31 @@ export function fetcher<T>(path: string): Promise<T> {
   return request<T>(path);
 }
 
-/** 更新系（チェックのトグル）。ボディを持たない POST。 */
-export function apiPost<T>(path: string): Promise<T> {
-  return request<T>(path, { method: 'POST' });
+/**
+ * 更新系の共通部。`body` を渡したときだけ JSON として送る
+ * （チェックのトグルはボディを持たないため、Content-Type も付けない）。
+ */
+function mutateRequest<T>(path: string, method: string, body?: unknown): Promise<T> {
+  const init: RequestInit =
+    body === undefined
+      ? { method }
+      : { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
+  return request<T>(path, init);
+}
+
+/** 更新系の POST（チェックのトグルはボディなし・ルーティン追加はボディあり）。 */
+export function apiPost<T>(path: string, body?: unknown): Promise<T> {
+  return mutateRequest<T>(path, 'POST', body);
+}
+
+/** 更新系の PUT（ルーティン更新。全項目を送る＝部分更新はしない。docs/specs/03 §3）。 */
+export function apiPut<T>(path: string, body: unknown): Promise<T> {
+  return mutateRequest<T>(path, 'PUT', body);
+}
+
+/** 更新系の DELETE（ルーティンの論理削除。200 で単体を返す。docs/specs/03 §3）。 */
+export function apiDelete<T>(path: string): Promise<T> {
+  return mutateRequest<T>(path, 'DELETE');
 }
 
 /**

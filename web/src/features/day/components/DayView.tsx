@@ -1,7 +1,6 @@
 'use client';
 
-import type { ApiError } from '@/shared/api';
-import { ErrorBanner, VAULT_UNAVAILABLE_MESSAGE } from '@/shared/ui';
+import { ErrorBanner } from '@/shared/ui';
 import { useDay } from '../hooks/useDay';
 import { useToggleCheck } from '../hooks/useToggleCheck';
 import { AllClear } from './AllClear';
@@ -21,11 +20,6 @@ export type DayViewProps = {
   readonly?: boolean;
 };
 
-/** 表示中のエラーの文言（503 は共通文言、それ以外はサーバーの message。docs/specs/07 §6） */
-function messageOf(error: ApiError) {
-  return error.code === 'vault_unavailable' ? VAULT_UNAVAILABLE_MESSAGE : error.message;
-}
-
 /**
  * その日のタスク一覧＋消し込み（docs/specs/08）。
  * 組み立て順は `docs/design/02-today.md`「レイアウト構造」に従う。
@@ -41,7 +35,8 @@ export function DayView({ date, readonly = false }: DayViewProps) {
 
   return (
     <>
-      {banner && <ErrorBanner message={messageOf(banner)} />}
+      {/* 文言はサーバーの message をそのまま出す（docs/specs/07 §6）。fetch 失敗時は client.ts の汎用文言 */}
+      {banner && <ErrorBanner message={banner.message} />}
 
       {!day ? (
         // 取得前。エラーで一度も取れていないときはバナーだけ出す（永久スケルトンにしない）
