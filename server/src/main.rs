@@ -15,6 +15,7 @@ use clap::Parser;
 use cli::{Cli, Command};
 use config::Config;
 use infra::api::AppState;
+use usecase::import_routines::ImportRoutines;
 use usecase::{
     get_day::GetDay, get_summary::GetSummary, ports::Clock, ports::TaskRepository,
     ports::VaultReader, toggle_check::ToggleCheck,
@@ -27,6 +28,60 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Command::Serve { port } => serve(port).await,
+        Command::ImportRoutines {
+            vault,
+            dry_run,
+            force,
+        } => import_routines(vault, dry_run, force),
+    }
+}
+
+fn import_routines(vault: Option<std::path::PathBuf>, dry_run: bool, force: bool) -> Result<()> {
+    let vault_path =
+        Config::resolve_vault_path(vault).context("failed to resolve vault configuration")?;
+    let vault_reader: Arc<dyn VaultReader> =
+        Arc::new(FsVaultReader::new(Config::routine_path_for(&vault_path)));
+    let import = ImportRoutines::new(vault_reader);
+    let rows = import.preview().context("routine import failed")?;
+
+    if dry_run {
+        print_routines("Dry run", &rows);
+        return Ok(());
+    }
+
+    let db_path = Config::resolve_db_path().context("failed to resolve database configuration")?;
+    if let Some(parent) = db_path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        std::fs::create_dir_all(parent).with_context(|| {
+            format!(
+                "failed to create database directory at {}",
+                parent.display()
+            )
+        })?;
+    }
+    let repository = SqliteTaskRepository::open(&db_path)
+        .with_context(|| format!("failed to open database at {}", db_path.display()))?;
+    let rows = import
+        .import_prepared(rows, &repository, &SystemClock, force)
+        .context("routine import failed")?;
+    println!("Imported {} routines", rows.len());
+    Ok(())
+}
+
+fn print_routines(label: &str, rows: &[domain::routine::RoutineRow]) {
+    println!("{label}: {} routines", rows.len());
+    for (index, row) in rows.iter().enumerate() {
+        println!(
+            "{:>3}: interval={:?}, time={:?}, effort={:?}, tool={:?}, content={:?}",
+            index + 1,
+            row.interval,
+            row.time,
+            row.effort,
+            row.tool,
+            row.content
+        );
     }
 }
 

@@ -25,14 +25,8 @@ pub struct Config {
 
 impl Config {
     pub fn from_env(port: u16) -> Result<Self, ConfigError> {
-        let vault_path = match env::var_os("CEREBELLUM_VAULT") {
-            Some(path) => PathBuf::from(path),
-            None => default_vault_path(env::var_os("HOME"))?,
-        };
-        let db_path = match env::var_os("CEREBELLUM_DB") {
-            Some(path) => PathBuf::from(path),
-            None => default_db_path(env::var_os("HOME"))?,
-        };
+        let vault_path = Self::resolve_vault_path(None)?;
+        let db_path = Self::resolve_db_path()?;
 
         Ok(Self {
             port,
@@ -43,6 +37,37 @@ impl Config {
 
     pub fn routine_path(&self) -> PathBuf {
         self.vault_path.join(ROUTINE_RELATIVE_PATH)
+    }
+
+    pub fn resolve_vault_path(override_path: Option<PathBuf>) -> Result<PathBuf, ConfigError> {
+        resolve_vault_path(
+            override_path,
+            env::var_os("CEREBELLUM_VAULT"),
+            env::var_os("HOME"),
+        )
+    }
+
+    pub fn resolve_db_path() -> Result<PathBuf, ConfigError> {
+        match env::var_os("CEREBELLUM_DB") {
+            Some(path) => Ok(PathBuf::from(path)),
+            None => default_db_path(env::var_os("HOME")),
+        }
+    }
+
+    pub fn routine_path_for(vault_path: &Path) -> PathBuf {
+        vault_path.join(ROUTINE_RELATIVE_PATH)
+    }
+}
+
+fn resolve_vault_path(
+    override_path: Option<PathBuf>,
+    environment_path: Option<OsString>,
+    home: Option<OsString>,
+) -> Result<PathBuf, ConfigError> {
+    match (override_path, environment_path) {
+        (Some(path), _) => Ok(path),
+        (None, Some(path)) => Ok(PathBuf::from(path)),
+        (None, None) => default_vault_path(home),
     }
 }
 
@@ -64,9 +89,9 @@ pub enum ConfigError {
 
 #[cfg(test)]
 mod tests {
-    use std::ffi::OsString;
+    use std::{ffi::OsString, path::PathBuf};
 
-    use super::{default_db_path, default_vault_path};
+    use super::{default_db_path, default_vault_path, resolve_vault_path};
 
     #[test]
     fn default_vault_path_is_home_relative_and_carries_no_personal_data() {
@@ -87,5 +112,17 @@ mod tests {
                 "/Users/test/Library/Application Support/cerebellum/cerebellum.db"
             )
         );
+    }
+
+    #[test]
+    fn cli_vault_path_overrides_environment_and_home_defaults() {
+        let path = resolve_vault_path(
+            Some(PathBuf::from("/cli/vault")),
+            Some(OsString::from("/environment/vault")),
+            Some(OsString::from("/Users/test")),
+        )
+        .expect("CLI path should resolve");
+
+        assert_eq!(path, PathBuf::from("/cli/vault"));
     }
 }

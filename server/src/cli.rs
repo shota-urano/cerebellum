@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use clap::{Parser, Subcommand};
 
 pub const DEFAULT_PORT: u16 = 48210;
@@ -15,6 +17,14 @@ pub enum Command {
         #[arg(long, default_value_t = DEFAULT_PORT)]
         port: u16,
     },
+    ImportRoutines {
+        #[arg(long)]
+        vault: Option<PathBuf>,
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        force: bool,
+    },
 }
 
 #[cfg(test)]
@@ -30,6 +40,28 @@ mod tests {
         assert!(matches!(
             cli.command,
             Command::Serve { port } if port == DEFAULT_PORT
+        ));
+    }
+
+    #[test]
+    fn import_routines_accepts_all_options() {
+        let cli = Cli::try_parse_from([
+            "cerebellum",
+            "import-routines",
+            "--vault",
+            "/tmp/test-vault",
+            "--dry-run",
+            "--force",
+        ])
+        .expect("CLI should parse");
+
+        assert!(matches!(
+            cli.command,
+            Command::ImportRoutines {
+                vault,
+                dry_run: true,
+                force: true,
+            } if vault == Some("/tmp/test-vault".into())
         ));
     }
 }
