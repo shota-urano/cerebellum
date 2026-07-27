@@ -36,7 +36,7 @@ function SkeletonRows() {
  * 様式の正本は `docs/design/03-history.md`（`.week` in globals.css）。
  *
  * エラー表示は持たない。`useSummary` / `useToday` の失敗は画面側（`app/history/HistoryScreen.tsx`）が
- * 1枚の ErrorBanner に集約する（同じ Vault 断で何枚も並べないため。docs/specs/09 §6）。
+ * 1枚の ErrorBanner に集約する（同じ障害で何枚も並べないため。docs/specs/09 §6）。
  */
 export function WeekSummary({ selected, onSelect }: Props) {
   // 7日分の日付は「今日」起点で組む（サーバー由来。docs/specs/09 §3）

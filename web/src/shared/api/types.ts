@@ -47,13 +47,47 @@ export interface SummaryResponse {
   days: SummaryDayDto[];
 }
 
+/** 03-api.md §3: `routines[]` の要素（マスタ。`id` は数値で `TaskDto.id` とは別物） */
+export interface RoutineDto {
+  id: number;
+  interval: string;
+  time: string;
+  effort: string;
+  tool: string;
+  content: string;
+  active: boolean;
+  updatedAt: string;
+}
+
+/** 03-api.md §3: `GET /api/routines` */
+export interface RoutinesResponse {
+  routines: RoutineDto[];
+}
+
+/**
+ * 03-api.md §3: `POST /api/routines`・`PUT /api/routines/{id}`・
+ * `DELETE /api/routines/{id}` のレスポンス
+ */
+export interface RoutineResponse {
+  routine: RoutineDto;
+}
+
+/** 03-api.md §3: `POST /api/routines`・`PUT /api/routines/{id}` のリクエストボディ */
+export interface RoutineInput {
+  interval: string;
+  time: string;
+  effort: string;
+  tool: string;
+  content: string;
+}
+
 /** 03-api.md §3: health の各フィールド */
 export type HealthStatus = 'ok' | 'ng';
 
 /** 03-api.md §3: `GET /api/health` */
 export interface HealthResponse {
-  vault: HealthStatus;
   db: HealthStatus;
+  routines: number;
   version: string;
 }
 
@@ -62,7 +96,7 @@ export type ApiErrorCode =
   | 'bad_request'
   | 'readonly_day'
   | 'not_found'
-  | 'vault_unavailable'
+  | 'conflict'
   | 'internal';
 
 /** 03-api.md §4: エラーレスポンスの本体 */
