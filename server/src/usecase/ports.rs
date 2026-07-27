@@ -54,6 +54,16 @@ pub trait RoutineRepository: Send + Sync {
     fn count_active_routines(&self) -> Result<usize, RoutineRepositoryError>;
 }
 
+pub trait RoutineImportRepository: Send + Sync {
+    fn count_active_routines(&self) -> Result<usize, RoutineImportRepositoryError>;
+    fn import_routines(
+        &self,
+        routines: &[RoutineFields],
+        timestamp: &str,
+        force: bool,
+    ) -> Result<usize, RoutineImportRepositoryError>;
+}
+
 pub trait Clock: Send + Sync {
     fn now(&self) -> DateTime<FixedOffset>;
 }
@@ -100,6 +110,25 @@ pub enum RoutineRepositoryError {
 }
 
 impl RoutineRepositoryError {
+    pub fn internal(error: impl Error + Send + Sync + 'static) -> Self {
+        Self::Internal {
+            source: Box::new(error),
+        }
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum RoutineImportRepositoryError {
+    #[error("{count} active routines already exist")]
+    ActiveRoutinesExist { count: usize },
+    #[error("routine import repository failed")]
+    Internal {
+        #[source]
+        source: Box<dyn Error + Send + Sync>,
+    },
+}
+
+impl RoutineImportRepositoryError {
     pub fn internal(error: impl Error + Send + Sync + 'static) -> Self {
         Self::Internal {
             source: Box::new(error),

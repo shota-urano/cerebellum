@@ -13,7 +13,8 @@ use crate::domain::{
     task::{CheckedTask, Task},
 };
 use crate::usecase::ports::{
-    RepositoryError, RoutineRepository, RoutineRepositoryError, TaskRepository,
+    RepositoryError, RoutineImportRepository, RoutineImportRepositoryError, RoutineRepository,
+    RoutineRepositoryError, TaskRepository,
 };
 
 const MIGRATION_V1: &str = include_str!("migrations/001_init.sql");
@@ -434,6 +435,75 @@ impl SqliteTaskRepository {
             RoutineRepositoryError::internal(SqliteRepositoryError::InvalidStoredCount(count))
         })
     }
+
+    fn import_stored_routines(
+        &self,
+        routines: &[RoutineFields],
+        timestamp: &str,
+        force: bool,
+    ) -> Result<usize, RoutineImportRepositoryError> {
+        let mut connection = self
+            .connection()
+            .map_err(RoutineImportRepositoryError::internal)?;
+        let transaction = connection
+            .transaction()
+            .map_err(RoutineImportRepositoryError::internal)?;
+        let active_count = transaction
+            .query_row(
+                "SELECT COUNT(*) FROM routines WHERE active = 1",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .map_err(RoutineImportRepositoryError::internal)?;
+        let active_count = usize::try_from(active_count).map_err(|_| {
+            RoutineImportRepositoryError::internal(SqliteRepositoryError::InvalidStoredCount(
+                active_count,
+            ))
+        })?;
+
+        if active_count > 0 && !force {
+            return Err(RoutineImportRepositoryError::ActiveRoutinesExist {
+                count: active_count,
+            });
+        }
+        if force {
+            transaction
+                .execute(
+                    "UPDATE routines
+                     SET active = 0, updated_at = ?1
+                     WHERE active = 1",
+                    [timestamp],
+                )
+                .map_err(RoutineImportRepositoryError::internal)?;
+        }
+
+        {
+            let mut statement = transaction
+                .prepare(
+                    "INSERT INTO routines (
+                        interval, time, effort, tool, content, active, created_at, updated_at
+                     ) VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, ?6)",
+                )
+                .map_err(RoutineImportRepositoryError::internal)?;
+            for routine in routines {
+                statement
+                    .execute(params![
+                        routine.interval,
+                        routine.time,
+                        routine.effort,
+                        routine.tool,
+                        routine.content,
+                        timestamp
+                    ])
+                    .map_err(RoutineImportRepositoryError::internal)?;
+            }
+        }
+
+        transaction
+            .commit()
+            .map_err(RoutineImportRepositoryError::internal)?;
+        Ok(routines.len())
+    }
 }
 
 fn routine_from_row(row: &Row<'_>) -> rusqlite::Result<Routine> {
@@ -539,6 +609,32 @@ impl RoutineRepository for SqliteTaskRepository {
 
     fn count_active_routines(&self) -> Result<usize, RoutineRepositoryError> {
         self.active_routine_count()
+    }
+}
+
+impl RoutineImportRepository for SqliteTaskRepository {
+    fn count_active_routines(&self) -> Result<usize, RoutineImportRepositoryError> {
+        let count = self
+            .connection()
+            .map_err(RoutineImportRepositoryError::internal)?
+            .query_row(
+                "SELECT COUNT(*) FROM routines WHERE active = 1",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .map_err(RoutineImportRepositoryError::internal)?;
+        usize::try_from(count).map_err(|_| {
+            RoutineImportRepositoryError::internal(SqliteRepositoryError::InvalidStoredCount(count))
+        })
+    }
+
+    fn import_routines(
+        &self,
+        routines: &[RoutineFields],
+        timestamp: &str,
+        force: bool,
+    ) -> Result<usize, RoutineImportRepositoryError> {
+        self.import_stored_routines(routines, timestamp, force)
     }
 }
 
@@ -853,6 +949,74 @@ mod tests {
         repository
             .insert_routine(&identity, "2026-07-27T09:05:00+09:00")
             .expect("inactive identity should not conflict");
+    }
+
+    #[test]
+    fn imports_routines_in_order_and_force_deactivates_existing_rows() {
+        let repository = repository();
+        let existing = repository
+            .insert_routine(
+                &routine_fields("毎日", "6:00", "既存"),
+                "2026-07-27T08:00:00+09:00",
+            )
+            .expect("existing routine should insert");
+        let imported = vec![
+            routine_fields("毎日", "7:30", "先頭"),
+            routine_fields("土曜", "8:00", "次"),
+        ];
+
+        let count = crate::usecase::ports::RoutineImportRepository::import_routines(
+            &repository,
+            &imported,
+            "2026-07-27T09:00:00+09:00",
+            true,
+        )
+        .expect("forced import should succeed");
+        let stored = repository
+            .list_routines(true)
+            .expect("all routines should list");
+
+        assert_eq!(count, 2);
+        assert_eq!(
+            stored
+                .iter()
+                .map(|routine| (routine.id, routine.active, routine.content.as_str()))
+                .collect::<Vec<_>>(),
+            vec![
+                (existing.id, false, "既存"),
+                (existing.id + 1, true, "先頭"),
+                (existing.id + 2, true, "次"),
+            ]
+        );
+        assert_eq!(stored[0].updated_at, "2026-07-27T09:00:00+09:00");
+    }
+
+    #[test]
+    fn failed_forced_import_rolls_back_deactivation_and_inserts() {
+        let repository = repository();
+        let existing = repository
+            .insert_routine(
+                &routine_fields("毎日", "6:00", "既存"),
+                "2026-07-27T08:00:00+09:00",
+            )
+            .expect("existing routine should insert");
+        let duplicate = routine_fields("毎日", "7:30", "重複");
+
+        assert!(
+            crate::usecase::ports::RoutineImportRepository::import_routines(
+                &repository,
+                &[duplicate.clone(), duplicate],
+                "2026-07-27T09:00:00+09:00",
+                true,
+            )
+            .is_err()
+        );
+        assert_eq!(
+            repository
+                .list_routines(true)
+                .expect("all routines should list"),
+            vec![existing]
+        );
     }
 
     #[test]
