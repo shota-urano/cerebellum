@@ -26,7 +26,7 @@ cerebellum import-routines [--vault <path>] [--dry-run] [--force]
 
 1. `{vault}/80_運用ガイド/人間のルーティン.md` を読む（`--vault` 未指定時は §4 の設定に従う）
 2. パース（[`04-routine-parse.md`](./04-routine-parse.md) §3.1）→ 表の出現順で `routines` へ INSERT（`active=1`）
-3. **既に `routines` に有効行がある場合は中止**（exit 1）。`--force` を付けた場合のみ、既存の有効行を全て `active=0` にしてから入れ直す
+3. **既に `routines` に有効行がある場合は中止**（exit 1）。`--force` を付けた場合のみ、既存の有効行を全て `active=0` にしてから入れ直す。この無効化と INSERT は**単一トランザクション**で行い、パース・挿入のいずれかが失敗したら全体をロールバックする（マスタが空・部分取り込みのまま残らない）
 4. `--dry-run` は取り込み結果を標準出力に表示するだけで DB を変更しない
 5. Vault が読めない・md が無い場合は exit 1（サーバーは影響を受けない）
 6. Vault へは**書き込まない**（読み取りのみ）
