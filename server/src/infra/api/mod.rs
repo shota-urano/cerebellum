@@ -12,6 +12,7 @@ use crate::{
     usecase::{
         get_day::GetDay,
         get_summary::GetSummary,
+        manage_routines::ManageRoutines,
         ports::{RoutineRepository, TaskRepository},
         toggle_check::ToggleCheck,
     },
@@ -25,6 +26,7 @@ pub struct AppState {
     pub get_day: Arc<GetDay>,
     pub toggle_check: Arc<ToggleCheck>,
     pub get_summary: Arc<GetSummary>,
+    pub manage_routines: Arc<ManageRoutines>,
     pub routine_repository: Arc<dyn RoutineRepository>,
     pub task_repository: Arc<dyn TaskRepository>,
     pub config: Arc<Config>,
@@ -39,6 +41,14 @@ pub fn router(state: Arc<AppState>) -> Router {
             post(handlers::toggle_check),
         )
         .route("/summary", get(handlers::get_summary))
+        .route(
+            "/routines",
+            get(handlers::list_routines).post(handlers::create_routine),
+        )
+        .route(
+            "/routines/{id}",
+            axum::routing::put(handlers::update_routine).delete(handlers::delete_routine),
+        )
         .fallback(handlers::not_found)
         .layer(middleware::map_response(no_store));
 

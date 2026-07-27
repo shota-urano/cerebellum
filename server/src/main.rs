@@ -17,8 +17,8 @@ use config::Config;
 use infra::api::AppState;
 use usecase::import_routines::ImportRoutines;
 use usecase::{
-    get_day::GetDay, get_summary::GetSummary, ports::Clock, ports::RoutineRepository,
-    ports::TaskRepository, ports::VaultReader, toggle_check::ToggleCheck,
+    get_day::GetDay, get_summary::GetSummary, manage_routines::ManageRoutines, ports::Clock,
+    ports::RoutineRepository, ports::TaskRepository, ports::VaultReader, toggle_check::ToggleCheck,
 };
 
 #[tokio::main]
@@ -120,12 +120,17 @@ async fn serve(port: u16) -> Result<()> {
         Arc::clone(&task_repository),
         Arc::clone(&clock),
     ));
-    let get_summary = Arc::new(GetSummary::new(Arc::clone(&task_repository), clock));
+    let get_summary = Arc::new(GetSummary::new(
+        Arc::clone(&task_repository),
+        Arc::clone(&clock),
+    ));
+    let manage_routines = Arc::new(ManageRoutines::new(Arc::clone(&routine_repository), clock));
 
     let state = Arc::new(AppState {
         get_day,
         toggle_check,
         get_summary,
+        manage_routines,
         routine_repository,
         task_repository,
         config: Arc::clone(&config),

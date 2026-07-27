@@ -10,6 +10,8 @@ pub enum UsecaseError {
     ReadonlyDay(String),
     #[error("resource not found: {0}")]
     NotFound(String),
+    #[error("conflict: {0}")]
+    Conflict(String),
     #[error("internal error")]
     Internal(#[source] Box<dyn Error + Send + Sync>),
 }

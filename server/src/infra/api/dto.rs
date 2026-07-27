@@ -1,7 +1,8 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::domain::{
     day::{DaySnapshot, Progress, SummaryDay},
+    routine::{Routine, RoutineFields},
     task::CheckedTask,
 };
 
@@ -106,6 +107,84 @@ impl From<Vec<SummaryDay>> for SummaryDto {
     fn from(days: Vec<SummaryDay>) -> Self {
         Self {
             days: days.into_iter().map(SummaryDayDto::from).collect(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct RoutineInputDto {
+    interval: String,
+    time: String,
+    effort: String,
+    tool: String,
+    content: String,
+}
+
+impl From<RoutineInputDto> for RoutineFields {
+    fn from(input: RoutineInputDto) -> Self {
+        Self {
+            interval: input.interval,
+            time: input.time,
+            effort: input.effort,
+            tool: input.tool,
+            content: input.content,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct RoutinesDto {
+    routines: Vec<RoutineDto>,
+}
+
+impl From<Vec<Routine>> for RoutinesDto {
+    fn from(routines: Vec<Routine>) -> Self {
+        Self {
+            routines: routines.into_iter().map(RoutineDto::from).collect(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct RoutineResponseDto {
+    routine: RoutineDto,
+}
+
+impl From<Routine> for RoutineResponseDto {
+    fn from(routine: Routine) -> Self {
+        Self {
+            routine: routine.into(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RoutineDto {
+    id: i64,
+    interval: String,
+    time: String,
+    effort: String,
+    tool: String,
+    content: String,
+    active: bool,
+    updated_at: String,
+}
+
+impl From<Routine> for RoutineDto {
+    fn from(routine: Routine) -> Self {
+        Self {
+            id: routine.id,
+            interval: routine.interval,
+            time: routine.time,
+            effort: routine.effort,
+            tool: routine.tool,
+            content: routine.content,
+            active: routine.active,
+            updated_at: routine.updated_at,
         }
     }
 }

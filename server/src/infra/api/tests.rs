@@ -2,7 +2,10 @@ use std::{path::PathBuf, sync::Arc};
 
 use axum::{
     body::{Body, to_bytes},
-    http::{Request, StatusCode, header::CACHE_CONTROL},
+    http::{
+        Request, StatusCode,
+        header::{CACHE_CONTROL, CONTENT_TYPE},
+    },
     response::Response,
 };
 use chrono::{DateTime, FixedOffset};
@@ -18,6 +21,7 @@ use crate::{
         error::UsecaseError,
         get_day::GetDay,
         get_summary::GetSummary,
+        manage_routines::ManageRoutines,
         ports::{Clock, RoutineRepository, TaskRepository},
         toggle_check::ToggleCheck,
     },
@@ -66,6 +70,10 @@ fn test_app_with_routines(seed_routines: bool) -> axum::Router {
     let routine_repository: Arc<dyn RoutineRepository> = repository.clone();
     let task_repository: Arc<dyn TaskRepository> = repository;
     let clock: Arc<dyn Clock> = Arc::new(FakeClock);
+    let manage_routines = Arc::new(ManageRoutines::new(
+        Arc::clone(&routine_repository),
+        Arc::clone(&clock),
+    ));
 
     router(Arc::new(AppState {
         get_day: Arc::new(GetDay::new(
@@ -78,7 +86,11 @@ fn test_app_with_routines(seed_routines: bool) -> axum::Router {
             Arc::clone(&task_repository),
             Arc::clone(&clock),
         )),
-        get_summary: Arc::new(GetSummary::new(Arc::clone(&task_repository), clock)),
+        get_summary: Arc::new(GetSummary::new(
+            Arc::clone(&task_repository),
+            Arc::clone(&clock),
+        )),
+        manage_routines,
         routine_repository,
         task_repository,
         config: Arc::new(Config {
@@ -94,6 +106,19 @@ async fn call(app: axum::Router, method: &str, uri: &str) -> Response {
             .method(method)
             .uri(uri)
             .body(Body::empty())
+            .expect("test request should build"),
+    )
+    .await
+    .expect("router should respond")
+}
+
+async fn call_json(app: axum::Router, method: &str, uri: &str, body: Value) -> Response {
+    app.oneshot(
+        Request::builder()
+            .method(method)
+            .uri(uri)
+            .header(CONTENT_TYPE, "application/json")
+            .body(Body::from(body.to_string()))
             .expect("test request should build"),
     )
     .await
@@ -262,6 +287,128 @@ async fn unchecked_task_returns_null_checked_at_after_a_second_toggle() {
     assert_eq!(unchecked["tasks"][0]["checkedAt"], Value::Null);
 }
 
+#[tokio::test]
+async fn routine_crud_and_errors_follow_the_http_contract() {
+    let app = test_app_with_routines(false);
+    let create_payload = json!({
+        "interval": " 毎日 ",
+        "time": " 7:30 ",
+        "effort": " 10分 ",
+        "tool": " slack ",
+        "content": " 対象<br>続き "
+    });
+
+    let create_response =
+        call_json(app.clone(), "POST", "/api/routines", create_payload.clone()).await;
+    assert_eq!(create_response.status(), StatusCode::OK);
+    assert_eq!(create_response.headers()[CACHE_CONTROL], "no-store");
+    assert_eq!(
+        json_body(create_response).await,
+        json!({
+            "routine": {
+                "id": 1,
+                "interval": "毎日",
+                "time": "7:30",
+                "effort": "10分",
+                "tool": "slack",
+                "content": "対象<br>続き",
+                "active": true,
+                "updatedAt": "2026-07-25T08:01:00+09:00"
+            }
+        })
+    );
+
+    let conflict_response = call_json(app.clone(), "POST", "/api/routines", create_payload).await;
+    assert_eq!(conflict_response.status(), StatusCode::CONFLICT);
+    assert_eq!(conflict_response.headers()[CACHE_CONTROL], "no-store");
+    assert_eq!(
+        json_body(conflict_response).await["error"]["code"],
+        "conflict"
+    );
+
+    let invalid_response = call_json(
+        app.clone(),
+        "POST",
+        "/api/routines",
+        json!({
+            "interval": "毎日",
+            "time": "7:3",
+            "effort": "",
+            "tool": "",
+            "content": "invalid"
+        }),
+    )
+    .await;
+    assert_eq!(invalid_response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        json_body(invalid_response).await["error"]["code"],
+        "bad_request"
+    );
+
+    let unknown_response = call_json(
+        app.clone(),
+        "PUT",
+        "/api/routines/999",
+        json!({
+            "interval": "平日",
+            "time": "8:00",
+            "effort": "",
+            "tool": "obsidian",
+            "content": "unknown"
+        }),
+    )
+    .await;
+    assert_eq!(unknown_response.status(), StatusCode::NOT_FOUND);
+    assert_eq!(
+        json_body(unknown_response).await["error"]["code"],
+        "not_found"
+    );
+
+    let list_response = call(app.clone(), "GET", "/api/routines").await;
+    assert_eq!(list_response.status(), StatusCode::OK);
+    let listed = json_body(list_response).await;
+    assert_eq!(listed["routines"].as_array().map(Vec::len), Some(1));
+    assert_eq!(listed["routines"][0]["id"], 1);
+    assert_eq!(listed["routines"][0]["active"], true);
+
+    let update_response = call_json(
+        app.clone(),
+        "PUT",
+        "/api/routines/1",
+        json!({
+            "interval": "平日",
+            "time": "",
+            "effort": "15分",
+            "tool": "obsidian",
+            "content": "更新後"
+        }),
+    )
+    .await;
+    assert_eq!(update_response.status(), StatusCode::OK);
+    let updated = json_body(update_response).await;
+    assert_eq!(updated["routine"]["id"], 1);
+    assert_eq!(updated["routine"]["interval"], "平日");
+    assert_eq!(updated["routine"]["time"], "");
+    assert_eq!(updated["routine"]["content"], "更新後");
+    assert_eq!(updated["routine"]["active"], true);
+
+    let delete_response = call(app.clone(), "DELETE", "/api/routines/1").await;
+    assert_eq!(delete_response.status(), StatusCode::OK);
+    let deleted = json_body(delete_response).await;
+    assert_eq!(deleted["routine"]["id"], 1);
+    assert_eq!(deleted["routine"]["active"], false);
+
+    let active_list = call(app.clone(), "GET", "/api/routines").await;
+    assert_eq!(active_list.status(), StatusCode::OK);
+    assert_eq!(json_body(active_list).await, json!({ "routines": [] }));
+
+    let full_list = call(app, "GET", "/api/routines?includeInactive=true").await;
+    assert_eq!(full_list.status(), StatusCode::OK);
+    let full = json_body(full_list).await;
+    assert_eq!(full["routines"].as_array().map(Vec::len), Some(1));
+    assert_eq!(full["routines"][0]["active"], false);
+}
+
 #[test]
 fn every_usecase_error_maps_mechanically_to_the_api_contract() {
     let cases = [
@@ -279,6 +426,11 @@ fn every_usecase_error_maps_mechanically_to_the_api_contract() {
             UsecaseError::NotFound("missing".to_owned()),
             StatusCode::NOT_FOUND,
             "not_found",
+        ),
+        (
+            UsecaseError::Conflict("duplicate".to_owned()),
+            StatusCode::CONFLICT,
+            "conflict",
         ),
         (
             UsecaseError::Internal(Box::new(std::io::Error::other("broken"))),
