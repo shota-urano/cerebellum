@@ -160,10 +160,15 @@ a:hover { color: #8FF2FF; }
 
 /* ---- digest（詳細ビュー。docs/specs/12-web-digest.md）
    既存トークンのみ。行・パネル・バナーの様式は今日/履歴と共通のものを流用する。 */
-.row--split { padding: 0; }
-.row__tap { flex: 1; display: flex; gap: 12px; align-items: flex-start; min-width: 0; min-height: 44px; padding: 12px 0 12px 14px; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; }
-.row__chev { flex: none; display: flex; align-items: center; justify-content: center; width: 44px; min-height: 44px; align-self: stretch; color: var(--muted); font-size: 18px; line-height: 1; text-decoration: none; }
-.row__chev:hover { color: var(--accent); }
+/* リング＝トグル、残りの面＝詳細へ（docs/specs/12-web-digest.md §3.1）。
+   .row の padding/gap は各子側で持ち直し、通常行と同じ位置に揃える
+   （リング中心 25px・本文開始 48px）。 */
+.row--split { padding: 0; gap: 0; }
+.row__ring { flex: none; display: flex; align-items: flex-start; justify-content: flex-start; width: 48px; min-height: 44px; padding: 12px 0 12px 14px; border: 0; background: transparent; cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; }
+.row__link { flex: 1; display: flex; gap: 12px; align-items: flex-start; min-width: 0; min-height: 44px; padding: 12px 14px 12px 0; color: inherit; text-decoration: none; -webkit-tap-highlight-color: transparent; }
+.row__link:hover { color: inherit; }
+.row__link:hover .row__chev { color: var(--accent); }
+.row__chev { flex: none; align-self: center; color: var(--muted); font-size: 18px; line-height: 1; }
 .dg__bar { display: flex; margin-bottom: 12px; }
 .dg__bar--end { justify-content: flex-end; margin: 16px 0 0; }
 .dg__meta { margin-bottom: 10px; font-size: 10px; letter-spacing: .14em; color: var(--muted); }

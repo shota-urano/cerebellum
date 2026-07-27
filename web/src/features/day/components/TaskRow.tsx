@@ -8,7 +8,7 @@ type Props = {
   task: TaskDto;
   /** 渡すとタップでトグルする。省略時は読み取り専用の静的表示。 */
   onToggle?: (id: string) => void;
-  /** 詳細シェブロンのリンク先が指す日付（`today` または `YYYY-MM-DD`）。 */
+  /** 詳細リンクの遷移先が指す日付（`today` または `YYYY-MM-DD`）。 */
   date: string;
 };
 
@@ -18,6 +18,57 @@ export function TaskRow({ task, onToggle, date }: Props) {
   const background = task.done ? 'rgba(56, 229, 255, ' + (0.018 + 0.02 * GLOW) + ')' : undefined;
 
   const body = (
+    <>
+      <span className="row__body">
+        <span className={'row__text' + (task.done ? ' row__text--done' : '')} style={{ display: 'block' }}>
+          {task.content}
+        </span>
+        {meta && <span className="mono row__meta" style={{ display: 'block' }}>{meta}</span>}
+      </span>
+      <span className="mono row__chev" aria-hidden="true">›</span>
+    </>
+  );
+
+  /*
+   * 詳細リンクを持つ行（docs/specs/12-web-digest.md §3.1）:
+   * **チェックリングだけがトグル、それ以外の面はすべて詳細へ遷移**する。
+   * リングは 22px だが、タップ領域は 44px 以上を確保する（同 §3.1）。
+   */
+  if (task.detailRef) {
+    const href =
+      '/digest?date=' +
+      encodeURIComponent(date) +
+      '&section=' +
+      encodeURIComponent(task.detailRef) +
+      '&taskId=' +
+      encodeURIComponent(task.id);
+
+    return (
+      <div className="row row--split" style={{ background }}>
+        {onToggle ? (
+          <button
+            type="button"
+            className="row__ring"
+            aria-label={task.content + ' のチェックを切り替える'}
+            aria-pressed={task.done}
+            onClick={() => onToggle(task.id)}
+          >
+            <CheckRing done={task.done} />
+          </button>
+        ) : (
+          <span className="row__ring">
+            <CheckRing done={task.done} />
+          </span>
+        )}
+        <Link className="row__link" href={href} aria-label={task.content + ' の詳細を開く'}>
+          {body}
+        </Link>
+      </div>
+    );
+  }
+
+  // 詳細を持たない行は従来どおり（行全体がトグル）
+  const plainBody = (
     <>
       <CheckRing done={task.done} />
       <span className="row__body">
@@ -29,64 +80,19 @@ export function TaskRow({ task, onToggle, date }: Props) {
     </>
   );
 
-  /*
-   * 詳細シェブロン（docs/specs/12-web-digest.md §3.1）。
-   * 行本体のタップは従来どおりトグルのまま、シェブロンだけが詳細へ遷移する。
-   * 入れ子にすると button の中に a が入って不正な DOM になるので、行を分割して並べる。
-   */
-  const chevron = task.detailRef ? (
-    <Link
-      className="mono row__chev"
-      href={
-        '/digest?date=' +
-        encodeURIComponent(date) +
-        '&section=' +
-        encodeURIComponent(task.detailRef) +
-        '&taskId=' +
-        encodeURIComponent(task.id)
-      }
-      aria-label={task.content + ' の詳細を開く'}
-      // 親が button でなくとも、行全体のタップ判定に巻き込まれないようにする
-      onClick={(event) => event.stopPropagation()}
-    >
-      ›
-    </Link>
-  ) : null;
-
   if (!onToggle) {
-    return (
-      <div className="row" style={{ background }}>
-        {body}
-        {chevron}
-      </div>
-    );
-  }
-
-  if (!chevron) {
-    return (
-      <button
-        type="button"
-        className="row row--tap"
-        style={{ background }}
-        aria-pressed={task.done}
-        onClick={() => onToggle(task.id)}
-      >
-        {body}
-      </button>
-    );
+    return <div className="row" style={{ background }}>{plainBody}</div>;
   }
 
   return (
-    <div className="row row--split" style={{ background }}>
-      <button
-        type="button"
-        className="row__tap"
-        aria-pressed={task.done}
-        onClick={() => onToggle(task.id)}
-      >
-        {body}
-      </button>
-      {chevron}
-    </div>
+    <button
+      type="button"
+      className="row row--tap"
+      style={{ background }}
+      aria-pressed={task.done}
+      onClick={() => onToggle(task.id)}
+    >
+      {plainBody}
+    </button>
   );
 }
