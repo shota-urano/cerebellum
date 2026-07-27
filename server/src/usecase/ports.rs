@@ -64,6 +64,19 @@ pub trait RoutineImportRepository: Send + Sync {
     ) -> Result<usize, RoutineImportRepositoryError>;
 }
 
+/// 朝ダイジェストの保存と取得（docs/specs/11-digest.md）。原文をそのまま持つ。
+pub trait DigestRepository: Send + Sync {
+    fn save_digest(&self, date: &str, body: &str, received_at: &str)
+    -> Result<(), RepositoryError>;
+    fn get_digest(&self, date: &str) -> Result<Option<StoredDigest>, RepositoryError>;
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StoredDigest {
+    pub body: String,
+    pub received_at: String,
+}
+
 pub trait Clock: Send + Sync {
     fn now(&self) -> DateTime<FixedOffset>;
 }

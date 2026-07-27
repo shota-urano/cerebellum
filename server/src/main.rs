@@ -17,7 +17,8 @@ use config::Config;
 use infra::api::AppState;
 use usecase::import_routines::ImportRoutines;
 use usecase::{
-    get_day::GetDay, get_summary::GetSummary, manage_routines::ManageRoutines, ports::Clock,
+    get_day::GetDay, get_summary::GetSummary, manage_digest::ManageDigest,
+    manage_routines::ManageRoutines, ports::Clock, ports::DigestRepository,
     ports::RoutineRepository, ports::TaskRepository, ports::VaultReader, toggle_check::ToggleCheck,
 };
 
@@ -107,6 +108,7 @@ async fn serve(port: u16) -> Result<()> {
             .with_context(|| format!("failed to open database at {}", config.db_path.display()))?,
     );
     let routine_repository: Arc<dyn RoutineRepository> = repository.clone();
+    let digest_repository: Arc<dyn DigestRepository> = repository.clone();
     let task_repository: Arc<dyn TaskRepository> = repository;
     let clock: Arc<dyn Clock> = Arc::new(SystemClock);
 
@@ -124,13 +126,18 @@ async fn serve(port: u16) -> Result<()> {
         Arc::clone(&task_repository),
         Arc::clone(&clock),
     ));
-    let manage_routines = Arc::new(ManageRoutines::new(Arc::clone(&routine_repository), clock));
+    let manage_routines = Arc::new(ManageRoutines::new(
+        Arc::clone(&routine_repository),
+        Arc::clone(&clock),
+    ));
+    let manage_digest = Arc::new(ManageDigest::new(digest_repository, clock));
 
     let state = Arc::new(AppState {
         get_day,
         toggle_check,
         get_summary,
         manage_routines,
+        manage_digest,
         routine_repository,
         task_repository,
         config: Arc::clone(&config),

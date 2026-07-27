@@ -13,13 +13,14 @@ use crate::domain::{
     task::{CheckedTask, Task},
 };
 use crate::usecase::ports::{
-    RepositoryError, RoutineImportRepository, RoutineImportRepositoryError, RoutineRepository,
-    RoutineRepositoryError, TaskRepository,
+    DigestRepository, RepositoryError, RoutineImportRepository, RoutineImportRepositoryError,
+    RoutineRepository, RoutineRepositoryError, StoredDigest, TaskRepository,
 };
 
 const MIGRATION_V1: &str = include_str!("migrations/001_init.sql");
 const MIGRATION_V2: &str = include_str!("migrations/002_routines.sql");
-const LATEST_SCHEMA_VERSION: i64 = 2;
+const MIGRATION_V3: &str = include_str!("migrations/003_digests.sql");
+const LATEST_SCHEMA_VERSION: i64 = 3;
 
 pub struct SqliteTaskRepository {
     connection: Mutex<Connection>,
@@ -52,8 +53,9 @@ impl SqliteTaskRepository {
             .map_err(SqliteRepositoryError::Migration)?;
 
         let migrations = match version {
-            0 => &[MIGRATION_V1, MIGRATION_V2][..],
-            1 => &[MIGRATION_V2][..],
+            0 => &[MIGRATION_V1, MIGRATION_V2, MIGRATION_V3][..],
+            1 => &[MIGRATION_V2, MIGRATION_V3][..],
+            2 => &[MIGRATION_V3][..],
             LATEST_SCHEMA_VERSION => return Ok(()),
             version => return Err(SqliteRepositoryError::UnsupportedSchemaVersion(version)),
         };
@@ -113,8 +115,8 @@ impl SqliteTaskRepository {
             let mut statement = transaction
                 .prepare(
                     "INSERT INTO task_days (
-                        date, task_id, interval, time, effort, tool, content, sort_no
-                    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                        date, task_id, interval, time, effort, tool, content, sort_no, detail_ref
+                    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                 )
                 .map_err(SqliteRepositoryError::Query)?;
 
@@ -130,7 +132,8 @@ impl SqliteTaskRepository {
                         task.effort,
                         task.tool,
                         task.content,
-                        sort_no
+                        sort_no,
+                        task.detail_ref
                     ])
                     .map_err(SqliteRepositoryError::Query)?;
             }
@@ -151,6 +154,7 @@ impl SqliteTaskRepository {
                     d.tool,
                     d.content,
                     d.sort_no,
+                    d.detail_ref,
                     COALESCE(c.done, 0),
                     c.checked_at
                 FROM task_days d
@@ -170,8 +174,9 @@ impl SqliteTaskRepository {
                     row.get::<_, String>(4)?,
                     row.get::<_, String>(5)?,
                     row.get::<_, i64>(6)?,
-                    row.get::<_, bool>(7)?,
-                    row.get::<_, Option<String>>(8)?,
+                    row.get::<_, Option<String>>(7)?,
+                    row.get::<_, bool>(8)?,
+                    row.get::<_, Option<String>>(9)?,
                 ))
             })
             .map_err(SqliteRepositoryError::Query)?
@@ -180,7 +185,18 @@ impl SqliteTaskRepository {
 
         rows.into_iter()
             .map(
-                |(id, interval, time, effort, tool, content, sort_no, done, checked_at)| {
+                |(
+                    id,
+                    interval,
+                    time,
+                    effort,
+                    tool,
+                    content,
+                    sort_no,
+                    detail_ref,
+                    done,
+                    checked_at,
+                )| {
                     let sort_no = usize::try_from(sort_no)
                         .map_err(|_| SqliteRepositoryError::InvalidStoredSortNumber(sort_no))?;
                     Ok(CheckedTask {
@@ -192,6 +208,7 @@ impl SqliteTaskRepository {
                             tool,
                             content,
                             sort_no,
+                            detail_ref,
                         },
                         done,
                         checked_at,
@@ -273,11 +290,11 @@ impl SqliteTaskRepository {
             .connection()
             .map_err(RoutineRepositoryError::internal)?;
         let sql = if include_inactive {
-            "SELECT id, interval, time, effort, tool, content, active, created_at, updated_at
+            "SELECT id, interval, time, effort, tool, content, active, detail_ref, created_at, updated_at
              FROM routines
              ORDER BY id ASC"
         } else {
-            "SELECT id, interval, time, effort, tool, content, active, created_at, updated_at
+            "SELECT id, interval, time, effort, tool, content, active, detail_ref, created_at, updated_at
              FROM routines
              WHERE active = 1
              ORDER BY id ASC"
@@ -296,7 +313,7 @@ impl SqliteTaskRepository {
         self.connection()
             .map_err(RoutineRepositoryError::internal)?
             .query_row(
-                "SELECT id, interval, time, effort, tool, content, active, created_at, updated_at
+                "SELECT id, interval, time, effort, tool, content, active, detail_ref, created_at, updated_at
                  FROM routines
                  WHERE id = ?1",
                 [id],
@@ -317,14 +334,15 @@ impl SqliteTaskRepository {
         connection
             .execute(
                 "INSERT INTO routines (
-                    interval, time, effort, tool, content, active, created_at, updated_at
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, ?6)",
+                    interval, time, effort, tool, content, active, detail_ref, created_at, updated_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, ?7, ?7)",
                 params![
                     fields.interval,
                     fields.time,
                     fields.effort,
                     fields.tool,
                     fields.content,
+                    fields.detail_ref,
                     timestamp
                 ],
             )
@@ -338,6 +356,7 @@ impl SqliteTaskRepository {
             tool: fields.tool.clone(),
             content: fields.content.clone(),
             active: true,
+            detail_ref: fields.detail_ref.clone(),
             created_at: timestamp.to_owned(),
             updated_at: timestamp.to_owned(),
         })
@@ -360,14 +379,16 @@ impl SqliteTaskRepository {
                      effort = ?3,
                      tool = ?4,
                      content = ?5,
-                     updated_at = ?6
-                 WHERE id = ?7 AND active = 1",
+                     detail_ref = ?6,
+                     updated_at = ?7
+                 WHERE id = ?8 AND active = 1",
                 params![
                     fields.interval,
                     fields.time,
                     fields.effort,
                     fields.tool,
                     fields.content,
+                    fields.detail_ref,
                     updated_at,
                     id
                 ],
@@ -379,7 +400,7 @@ impl SqliteTaskRepository {
 
         connection
             .query_row(
-                "SELECT id, interval, time, effort, tool, content, active, created_at, updated_at
+                "SELECT id, interval, time, effort, tool, content, active, detail_ref, created_at, updated_at
                  FROM routines
                  WHERE id = ?1",
                 [id],
@@ -411,7 +432,7 @@ impl SqliteTaskRepository {
 
         connection
             .query_row(
-                "SELECT id, interval, time, effort, tool, content, active, created_at, updated_at
+                "SELECT id, interval, time, effort, tool, content, active, detail_ref, created_at, updated_at
                  FROM routines
                  WHERE id = ?1",
                 [id],
@@ -515,8 +536,9 @@ fn routine_from_row(row: &Row<'_>) -> rusqlite::Result<Routine> {
         tool: row.get(4)?,
         content: row.get(5)?,
         active: row.get(6)?,
-        created_at: row.get(7)?,
-        updated_at: row.get(8)?,
+        detail_ref: row.get(7)?,
+        created_at: row.get(8)?,
+        updated_at: row.get(9)?,
     })
 }
 
@@ -638,6 +660,44 @@ impl RoutineImportRepository for SqliteTaskRepository {
     }
 }
 
+impl DigestRepository for SqliteTaskRepository {
+    /// 同じ date への再 POST は上書き（docs/specs/02-data-model.md §6）
+    fn save_digest(
+        &self,
+        date: &str,
+        body: &str,
+        received_at: &str,
+    ) -> Result<(), RepositoryError> {
+        self.connection()
+            .map_err(RepositoryError::new)?
+            .execute(
+                "INSERT INTO digests (date, body, received_at)
+                 VALUES (?1, ?2, ?3)
+                 ON CONFLICT(date) DO UPDATE SET body = ?2, received_at = ?3",
+                params![date, body, received_at],
+            )
+            .map_err(|source| RepositoryError::new(SqliteRepositoryError::Query(source)))?;
+        Ok(())
+    }
+
+    fn get_digest(&self, date: &str) -> Result<Option<StoredDigest>, RepositoryError> {
+        self.connection()
+            .map_err(RepositoryError::new)?
+            .query_row(
+                "SELECT body, received_at FROM digests WHERE date = ?1",
+                [date],
+                |row| {
+                    Ok(StoredDigest {
+                        body: row.get(0)?,
+                        received_at: row.get(1)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(|source| RepositoryError::new(SqliteRepositoryError::Query(source)))
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum SqliteRepositoryError {
     #[error("failed to open SQLite database at {}", path.display())]
@@ -690,6 +750,7 @@ mod tests {
 
     fn task(id: &str, content: &str, sort_no: usize) -> Task {
         Task {
+            detail_ref: None,
             id: id.to_owned(),
             interval: "毎日".to_owned(),
             time: format!("{}:00", sort_no + 7),
@@ -705,7 +766,7 @@ mod tests {
     }
 
     #[test]
-    fn migrates_new_database_to_version_two_on_startup() {
+    fn migrates_new_database_to_the_latest_version_on_startup() {
         let repository = repository();
         let connection = repository
             .connection()
@@ -719,7 +780,7 @@ mod tests {
                     "SELECT name
                      FROM sqlite_master
                      WHERE type = 'table'
-                       AND name IN ('routines', 'task_days', 'task_checks')
+                       AND name IN ('digests', 'routines', 'task_days', 'task_checks')
                      ORDER BY name",
                 )
                 .expect("schema query should prepare");
@@ -741,8 +802,11 @@ mod tests {
             )
             .expect("routine index should be queryable");
 
-        assert_eq!(version, 2);
-        assert_eq!(tables, vec!["routines", "task_checks", "task_days"]);
+        assert_eq!(version, 3);
+        assert_eq!(
+            tables,
+            vec!["digests", "routines", "task_checks", "task_days"]
+        );
         assert!(routine_index_exists);
     }
 
@@ -805,7 +869,7 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM routines", [], |row| row.get(0))
             .expect("routines should be queryable");
 
-        assert_eq!(version, 2);
+        assert_eq!(version, 3);
         assert_eq!(
             stored,
             (
@@ -824,6 +888,7 @@ mod tests {
 
     fn routine_fields(interval: &str, time: &str, content: &str) -> RoutineFields {
         RoutineFields {
+            detail_ref: None,
             interval: interval.to_owned(),
             time: time.to_owned(),
             effort: "10分".to_owned(),
@@ -875,6 +940,7 @@ mod tests {
             updated,
             Routine {
                 id: first.id,
+                detail_ref: None,
                 interval: updated_fields.interval,
                 time: updated_fields.time,
                 effort: updated_fields.effort,

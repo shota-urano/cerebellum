@@ -224,6 +224,7 @@ impl RoutineRepository for InMemoryRepo {
         }
         state.next_routine_id += 1;
         let routine = Routine {
+            detail_ref: None,
             id: state.next_routine_id,
             interval: fields.interval.clone(),
             time: fields.time.clone(),
@@ -328,6 +329,7 @@ fn routine_fields(
     content: &str,
 ) -> RoutineFields {
     RoutineFields {
+        detail_ref: None,
         interval: interval.to_owned(),
         time: time.to_owned(),
         effort: effort.to_owned(),
@@ -362,6 +364,7 @@ fn seeded_repository() -> Arc<InMemoryRepo> {
 
 fn task(id: &str, sort_no: usize) -> Task {
     Task {
+        detail_ref: None,
         id: id.to_owned(),
         interval: "毎日".to_owned(),
         time: format!("{}:00", sort_no + 7),

@@ -21,8 +21,9 @@ use crate::{
         error::UsecaseError,
         get_day::GetDay,
         get_summary::GetSummary,
+        manage_digest::ManageDigest,
         manage_routines::ManageRoutines,
-        ports::{Clock, RoutineRepository, TaskRepository},
+        ports::{Clock, DigestRepository, RoutineRepository, TaskRepository},
         toggle_check::ToggleCheck,
     },
 };
@@ -48,6 +49,7 @@ fn test_app_with_routines(seed_routines: bool) -> axum::Router {
     if seed_routines {
         for fields in [
             RoutineFields {
+                detail_ref: None,
                 interval: "毎日".to_owned(),
                 time: "8:30".to_owned(),
                 effort: "10分".to_owned(),
@@ -55,6 +57,7 @@ fn test_app_with_routines(seed_routines: bool) -> axum::Router {
                 content: "daily later".to_owned(),
             },
             RoutineFields {
+                detail_ref: None,
                 interval: "毎日".to_owned(),
                 time: "7:30".to_owned(),
                 effort: String::new(),
@@ -68,12 +71,14 @@ fn test_app_with_routines(seed_routines: bool) -> axum::Router {
         }
     }
     let routine_repository: Arc<dyn RoutineRepository> = repository.clone();
+    let digest_repository: Arc<dyn DigestRepository> = repository.clone();
     let task_repository: Arc<dyn TaskRepository> = repository;
     let clock: Arc<dyn Clock> = Arc::new(FakeClock);
     let manage_routines = Arc::new(ManageRoutines::new(
         Arc::clone(&routine_repository),
         Arc::clone(&clock),
     ));
+    let manage_digest = Arc::new(ManageDigest::new(digest_repository, Arc::clone(&clock)));
 
     router(Arc::new(AppState {
         get_day: Arc::new(GetDay::new(
@@ -91,6 +96,7 @@ fn test_app_with_routines(seed_routines: bool) -> axum::Router {
             Arc::clone(&clock),
         )),
         manage_routines,
+        manage_digest,
         routine_repository,
         task_repository,
         config: Arc::new(Config {
@@ -307,6 +313,7 @@ async fn routine_crud_and_errors_follow_the_http_contract() {
         json!({
             "routine": {
                 "id": 1,
+                "detailRef": null,
                 "interval": "毎日",
                 "time": "7:30",
                 "effort": "10分",
@@ -444,4 +451,124 @@ fn every_usecase_error_maps_mechanically_to_the_api_contract() {
         assert_eq!(api_error.status, status);
         assert_eq!(api_error.code, code);
     }
+}
+
+/// docs/specs/11-digest.md §3.1・§3.3 と docs/specs/03-api.md §3 の契約。
+/// 未受信の日は 404 ではなく空セクションで 200 を返すことが要点。
+#[tokio::test]
+async fn digest_round_trip_parses_sections_and_reports_missing_days_as_empty() {
+    let app = test_app();
+
+    let missing = call(app.clone(), "GET", "/api/digests/2026-07-20").await;
+    assert_eq!(missing.status(), StatusCode::OK);
+    let body = json_body(missing).await;
+    assert_eq!(body["date"], "2026-07-20");
+    assert_eq!(body["receivedAt"], Value::Null);
+    assert_eq!(body["sections"].as_array().map(Vec::len), Some(0));
+
+    let saved = call_json(
+        app.clone(),
+        "POST",
+        "/api/digests",
+        json!({
+            "date": "today",
+            "body": ":brain: *つながり*\n起点: 起点の一行\n→ 連鎖 — `20_Insights/a.md`\n\n:bulb: *アイデア*\n• *案*\n  詳細行\n",
+        }),
+    )
+    .await;
+    assert_eq!(saved.status(), StatusCode::OK);
+    let saved = json_body(saved).await;
+    assert_eq!(saved["date"], "2026-07-25");
+
+    let fetched = json_body(call(app, "GET", "/api/digests/today").await).await;
+    assert_eq!(fetched["date"], "2026-07-25");
+    assert!(fetched["receivedAt"].is_string());
+    assert_eq!(fetched["sections"][0]["kind"], "connection");
+    assert_eq!(fetched["sections"][0]["title"], ":brain: *つながり*");
+    assert_eq!(fetched["sections"][0]["blocks"][0]["kind"], "lead");
+    assert_eq!(fetched["sections"][0]["blocks"][1]["kind"], "chain");
+    assert_eq!(
+        fetched["sections"][0]["blocks"][1]["notePath"],
+        "20_Insights/a.md"
+    );
+    assert_eq!(fetched["sections"][1]["kind"], "idea");
+    assert!(
+        fetched["sections"][1]["blocks"][0]["text"]
+            .as_str()
+            .expect("bullet text should be a string")
+            .contains("詳細行"),
+        "indented continuation should fold into the bullet"
+    );
+}
+
+#[tokio::test]
+async fn digest_rejects_empty_bodies_and_bad_dates() {
+    let empty = call_json(
+        test_app(),
+        "POST",
+        "/api/digests",
+        json!({ "date": "today", "body": "   " }),
+    )
+    .await;
+    assert_eq!(empty.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(json_body(empty).await["error"]["code"], "bad_request");
+
+    let bad_date = call_json(
+        test_app(),
+        "POST",
+        "/api/digests",
+        json!({ "date": "2026-7-1", "body": "x" }),
+    )
+    .await;
+    assert_eq!(bad_date.status(), StatusCode::BAD_REQUEST);
+}
+
+/// detail_ref は 02-data-model.md §6 の4語彙のみ。DayResponse まで運ばれることも見る
+#[tokio::test]
+async fn detail_ref_is_validated_and_reaches_the_day_response() {
+    let app = test_app();
+
+    let invalid = call_json(
+        app.clone(),
+        "POST",
+        "/api/routines",
+        json!({
+            "interval": "毎日", "time": "6:00", "effort": "", "tool": "",
+            "content": "詳細つき", "detailRef": "digest.unknown",
+        }),
+    )
+    .await;
+    assert_eq!(invalid.status(), StatusCode::BAD_REQUEST);
+
+    let created = call_json(
+        app.clone(),
+        "POST",
+        "/api/routines",
+        json!({
+            "interval": "毎日", "time": "6:00", "effort": "", "tool": "",
+            "content": "詳細つき", "detailRef": "digest.connection",
+        }),
+    )
+    .await;
+    assert_eq!(created.status(), StatusCode::OK);
+    assert_eq!(
+        json_body(created).await["routine"]["detailRef"],
+        "digest.connection"
+    );
+
+    let day = json_body(call(app, "GET", "/api/days/today").await).await;
+    let with_detail = day["tasks"]
+        .as_array()
+        .expect("tasks should be an array")
+        .iter()
+        .find(|task| task["content"] == "詳細つき")
+        .expect("the created routine should appear in today's snapshot");
+    assert_eq!(with_detail["detailRef"], "digest.connection");
+    let without_detail = day["tasks"]
+        .as_array()
+        .expect("tasks should be an array")
+        .iter()
+        .find(|task| task["content"] == "daily earlier")
+        .expect("seeded routine should appear too");
+    assert_eq!(without_detail["detailRef"], Value::Null);
 }

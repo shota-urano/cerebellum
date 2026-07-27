@@ -63,6 +63,8 @@ impl ImportRoutines {
                 effort: row.effort.clone(),
                 tool: row.tool.clone(),
                 content: row.content.clone(),
+                // md には詳細リンクの概念が無い。移行後に画面から設定する
+                detail_ref: None,
             })
             .collect::<Vec<_>>();
         repository

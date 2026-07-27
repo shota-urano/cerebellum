@@ -11,7 +11,10 @@ use serde::Deserialize;
 
 use super::{
     AppState,
-    dto::{DayDto, HealthDto, RoutineInputDto, RoutineResponseDto, RoutinesDto, SummaryDto},
+    dto::{
+        DayDto, DigestDto, DigestInputDto, DigestStoredDto, HealthDto, RoutineInputDto,
+        RoutineResponseDto, RoutinesDto, SummaryDto,
+    },
     error::ApiError,
 };
 
@@ -123,6 +126,34 @@ pub(super) async fn delete_routine(
         .map_err(ApiError::from_join)??;
 
     Ok(Json(routine.into()))
+}
+
+/// 取り込み（docs/specs/11-digest.md §3.1）。送信元は second-brain の deliver.sh
+pub(super) async fn save_digest(
+    State(state): State<Arc<AppState>>,
+    body: Result<Json<DigestInputDto>, JsonRejection>,
+) -> Result<Json<DigestStoredDto>, ApiError> {
+    let Json(input) = body.map_err(|error| ApiError::bad_request(error.to_string()))?;
+    let usecase = Arc::clone(&state.manage_digest);
+    let stored = tokio::task::spawn_blocking(move || usecase.save(&input.date, &input.body))
+        .await
+        .map_err(ApiError::from_join)??;
+
+    Ok(Json(stored.into()))
+}
+
+/// 取得（同 §3.3）。未受信の日も 200 で空セクションを返す
+pub(super) async fn get_digest(
+    State(state): State<Arc<AppState>>,
+    path: Result<Path<String>, PathRejection>,
+) -> Result<Json<DigestDto>, ApiError> {
+    let Path(date) = path.map_err(|error| ApiError::bad_request(error.to_string()))?;
+    let usecase = Arc::clone(&state.manage_digest);
+    let view = tokio::task::spawn_blocking(move || usecase.get(&date))
+        .await
+        .map_err(ApiError::from_join)??;
+
+    Ok(Json(view.into()))
 }
 
 pub(super) async fn not_found() -> ApiError {

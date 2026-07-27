@@ -41,6 +41,8 @@ pub struct Task {
     pub tool: String,
     pub content: String,
     pub sort_no: usize,
+    /// スナップショット確定時にマスタからコピーした結び付け（docs/specs/02-data-model.md §6）
+    pub detail_ref: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

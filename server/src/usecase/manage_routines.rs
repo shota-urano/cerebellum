@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use crate::domain::routine::{Routine, RoutineFields};
+use crate::domain::{
+    digest::{DETAIL_REFS, is_valid_detail_ref},
+    routine::{Routine, RoutineFields},
+};
 
 use super::{
     error::UsecaseError,
@@ -53,13 +56,28 @@ impl ManageRoutines {
 }
 
 fn validate(input: RoutineFields) -> Result<RoutineFields, UsecaseError> {
+    // 空文字は「結び付けなし」として扱う（フォームの未入力が空文字で来るため）
+    let detail_ref = input
+        .detail_ref
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty());
+
     let fields = RoutineFields {
         interval: input.interval.trim().to_owned(),
         time: input.time.trim().to_owned(),
         effort: input.effort.trim().to_owned(),
         tool: input.tool.trim().to_owned(),
         content: input.content.trim().to_owned(),
+        detail_ref,
     };
+
+    if let Some(detail_ref) = &fields.detail_ref
+        && !is_valid_detail_ref(detail_ref)
+    {
+        return Err(UsecaseError::BadRequest(format!(
+            "detail_ref must be one of {DETAIL_REFS:?}"
+        )));
+    }
 
     if fields.interval.is_empty() {
         return Err(UsecaseError::BadRequest(

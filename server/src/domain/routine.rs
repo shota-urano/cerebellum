@@ -7,6 +7,8 @@ pub struct RoutineFields {
     pub effort: String,
     pub tool: String,
     pub content: String,
+    /// 詳細ビューへの結び付け（docs/specs/02-data-model.md §6 の語彙のみ）
+    pub detail_ref: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -18,6 +20,7 @@ pub struct Routine {
     pub tool: String,
     pub content: String,
     pub active: bool,
+    pub detail_ref: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }

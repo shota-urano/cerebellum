@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use chrono::{Datelike, NaiveDate, Weekday};
 
@@ -94,11 +94,30 @@ pub(crate) fn ensure_snapshot(
     }
 
     let weekday = date.weekday().num_days_from_monday();
-    let mut rows = routine_repository
+    let due_routines = routine_repository
         .list_routines(false)
         .map_err(routine_repository_error)?
         .into_iter()
         .filter(|routine| due_today(&routine.interval, weekday))
+        .collect::<Vec<_>>();
+
+    // detail_ref は task_id と同じ材料（間隔・時刻・内容）で引き当てる。
+    // routines_identity（docs/specs/02-data-model.md §2）が有効行の一意性を保証するので衝突しない。
+    // こうすると RoutineRow を拡張せずに済み、ソート仕様（同 04 §3.3）に触れなくてよい
+    let detail_refs: HashMap<String, String> = due_routines
+        .iter()
+        .filter_map(|routine| {
+            routine.detail_ref.as_ref().map(|detail_ref| {
+                (
+                    task_id(&routine.interval, &routine.time, &routine.content),
+                    detail_ref.clone(),
+                )
+            })
+        })
+        .collect();
+
+    let mut rows = due_routines
+        .into_iter()
         .map(|routine| RoutineRow {
             interval: routine.interval,
             time: routine.time,
@@ -112,14 +131,19 @@ pub(crate) fn ensure_snapshot(
     let tasks = rows
         .into_iter()
         .enumerate()
-        .map(|(sort_no, row)| Task {
-            id: task_id(&row.interval, &row.time, &row.content),
-            interval: row.interval,
-            time: row.time,
-            effort: row.effort,
-            tool: row.tool,
-            content: row.content,
-            sort_no,
+        .map(|(sort_no, row)| {
+            let id = task_id(&row.interval, &row.time, &row.content);
+            let detail_ref = detail_refs.get(&id).cloned();
+            Task {
+                id,
+                interval: row.interval,
+                time: row.time,
+                effort: row.effort,
+                tool: row.tool,
+                content: row.content,
+                sort_no,
+                detail_ref,
+            }
         })
         .collect::<Vec<_>>();
 

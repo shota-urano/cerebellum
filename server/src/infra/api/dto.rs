@@ -2,9 +2,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::domain::{
     day::{DaySnapshot, Progress, SummaryDay},
+    digest::{Block, Section},
     routine::{Routine, RoutineFields},
     task::CheckedTask,
 };
+use crate::usecase::manage_digest::{DigestView, StoredAt};
 
 #[derive(Debug, Serialize)]
 pub(super) struct HealthDto {
@@ -75,6 +77,7 @@ struct TaskDto {
     content: String,
     done: bool,
     checked_at: Option<String>,
+    detail_ref: Option<String>,
 }
 
 impl From<CheckedTask> for TaskDto {
@@ -93,6 +96,7 @@ impl From<CheckedTask> for TaskDto {
             content: checked_task.task.content,
             done: checked_task.done,
             checked_at,
+            detail_ref: checked_task.task.detail_ref,
         }
     }
 }
@@ -119,6 +123,8 @@ pub(super) struct RoutineInputDto {
     effort: String,
     tool: String,
     content: String,
+    #[serde(default)]
+    detail_ref: Option<String>,
 }
 
 impl From<RoutineInputDto> for RoutineFields {
@@ -129,6 +135,7 @@ impl From<RoutineInputDto> for RoutineFields {
             effort: input.effort,
             tool: input.tool,
             content: input.content,
+            detail_ref: input.detail_ref,
         }
     }
 }
@@ -171,6 +178,7 @@ struct RoutineDto {
     tool: String,
     content: String,
     active: bool,
+    detail_ref: Option<String>,
     updated_at: String,
 }
 
@@ -184,6 +192,7 @@ impl From<Routine> for RoutineDto {
             tool: routine.tool,
             content: routine.content,
             active: routine.active,
+            detail_ref: routine.detail_ref,
             updated_at: routine.updated_at,
         }
     }
@@ -203,6 +212,90 @@ impl From<SummaryDay> for SummaryDayDto {
             date: day.date,
             done: day.done,
             total: day.total,
+        }
+    }
+}
+
+// ---- ダイジェスト（docs/specs/03-api.md §3・docs/specs/11-digest.md）----
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DigestInputDto {
+    pub(super) date: String,
+    pub(super) body: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DigestStoredDto {
+    date: String,
+    received_at: String,
+}
+
+impl From<StoredAt> for DigestStoredDto {
+    fn from(stored: StoredAt) -> Self {
+        Self {
+            date: stored.date,
+            received_at: stored.received_at,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DigestDto {
+    date: String,
+    received_at: Option<String>,
+    sections: Vec<SectionDto>,
+}
+
+impl From<DigestView> for DigestDto {
+    fn from(view: DigestView) -> Self {
+        Self {
+            date: view.date,
+            received_at: view.received_at,
+            sections: view
+                .digest
+                .sections
+                .into_iter()
+                .map(SectionDto::from)
+                .collect(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SectionDto {
+    kind: String,
+    title: Option<String>,
+    blocks: Vec<BlockDto>,
+}
+
+impl From<Section> for SectionDto {
+    fn from(section: Section) -> Self {
+        Self {
+            kind: section.kind,
+            title: section.title,
+            blocks: section.blocks.into_iter().map(BlockDto::from).collect(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BlockDto {
+    kind: String,
+    text: String,
+    note_path: Option<String>,
+}
+
+impl From<Block> for BlockDto {
+    fn from(block: Block) -> Self {
+        Self {
+            kind: block.kind,
+            text: block.text,
+            note_path: block.note_path,
         }
     }
 }

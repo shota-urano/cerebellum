@@ -12,6 +12,7 @@ use crate::{
     usecase::{
         get_day::GetDay,
         get_summary::GetSummary,
+        manage_digest::ManageDigest,
         manage_routines::ManageRoutines,
         ports::{RoutineRepository, TaskRepository},
         toggle_check::ToggleCheck,
@@ -27,6 +28,7 @@ pub struct AppState {
     pub toggle_check: Arc<ToggleCheck>,
     pub get_summary: Arc<GetSummary>,
     pub manage_routines: Arc<ManageRoutines>,
+    pub manage_digest: Arc<ManageDigest>,
     pub routine_repository: Arc<dyn RoutineRepository>,
     pub task_repository: Arc<dyn TaskRepository>,
     pub config: Arc<Config>,
@@ -41,6 +43,8 @@ pub fn router(state: Arc<AppState>) -> Router {
             post(handlers::toggle_check),
         )
         .route("/summary", get(handlers::get_summary))
+        .route("/digests", post(handlers::save_digest))
+        .route("/digests/{date}", get(handlers::get_digest))
         .route(
             "/routines",
             get(handlers::list_routines).post(handlers::create_routine),
