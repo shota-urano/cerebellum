@@ -19,7 +19,7 @@
 1. `useRoutines`（SWR・`GET /api/routines`）で `active=1` の行を `id` 昇順に表示
 2. 1行に `interval` / `time` / `content` を出す。`effort`・`tool` は補助情報として控えめに（「今日」画面の `metaOf` 規則を踏襲 → [`08-web-today.md`](./08-web-today.md)）
 3. 0件のときは空状態「ルーティンがありません」＋追加導線
-4. 並び替え UI は**持たない**（表示順は時刻順ソートで決まる → [`04-routine-parse.md`](./04-routine-parse.md) §3.3）
+4. 並び替え UI は**持たない**（表示順は API 返却順＝`id` 昇順のまま。時刻順ソートはその日のスナップショット側の規則であり、この画面には適用しない → [`04-routine-parse.md`](./04-routine-parse.md) §3.3）
 
 ### 3.2 追加・編集
 
