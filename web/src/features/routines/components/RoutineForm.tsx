@@ -3,6 +3,7 @@
 import { useId, useState } from 'react';
 import type { RoutineDto, RoutineInput } from '@/shared/api';
 import {
+  DETAIL_REF_OPTIONS,
   EMPTY_INPUT,
   INTERVAL_SUGGESTIONS,
   type FieldErrors,
@@ -21,7 +22,8 @@ type Props = {
   onCancel: () => void;
 };
 
-const FIELDS: { name: keyof RoutineInput; label: string; placeholder: string }[] = [
+/** 自由入力の5項目。detailRef は選択式なので別扱い（下の <select>） */
+const FIELDS: { name: Exclude<keyof RoutineInput, 'detailRef'>; label: string; placeholder: string }[] = [
   { name: 'interval', label: '間隔', placeholder: '毎日 / 平日 / 週末 / 月曜' },
   { name: 'time', label: '時刻', placeholder: '7:30（空でも可）' },
   { name: 'effort', label: '実施', placeholder: '1時間（空でも可）' },
@@ -31,8 +33,8 @@ const FIELDS: { name: keyof RoutineInput; label: string; placeholder: string }[]
 
 function toInput(routine?: RoutineDto): RoutineInput {
   if (!routine) return EMPTY_INPUT;
-  const { interval, time, effort, tool, content } = routine;
-  return { interval, time, effort, tool, content };
+  const { interval, time, effort, tool, content, detailRef } = routine;
+  return { interval, time, effort, tool, content, detailRef: detailRef ?? '' };
 }
 
 /**
@@ -78,6 +80,29 @@ export function RoutineForm({ routine, serverError, pending, onSubmit, onDelete,
           {errors[field.name] && <div className="form__error">{errors[field.name]}</div>}
         </div>
       ))}
+
+      {/* 詳細リンク（docs/specs/12-web-digest.md §3.1）。付けた行は「今日」画面に › が出る */}
+      <div className="form__row">
+        <label className="mono label">
+          詳細リンク
+          <select
+            className="input"
+            value={values.detailRef ?? ''}
+            onChange={(event) =>
+              setValues((prev) => ({
+                ...prev,
+                detailRef: event.target.value as RoutineInput['detailRef'],
+              }))
+            }
+          >
+            {DETAIL_REF_OPTIONS.map((option) => (
+              <option value={option.value} key={option.value || 'none'}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
 
       {/* 間隔は自由入力を許しつつ候補を出す（判定は部分一致） */}
       <datalist id={listId}>

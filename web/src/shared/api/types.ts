@@ -15,7 +15,16 @@ export interface TaskDto {
   content: string;
   done: boolean;
   checkedAt: string | null;
+  /** 詳細ビューへの結び付け（02-data-model.md §6 の4語彙）。無ければ null */
+  detailRef: DetailRef | null;
 }
+
+/** 02-data-model.md §6: detail_ref の語彙。増やすときは 02・11・12 を同時に更新する */
+export type DetailRef =
+  | 'digest.connection'
+  | 'digest.derive'
+  | 'digest.idea'
+  | 'digest.consolidate';
 
 /** 03-api.md §3: `progress` */
 export interface ProgressDto {
@@ -56,6 +65,7 @@ export interface RoutineDto {
   tool: string;
   content: string;
   active: boolean;
+  detailRef: DetailRef | null;
   updatedAt: string;
 }
 
@@ -79,6 +89,30 @@ export interface RoutineInput {
   effort: string;
   tool: string;
   content: string;
+  /** 空文字を送るとサーバー側で「結び付けなし」に正規化される */
+  detailRef: DetailRef | '' | null;
+}
+
+/** 03-api.md §3: `GET /api/digests/{date}` の `blocks[]` の要素（11-digest.md §3.2） */
+export interface DigestBlockDto {
+  kind: 'lead' | 'chain' | 'bullet' | 'saved' | 'warning' | 'text';
+  text: string;
+  notePath: string | null;
+}
+
+/** 03-api.md §3: `sections[]` の要素 */
+export interface DigestSectionDto {
+  kind: 'connection' | 'derive' | 'idea' | 'consolidate' | 'preamble' | 'other';
+  /** 見出し行の原文（preamble は null） */
+  title: string | null;
+  blocks: DigestBlockDto[];
+}
+
+/** 03-api.md §3: `GET /api/digests/{date}`。未受信の日は sections が空配列 */
+export interface DigestResponse {
+  date: string;
+  receivedAt: string | null;
+  sections: DigestSectionDto[];
 }
 
 /** 03-api.md §3: health の各フィールド */

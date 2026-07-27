@@ -7,3 +7,9 @@
  */
 export { DayView } from './components/DayView';
 export type { DayViewProps } from './components/DayView';
+/**
+ * ダイジェスト詳細の「読んだ」チェックが使う（docs/specs/12-web-digest.md §5）。
+ * digest feature からは import せず、`app/digest/page.tsx` が合成する。
+ */
+export { useDay } from './hooks/useDay';
+export { useToggleCheck } from './hooks/useToggleCheck';

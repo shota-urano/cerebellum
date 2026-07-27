@@ -157,3 +157,28 @@ a:hover { color: #8FF2FF; }
 .form__error { margin-top: 6px; font-size: 11.5px; line-height: 1.5; color: var(--error); }
 .confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 14px; padding: 10px 12px; border: 1px solid var(--border); border-left: 3px solid var(--error); border-radius: var(--radius-sm); }
 .confirm__text { flex: 1; min-width: 180px; font-size: 12.5px; line-height: 1.6; }
+
+/* ---- digest（詳細ビュー。docs/specs/12-web-digest.md）
+   既存トークンのみ。行・パネル・バナーの様式は今日/履歴と共通のものを流用する。 */
+.row--split { padding: 0; }
+.row__tap { flex: 1; display: flex; gap: 12px; align-items: flex-start; min-width: 0; min-height: 44px; padding: 12px 0 12px 14px; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; }
+.row__chev { flex: none; display: flex; align-items: center; justify-content: center; width: 44px; min-height: 44px; align-self: stretch; color: var(--muted); font-size: 18px; line-height: 1; text-decoration: none; }
+.row__chev:hover { color: var(--accent); }
+.dg__bar { display: flex; margin-bottom: 12px; }
+.dg__bar--end { justify-content: flex-end; margin: 16px 0 0; }
+.dg__meta { margin-bottom: 10px; font-size: 10px; letter-spacing: .14em; color: var(--muted); }
+.dg { margin-bottom: 12px; padding: 14px 16px 16px; }
+.dg--on { border-color: var(--accent); }
+.dg__head { margin-bottom: 10px; font-size: 12px; font-weight: 500; letter-spacing: .16em; color: var(--accent); }
+.dg__text { font-size: 13.5px; line-height: 1.7; color: var(--text); word-break: break-word; text-wrap: pretty; }
+.dg__em { color: var(--accent); font-weight: 500; }
+.dg__note { display: inline-block; margin-top: 4px; font-size: 10.5px; letter-spacing: .04em; color: var(--muted); word-break: break-all; }
+.dg__note:hover { color: #8FF2FF; }
+.dg__lead { margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+.dg__chain { display: flex; gap: 10px; margin-bottom: 10px; }
+.dg__arrow { flex: none; color: var(--accent); font-size: 13px; line-height: 1.7; }
+.dg__bullet { display: flex; gap: 10px; margin-bottom: 10px; }
+.dg__dot { flex: none; color: var(--accent); line-height: 1.7; }
+.dg__saved { margin: 6px 0 10px; padding-left: 12px; border-left: 1px solid var(--border); }
+.dg__warn { display: flex; gap: 10px; align-items: flex-start; margin-top: 10px; padding: 10px 12px; border: 1px solid var(--border); border-left: 3px solid var(--error); border-radius: var(--radius-sm); }
+.dg__code { padding: 1px 5px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 11.5px; color: var(--muted); }

@@ -8,10 +8,12 @@ type Props = {
   onToggle?: (id: string) => void;
   heading?: boolean;
   style?: CSSProperties;
+  /** 詳細シェブロンのリンク先が指す日付（docs/specs/12-web-digest.md §3.1） */
+  date: string;
 };
 
 /** タスク一覧パネル。見た目の正本は `docs/design/02-today.md`（`.list__head` / `.row` in globals.css）。 */
-export function TaskList({ tasks, onToggle, heading = false, style }: Props) {
+export function TaskList({ tasks, onToggle, heading = false, style, date }: Props) {
   return (
     <div className="panel stack" style={{ overflow: 'hidden', ...style }}>
       {heading && (
@@ -21,7 +23,7 @@ export function TaskList({ tasks, onToggle, heading = false, style }: Props) {
         </div>
       )}
       {tasks.map((task) => (
-        <TaskRow key={task.id} task={task} onToggle={onToggle} />
+        <TaskRow key={task.id} task={task} onToggle={onToggle} date={date} />
       ))}
     </div>
   );

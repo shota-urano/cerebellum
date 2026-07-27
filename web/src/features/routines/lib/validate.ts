@@ -1,4 +1,4 @@
-import type { RoutineInput } from '@/shared/api';
+import type { DetailRef, RoutineInput } from '@/shared/api';
 
 /**
  * 入力検証。規則の正本は `docs/specs/03-api.md` §3（サーバーと同一規則）。
@@ -33,8 +33,21 @@ export function trimInput(input: RoutineInput): RoutineInput {
     effort: input.effort.trim(),
     tool: input.tool.trim(),
     content: input.content.trim(),
+    detailRef: input.detailRef,
   };
 }
+
+/**
+ * 詳細リンクの選択肢（docs/specs/02-data-model.md §6 の4語彙）。
+ * 空文字は「結び付けなし」——サーバー側で null に正規化される（docs/specs/03-api.md §3）。
+ */
+export const DETAIL_REF_OPTIONS: { value: DetailRef | ''; label: string }[] = [
+  { value: '', label: 'なし' },
+  { value: 'digest.connection', label: 'ダイジェスト: つながり' },
+  { value: 'digest.derive', label: 'ダイジェスト: 導出' },
+  { value: 'digest.idea', label: 'ダイジェスト: アイデア' },
+  { value: 'digest.consolidate', label: 'ダイジェスト: consolidate' },
+];
 
 /** trim 済みの入力を検証する。返り値が空オブジェクトなら送信してよい。 */
 export function validate(input: RoutineInput): FieldErrors {
@@ -45,4 +58,11 @@ export function validate(input: RoutineInput): FieldErrors {
   return errors;
 }
 
-export const EMPTY_INPUT: RoutineInput = { interval: '', time: '', effort: '', tool: '', content: '' };
+export const EMPTY_INPUT: RoutineInput = {
+  interval: '',
+  time: '',
+  effort: '',
+  tool: '',
+  content: '',
+  detailRef: '',
+};

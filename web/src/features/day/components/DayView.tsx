@@ -55,6 +55,7 @@ export function DayView({ date, readonly = false }: DayViewProps) {
 
           {total > 0 && (
             <TaskList
+              date={date}
               tasks={day.tasks}
               onToggle={isReadonly ? undefined : toggle}
               heading={!isReadonly}
