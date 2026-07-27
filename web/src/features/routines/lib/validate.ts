@@ -1,0 +1,48 @@
+import type { RoutineInput } from '@/shared/api';
+
+/**
+ * 入力検証。規則の正本は `docs/specs/03-api.md` §3（サーバーと同一規則）。
+ * ここでの検証はサーバーの検証を置き換えるものではなく、往復を1回減らすためのもの。
+ */
+
+/** 時刻は空文字、または `H:MM` / `HH:MM`（docs/specs/03-api.md §3） */
+const TIME_PATTERN = /^\d{1,2}:\d{2}$/;
+
+/** 間隔の候補（判定は部分一致なので自由入力も許す。docs/specs/04-routine-parse.md §3.2） */
+export const INTERVAL_SUGGESTIONS = [
+  '毎日',
+  '平日',
+  '週末',
+  '月曜',
+  '火曜',
+  '水曜',
+  '木曜',
+  '金曜',
+  '土曜',
+  '日曜',
+];
+
+export type FieldName = keyof RoutineInput;
+export type FieldErrors = Partial<Record<FieldName, string>>;
+
+/** 各値を trim する（サーバーも trim して保存する。docs/specs/03-api.md §3） */
+export function trimInput(input: RoutineInput): RoutineInput {
+  return {
+    interval: input.interval.trim(),
+    time: input.time.trim(),
+    effort: input.effort.trim(),
+    tool: input.tool.trim(),
+    content: input.content.trim(),
+  };
+}
+
+/** trim 済みの入力を検証する。返り値が空オブジェクトなら送信してよい。 */
+export function validate(input: RoutineInput): FieldErrors {
+  const errors: FieldErrors = {};
+  if (!input.interval) errors.interval = '間隔は必須です（例: 毎日）';
+  if (!input.content) errors.content = '内容は必須です';
+  if (input.time && !TIME_PATTERN.test(input.time)) errors.time = '時刻は H:MM 形式で入力してください（空でも可）';
+  return errors;
+}
+
+export const EMPTY_INPUT: RoutineInput = { interval: '', time: '', effort: '', tool: '', content: '' };

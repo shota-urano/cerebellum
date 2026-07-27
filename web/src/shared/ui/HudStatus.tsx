@@ -2,8 +2,15 @@
 
 import { usePathname } from 'next/navigation';
 
+/** パスから画面タグを決める（docs/design/01-shell.md）。3タブ目の追加分は ROUTINES。 */
+function tagOf(pathname: string) {
+  if (pathname.startsWith('/history')) return 'HISTORY';
+  if (pathname.startsWith('/routines')) return 'ROUTINES';
+  return 'TODAY';
+}
+
 export function HudStatus() {
-  const tag = usePathname().startsWith('/history') ? 'HISTORY' : 'TODAY';
+  const tag = tagOf(usePathname());
   return (
     <div className="hud">
       <div className="hud__live">

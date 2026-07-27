@@ -31,16 +31,18 @@
 | 要素 | 文言 | 状態・様式 |
 |---|---|---|
 | HudStatus 左 | `ROUTINE / DAILY` | 発光ドット（7px・accent・`pulse` 2.4s 点滅）＋等幅マイクロラベル |
-| HudStatus 右 | `TODAY` / `HISTORY` | 現在パスで切替（`/history` 判定） |
+| HudStatus 右 | `TODAY` / `HISTORY` / `ROUTINES` | 現在パスで切替（`/history`・`/routines` の前方一致） |
 | タブ「今日」 | `今日` | `/` へ遷移。active: accent 枠＋文字＋淡い背景＋グロー |
 | タブ「履歴」 | `履歴` | `/history` へ遷移。inactive: border 枠・muted 文字・surface 背景 |
+| タブ「ルーティン」 | `ルーティン` | `/routines` へ遷移。様式は他タブと同一（2026-07-27 追加） |
 
 - タブは 46px 高・等幅フォント・letter-spacing .14em。アクティブ判定はパス前方一致（`/` は完全一致）
+- タブは**等分割**（`grid-auto-flow: column` ＋ `grid-auto-columns: 1fr`）。列数を直書きしないので、タブが増えても幅指定を書き換えない（3タブ化で 1fr 1fr から変更・2026-07-27）
 
 ## インタラクション
 
 - タブタップで画面遷移（コードの事実。プロトタイプは `next/link`）
-- 実装では specs 07 の2ページ構成（`/`・`/history`）にそのまま対応する
+- 実装は specs 07 の3ページ構成（`/`・`/history`・`/routines`）に対応する
 
 ## 未定事項
 

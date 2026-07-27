@@ -7,6 +7,7 @@ import { glowShadow } from '@/shared/lib';
 const TABS = [
   { href: '/', label: '今日' },
   { href: '/history', label: '履歴' },
+  { href: '/routines', label: 'ルーティン' },
 ];
 
 export function TabBar() {
