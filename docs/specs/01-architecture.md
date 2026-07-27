@@ -31,12 +31,12 @@ server/src/
 │ ├ due.rs                 # due判定
 │ └ day.rs                 # DaySnapshot・進捗計算
 ├ usecase/                 # アプリケーションサービス。ポート（trait）はここで定義
-│ ├ ports.rs               # trait VaultReader / TaskRepository / Clock
+│ ├ ports.rs               # trait RoutineRepository / TaskRepository / Clock / VaultReader（import のみ）
 │ ├ get_day.rs             # 日取得（today のスナップショット ensure 含む・冪等）
 │ ├ toggle_check.rs        # トグル（「当日のみ許可」ガードはここ。API層に置かない）
 │ └ get_summary.rs         # 直近N日サマリ
 ├ adapters/                # ポート実装（外側）
-│ ├ fs_vault.rs            # impl VaultReader（fs読み取りのみ）
+│ ├ fs_vault.rs            # impl VaultReader（fs読み取りのみ。import-routines 実行時だけ組み立てる）
 │ ├ sqlite_repo.rs         # impl TaskRepository（rusqlite・migration・全クエリ）
 │ └ system_clock.rs        # impl Clock（Local時刻。テストでは固定時刻 fake）
 └ infra/                   # フレームワーク層
@@ -80,7 +80,7 @@ server/src/
 
 | 層 | 手段 |
 |---|---|
-| domain | fixture テスト（実物の `人間のルーティン.md` をコピーした fixture 同梱。post.py の出力と一致を担保） |
+| domain | fixture テスト（実物の `人間のルーティン.md` をコピーした fixture 同梱。パース・due・ソート・task_id の期待値を固定。移管後も回帰検出のため維持） |
 | usecase | ポートの手書き fake（`FakeClock` 固定時刻・`InMemoryRepo`）。日付境界・過去日ガード・スナップショット冪等性をここで固める |
 | adapters | `Connection::open_in_memory()` でクエリ単位テスト |
 | infra/api | `tower::ServiceExt::oneshot` で結合テスト（today 取得→toggle→過去日403 の一連） |

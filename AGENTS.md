@@ -11,19 +11,20 @@ second-brain のルーティンを消し込む自分専用ダッシュボード�
 
 ## 用語・前提
 
-- **Vault** = Google Drive 上の second-brain。ルーティン表 `80_運用ガイド/人間のルーティン.md` が正本
+- **Vault** = Google Drive 上の second-brain。初期 import（`cerebellum import-routines`）の移行元にのみ使う
+- **ルーティン表** = 繰り返しタスクのマスタ。**正本は SQLite `routines`**（2026-07-27 に md から移管。`docs/specs/02` §2）
 - **スナップショット** = その日の due タスクを SQLite `task_days` に確定したもの。過去日表示の正
 - 日付境界は深夜0時・ローカルタイム（Asia/Tokyo）
 
 ## ルール
 
-1. **Vault 配下に書き込まない**（読み取りのみ）。書き込みコードを書いた時点で仕様違反
-2. パース・due 判定・task_id の仕様（`docs/specs/04`・`02` §3）を変更しない。daily-tasks の post.py と同一仕様が Slack 通知との整合契約。fixture テストの期待値を実装に合わせて書き換えない
-3. 一度確定した `task_days` を更新・削除するコードを書かない（過去記録の不変性）。過去日の消し込み変更も不可
+1. **Vault 配下に書き込まない**（読み取りのみ）。書き込みコードを書いた時点で仕様違反。読み取りも `import-routines` 経路だけで、`serve` からは Vault を参照しない
+2. due 判定・ソート・task_id の仕様（`docs/specs/04` §3.2-3.4・`02` §3）を変更しない。確定済みの過去記録と ID を連続させるため。fixture テストの期待値を実装に合わせて書き換えない（md パース §3.1 は初期 import 専用だが、再取り込みの再現性のため削除しない）
+3. 一度確定した `task_days` を更新・削除するコードを書かない（過去記録の不変性）。過去日の消し込み変更も不可。**ルーティンマスタの編集が当日のスナップショットに遡及してもいけない**（反映は翌日から）
 4. 確定済み技術選定を置き換えない: rusqlite（sqlx 不可）・rust-embed・SWR・クエリパラメータ方式・ポート48210 ほか `docs/specs/00` §4 の表
 5. 依存方向を守る: Rust は `domain ← usecase ← adapters/infra`（domain に I/O 依存ゼロ、ガード類は usecase 層）。Web は `app → features → shared` 一方向・feature 間 import 禁止・barrel 経由のみ
 6. スキーマは `docs/specs/02`、API/DTO は `docs/specs/03` だけで定義する。他ファイル・実装コメントで二重定義しない。`web/src/shared/api/types.ts` は `03` と手動同期
-7. Phase 2 機能（下書き・承認・digest・通知・単発TODO）を先取り実装しない
+7. Phase 2 機能（下書き・承認・digest・通知・単発TODO）を先取り実装しない。ルーティン表の編集（`routines` CRUD・「ルーティン」画面）は Phase 1.5 として実装対象（`docs/specs/10`）
 8. ビルド順は web → server（rust-embed が `web/out` を取り込む）。ルート Makefile の PACKAGES 順を変えない
 9. 実装が仕様と食い違うと分かったら、実装を黙って変えず docs/specs/ の該当ファイル更新とセットで提案する
 10. Makefile のセンチネル行（`VERIFY: PASS` / `VERIFY-FAST: PASS`）と空チェックガードを消さない・変えない
