@@ -53,6 +53,9 @@ impl From<UsecaseError> for ApiError {
             error @ UsecaseError::NotFound(_) => {
                 Self::new(StatusCode::NOT_FOUND, "not_found", error.to_string())
             }
+            error @ UsecaseError::Conflict(_) => {
+                Self::new(StatusCode::CONFLICT, "conflict", error.to_string())
+            }
             error @ UsecaseError::Internal(_) => Self::new(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "internal",

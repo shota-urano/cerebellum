@@ -15,6 +15,7 @@ use super::{
     error::UsecaseError,
     get_day::GetDay,
     get_summary::GetSummary,
+    manage_routines::ManageRoutines,
     ports::{Clock, RepositoryError, RoutineRepository, RoutineRepositoryError, TaskRepository},
     toggle_check::ToggleCheck,
 };
@@ -666,5 +667,102 @@ fn summary_rejects_zero_and_values_above_the_limit() {
     assert!(matches!(
         usecase.execute(Some(367)),
         Err(UsecaseError::BadRequest(_))
+    ));
+}
+
+#[test]
+fn routine_create_trims_every_field_preserves_br_and_uses_the_clock() {
+    let repository = Arc::new(InMemoryRepo::default());
+    let usecase = ManageRoutines::new(repository.clone(), clock("2026-07-27T09:00:00+09:00"));
+
+    let created = usecase
+        .create(routine_fields(
+            "  毎日  ",
+            " 7:30 ",
+            " 10分 ",
+            " slack ",
+            " 先頭<br>続き ",
+        ))
+        .expect("valid routine should be created");
+
+    assert_eq!(created.interval, "毎日");
+    assert_eq!(created.time, "7:30");
+    assert_eq!(created.effort, "10分");
+    assert_eq!(created.tool, "slack");
+    assert_eq!(created.content, "先頭<br>続き");
+    assert!(created.active);
+    assert_eq!(created.created_at, "2026-07-27T09:00:00+09:00");
+    assert_eq!(created.updated_at, "2026-07-27T09:00:00+09:00");
+}
+
+#[test]
+fn routine_validation_rejects_empty_required_fields_and_invalid_times() {
+    let repository = Arc::new(InMemoryRepo::default());
+    let usecase = ManageRoutines::new(repository.clone(), clock("2026-07-27T09:00:00+09:00"));
+
+    for fields in [
+        routine_fields("  ", "7:30", "", "", "content"),
+        routine_fields("毎日", "7:30", "", "", "  "),
+        routine_fields("毎日", "7:3", "", "", "content"),
+        routine_fields("毎日", "123:00", "", "", "content"),
+        routine_fields("毎日", "7:300", "", "", "content"),
+        routine_fields("毎日", "7-30", "", "", "content"),
+    ] {
+        assert!(matches!(
+            usecase.create(fields),
+            Err(UsecaseError::BadRequest(_))
+        ));
+    }
+
+    assert!(
+        repository
+            .list_routines(true)
+            .expect("repository should list")
+            .is_empty()
+    );
+}
+
+#[test]
+fn routine_crud_maps_conflicts_and_not_found_and_logically_deletes() {
+    let repository = Arc::new(InMemoryRepo::default());
+    let usecase = ManageRoutines::new(repository.clone(), clock("2026-07-27T09:00:00+09:00"));
+    let fields = routine_fields("毎日", "", "10分", "slack", "対象");
+    let created = usecase
+        .create(fields.clone())
+        .expect("routine should be created");
+
+    assert!(matches!(
+        usecase.create(fields),
+        Err(UsecaseError::Conflict(_))
+    ));
+    assert!(matches!(
+        usecase.update(999, routine_fields("平日", "8:00", "", "obsidian", "未知")),
+        Err(UsecaseError::NotFound(_))
+    ));
+
+    let deleted = usecase
+        .delete(created.id)
+        .expect("active routine should be deleted");
+    assert!(!deleted.active);
+    assert!(
+        usecase
+            .list(false)
+            .expect("active routine list should load")
+            .is_empty()
+    );
+    assert_eq!(
+        usecase.list(true).expect("full routine list should load"),
+        vec![deleted]
+    );
+    assert!(matches!(
+        usecase.delete(created.id),
+        Err(UsecaseError::NotFound(_))
+    ));
+    assert!(matches!(
+        usecase.update(
+            created.id,
+            routine_fields("毎日", "9:00", "", "", "inactive")
+        ),
+        Err(UsecaseError::NotFound(_))
     ));
 }

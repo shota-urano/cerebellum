@@ -4,14 +4,14 @@ use axum::{
     Json,
     extract::{
         Path, Query, State,
-        rejection::{PathRejection, QueryRejection},
+        rejection::{JsonRejection, PathRejection, QueryRejection},
     },
 };
 use serde::Deserialize;
 
 use super::{
     AppState,
-    dto::{DayDto, HealthDto, SummaryDto},
+    dto::{DayDto, HealthDto, RoutineInputDto, RoutineResponseDto, RoutinesDto, SummaryDto},
     error::ApiError,
 };
 
@@ -71,6 +71,60 @@ pub(super) async fn get_summary(
     Ok(Json(days.into()))
 }
 
+pub(super) async fn list_routines(
+    State(state): State<Arc<AppState>>,
+    query: Result<Query<RoutinesQuery>, QueryRejection>,
+) -> Result<Json<RoutinesDto>, ApiError> {
+    let Query(query) = query.map_err(|error| ApiError::bad_request(error.to_string()))?;
+    let usecase = Arc::clone(&state.manage_routines);
+    let routines = tokio::task::spawn_blocking(move || usecase.list(query.include_inactive))
+        .await
+        .map_err(ApiError::from_join)??;
+
+    Ok(Json(routines.into()))
+}
+
+pub(super) async fn create_routine(
+    State(state): State<Arc<AppState>>,
+    body: Result<Json<RoutineInputDto>, JsonRejection>,
+) -> Result<Json<RoutineResponseDto>, ApiError> {
+    let Json(input) = body.map_err(|error| ApiError::bad_request(error.to_string()))?;
+    let usecase = Arc::clone(&state.manage_routines);
+    let routine = tokio::task::spawn_blocking(move || usecase.create(input.into()))
+        .await
+        .map_err(ApiError::from_join)??;
+
+    Ok(Json(routine.into()))
+}
+
+pub(super) async fn update_routine(
+    State(state): State<Arc<AppState>>,
+    path: Result<Path<i64>, PathRejection>,
+    body: Result<Json<RoutineInputDto>, JsonRejection>,
+) -> Result<Json<RoutineResponseDto>, ApiError> {
+    let Path(id) = path.map_err(|error| ApiError::bad_request(error.to_string()))?;
+    let Json(input) = body.map_err(|error| ApiError::bad_request(error.to_string()))?;
+    let usecase = Arc::clone(&state.manage_routines);
+    let routine = tokio::task::spawn_blocking(move || usecase.update(id, input.into()))
+        .await
+        .map_err(ApiError::from_join)??;
+
+    Ok(Json(routine.into()))
+}
+
+pub(super) async fn delete_routine(
+    State(state): State<Arc<AppState>>,
+    path: Result<Path<i64>, PathRejection>,
+) -> Result<Json<RoutineResponseDto>, ApiError> {
+    let Path(id) = path.map_err(|error| ApiError::bad_request(error.to_string()))?;
+    let usecase = Arc::clone(&state.manage_routines);
+    let routine = tokio::task::spawn_blocking(move || usecase.delete(id))
+        .await
+        .map_err(ApiError::from_join)??;
+
+    Ok(Json(routine.into()))
+}
+
 pub(super) async fn not_found() -> ApiError {
     ApiError::not_found("API path not found")
 }
@@ -78,4 +132,10 @@ pub(super) async fn not_found() -> ApiError {
 #[derive(Debug, Deserialize)]
 pub(super) struct SummaryQuery {
     days: Option<u32>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub(super) struct RoutinesQuery {
+    include_inactive: bool,
 }
