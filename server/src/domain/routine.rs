@@ -1,6 +1,28 @@
 use super::due::{due_today, sort_rows_by_time};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RoutineFields {
+    pub interval: String,
+    pub time: String,
+    pub effort: String,
+    pub tool: String,
+    pub content: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Routine {
+    pub id: i64,
+    pub interval: String,
+    pub time: String,
+    pub effort: String,
+    pub tool: String,
+    pub content: String,
+    pub active: bool,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RoutineRow {
     pub interval: String,
     pub time: String,

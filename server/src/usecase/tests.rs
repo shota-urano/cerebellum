@@ -10,6 +10,7 @@ use chrono::{DateTime, FixedOffset};
 
 use crate::domain::{
     day::SummaryDay,
+    routine::{Routine, RoutineFields},
     task::{CheckedTask, Task, task_id},
 };
 
@@ -17,7 +18,10 @@ use super::{
     error::UsecaseError,
     get_day::GetDay,
     get_summary::GetSummary,
-    ports::{Clock, RepositoryError, TaskRepository, VaultReader, VaultReaderError},
+    ports::{
+        Clock, RepositoryError, RoutineRepository, RoutineRepositoryError, TaskRepository,
+        VaultReader, VaultReaderError,
+    },
     toggle_check::ToggleCheck,
 };
 
@@ -78,6 +82,8 @@ impl VaultReader for FakeVaultReader {
 struct RepoState {
     days: BTreeMap<String, Vec<Task>>,
     checks: HashMap<(String, String), (bool, String)>,
+    routines: BTreeMap<i64, Routine>,
+    next_routine_id: i64,
     insert_count: usize,
     toggle_count: usize,
 }
@@ -214,6 +220,136 @@ impl TaskRepository for InMemoryRepo {
             })
             .collect())
     }
+}
+
+impl RoutineRepository for InMemoryRepo {
+    fn list_routines(
+        &self,
+        include_inactive: bool,
+    ) -> Result<Vec<Routine>, RoutineRepositoryError> {
+        Ok(self
+            .state
+            .lock()
+            .expect("in-memory repository lock should be available")
+            .routines
+            .values()
+            .filter(|routine| include_inactive || routine.active)
+            .cloned()
+            .collect())
+    }
+
+    fn get_routine(&self, id: i64) -> Result<Option<Routine>, RoutineRepositoryError> {
+        Ok(self
+            .state
+            .lock()
+            .expect("in-memory repository lock should be available")
+            .routines
+            .get(&id)
+            .cloned())
+    }
+
+    fn insert_routine(
+        &self,
+        fields: &RoutineFields,
+        timestamp: &str,
+    ) -> Result<Routine, RoutineRepositoryError> {
+        let mut state = self
+            .state
+            .lock()
+            .expect("in-memory repository lock should be available");
+        if has_active_identity(&state.routines, fields, None) {
+            return Err(RoutineRepositoryError::Conflict);
+        }
+        state.next_routine_id += 1;
+        let routine = Routine {
+            id: state.next_routine_id,
+            interval: fields.interval.clone(),
+            time: fields.time.clone(),
+            effort: fields.effort.clone(),
+            tool: fields.tool.clone(),
+            content: fields.content.clone(),
+            active: true,
+            created_at: timestamp.to_owned(),
+            updated_at: timestamp.to_owned(),
+        };
+        state.routines.insert(routine.id, routine.clone());
+        Ok(routine)
+    }
+
+    fn update_routine(
+        &self,
+        id: i64,
+        fields: &RoutineFields,
+        updated_at: &str,
+    ) -> Result<Option<Routine>, RoutineRepositoryError> {
+        let mut state = self
+            .state
+            .lock()
+            .expect("in-memory repository lock should be available");
+        if !state
+            .routines
+            .get(&id)
+            .is_some_and(|routine| routine.active)
+        {
+            return Ok(None);
+        }
+        if has_active_identity(&state.routines, fields, Some(id)) {
+            return Err(RoutineRepositoryError::Conflict);
+        }
+        let routine = state
+            .routines
+            .get_mut(&id)
+            .expect("active routine should still exist");
+        routine.interval = fields.interval.clone();
+        routine.time = fields.time.clone();
+        routine.effort = fields.effort.clone();
+        routine.tool = fields.tool.clone();
+        routine.content = fields.content.clone();
+        routine.updated_at = updated_at.to_owned();
+        Ok(Some(routine.clone()))
+    }
+
+    fn deactivate_routine(
+        &self,
+        id: i64,
+        updated_at: &str,
+    ) -> Result<Option<Routine>, RoutineRepositoryError> {
+        let mut state = self
+            .state
+            .lock()
+            .expect("in-memory repository lock should be available");
+        let Some(routine) = state.routines.get_mut(&id).filter(|routine| routine.active) else {
+            return Ok(None);
+        };
+        routine.active = false;
+        routine.updated_at = updated_at.to_owned();
+        Ok(Some(routine.clone()))
+    }
+
+    fn count_active_routines(&self) -> Result<usize, RoutineRepositoryError> {
+        Ok(self
+            .state
+            .lock()
+            .expect("in-memory repository lock should be available")
+            .routines
+            .values()
+            .filter(|routine| routine.active)
+            .count())
+    }
+}
+
+fn has_active_identity(
+    routines: &BTreeMap<i64, Routine>,
+    fields: &RoutineFields,
+    except_id: Option<i64>,
+) -> bool {
+    routines.values().any(|routine| {
+        routine.active
+            && Some(routine.id) != except_id
+            && routine.interval == fields.interval
+            && routine.time == fields.time
+            && routine.content == fields.content
+    })
 }
 
 fn clock(now: &str) -> Arc<dyn Clock> {

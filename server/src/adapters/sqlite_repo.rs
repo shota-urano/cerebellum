@@ -4,17 +4,21 @@ use std::{
 };
 
 use chrono::{DateTime, FixedOffset};
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, Row, params};
 use thiserror::Error;
 
 use crate::domain::{
     day::SummaryDay,
+    routine::{Routine, RoutineFields},
     task::{CheckedTask, Task},
 };
-use crate::usecase::ports::{RepositoryError, TaskRepository};
+use crate::usecase::ports::{
+    RepositoryError, RoutineRepository, RoutineRepositoryError, TaskRepository,
+};
 
 const MIGRATION_V1: &str = include_str!("migrations/001_init.sql");
-const LATEST_SCHEMA_VERSION: i64 = 1;
+const MIGRATION_V2: &str = include_str!("migrations/002_routines.sql");
+const LATEST_SCHEMA_VERSION: i64 = 2;
 
 pub struct SqliteTaskRepository {
     connection: Mutex<Connection>,
@@ -46,21 +50,23 @@ impl SqliteTaskRepository {
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .map_err(SqliteRepositoryError::Migration)?;
 
-        match version {
-            0 => {
-                let transaction = connection
-                    .transaction()
-                    .map_err(SqliteRepositoryError::Migration)?;
-                transaction
-                    .execute_batch(MIGRATION_V1)
-                    .map_err(SqliteRepositoryError::Migration)?;
-                transaction
-                    .commit()
-                    .map_err(SqliteRepositoryError::Migration)
-            }
-            LATEST_SCHEMA_VERSION => Ok(()),
-            version => Err(SqliteRepositoryError::UnsupportedSchemaVersion(version)),
+        let migrations = match version {
+            0 => &[MIGRATION_V1, MIGRATION_V2][..],
+            1 => &[MIGRATION_V2][..],
+            LATEST_SCHEMA_VERSION => return Ok(()),
+            version => return Err(SqliteRepositoryError::UnsupportedSchemaVersion(version)),
+        };
+        let transaction = connection
+            .transaction()
+            .map_err(SqliteRepositoryError::Migration)?;
+        for migration in migrations {
+            transaction
+                .execute_batch(migration)
+                .map_err(SqliteRepositoryError::Migration)?;
         }
+        transaction
+            .commit()
+            .map_err(SqliteRepositoryError::Migration)
     }
 
     fn connection(&self) -> Result<MutexGuard<'_, Connection>, SqliteRepositoryError> {
@@ -257,6 +263,203 @@ impl SqliteTaskRepository {
             })
             .collect()
     }
+
+    fn list_stored_routines(
+        &self,
+        include_inactive: bool,
+    ) -> Result<Vec<Routine>, RoutineRepositoryError> {
+        let connection = self
+            .connection()
+            .map_err(RoutineRepositoryError::internal)?;
+        let sql = if include_inactive {
+            "SELECT id, interval, time, effort, tool, content, active, created_at, updated_at
+             FROM routines
+             ORDER BY id ASC"
+        } else {
+            "SELECT id, interval, time, effort, tool, content, active, created_at, updated_at
+             FROM routines
+             WHERE active = 1
+             ORDER BY id ASC"
+        };
+        let mut statement = connection
+            .prepare(sql)
+            .map_err(RoutineRepositoryError::internal)?;
+        statement
+            .query_map([], routine_from_row)
+            .map_err(RoutineRepositoryError::internal)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(RoutineRepositoryError::internal)
+    }
+
+    fn load_routine(&self, id: i64) -> Result<Option<Routine>, RoutineRepositoryError> {
+        self.connection()
+            .map_err(RoutineRepositoryError::internal)?
+            .query_row(
+                "SELECT id, interval, time, effort, tool, content, active, created_at, updated_at
+                 FROM routines
+                 WHERE id = ?1",
+                [id],
+                routine_from_row,
+            )
+            .optional()
+            .map_err(RoutineRepositoryError::internal)
+    }
+
+    fn save_routine(
+        &self,
+        fields: &RoutineFields,
+        timestamp: &str,
+    ) -> Result<Routine, RoutineRepositoryError> {
+        let connection = self
+            .connection()
+            .map_err(RoutineRepositoryError::internal)?;
+        connection
+            .execute(
+                "INSERT INTO routines (
+                    interval, time, effort, tool, content, active, created_at, updated_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, ?6)",
+                params![
+                    fields.interval,
+                    fields.time,
+                    fields.effort,
+                    fields.tool,
+                    fields.content,
+                    timestamp
+                ],
+            )
+            .map_err(map_routine_write_error)?;
+
+        Ok(Routine {
+            id: connection.last_insert_rowid(),
+            interval: fields.interval.clone(),
+            time: fields.time.clone(),
+            effort: fields.effort.clone(),
+            tool: fields.tool.clone(),
+            content: fields.content.clone(),
+            active: true,
+            created_at: timestamp.to_owned(),
+            updated_at: timestamp.to_owned(),
+        })
+    }
+
+    fn replace_routine(
+        &self,
+        id: i64,
+        fields: &RoutineFields,
+        updated_at: &str,
+    ) -> Result<Option<Routine>, RoutineRepositoryError> {
+        let connection = self
+            .connection()
+            .map_err(RoutineRepositoryError::internal)?;
+        let changed = connection
+            .execute(
+                "UPDATE routines
+                 SET interval = ?1,
+                     time = ?2,
+                     effort = ?3,
+                     tool = ?4,
+                     content = ?5,
+                     updated_at = ?6
+                 WHERE id = ?7 AND active = 1",
+                params![
+                    fields.interval,
+                    fields.time,
+                    fields.effort,
+                    fields.tool,
+                    fields.content,
+                    updated_at,
+                    id
+                ],
+            )
+            .map_err(map_routine_write_error)?;
+        if changed == 0 {
+            return Ok(None);
+        }
+
+        connection
+            .query_row(
+                "SELECT id, interval, time, effort, tool, content, active, created_at, updated_at
+                 FROM routines
+                 WHERE id = ?1",
+                [id],
+                routine_from_row,
+            )
+            .map(Some)
+            .map_err(RoutineRepositoryError::internal)
+    }
+
+    fn deactivate_stored_routine(
+        &self,
+        id: i64,
+        updated_at: &str,
+    ) -> Result<Option<Routine>, RoutineRepositoryError> {
+        let connection = self
+            .connection()
+            .map_err(RoutineRepositoryError::internal)?;
+        let changed = connection
+            .execute(
+                "UPDATE routines
+                 SET active = 0, updated_at = ?1
+                 WHERE id = ?2 AND active = 1",
+                params![updated_at, id],
+            )
+            .map_err(RoutineRepositoryError::internal)?;
+        if changed == 0 {
+            return Ok(None);
+        }
+
+        connection
+            .query_row(
+                "SELECT id, interval, time, effort, tool, content, active, created_at, updated_at
+                 FROM routines
+                 WHERE id = ?1",
+                [id],
+                routine_from_row,
+            )
+            .map(Some)
+            .map_err(RoutineRepositoryError::internal)
+    }
+
+    fn active_routine_count(&self) -> Result<usize, RoutineRepositoryError> {
+        let count = self
+            .connection()
+            .map_err(RoutineRepositoryError::internal)?
+            .query_row(
+                "SELECT COUNT(*) FROM routines WHERE active = 1",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .map_err(RoutineRepositoryError::internal)?;
+        usize::try_from(count).map_err(|_| {
+            RoutineRepositoryError::internal(SqliteRepositoryError::InvalidStoredCount(count))
+        })
+    }
+}
+
+fn routine_from_row(row: &Row<'_>) -> rusqlite::Result<Routine> {
+    Ok(Routine {
+        id: row.get(0)?,
+        interval: row.get(1)?,
+        time: row.get(2)?,
+        effort: row.get(3)?,
+        tool: row.get(4)?,
+        content: row.get(5)?,
+        active: row.get(6)?,
+        created_at: row.get(7)?,
+        updated_at: row.get(8)?,
+    })
+}
+
+fn map_routine_write_error(source: rusqlite::Error) -> RoutineRepositoryError {
+    if matches!(
+        &source,
+        rusqlite::Error::SqliteFailure(error, _)
+            if error.extended_code == rusqlite::ffi::SQLITE_CONSTRAINT_UNIQUE
+    ) {
+        RoutineRepositoryError::Conflict
+    } else {
+        RoutineRepositoryError::internal(source)
+    }
 }
 
 impl TaskRepository for SqliteTaskRepository {
@@ -297,6 +500,48 @@ impl TaskRepository for SqliteTaskRepository {
     }
 }
 
+impl RoutineRepository for SqliteTaskRepository {
+    fn list_routines(
+        &self,
+        include_inactive: bool,
+    ) -> Result<Vec<Routine>, RoutineRepositoryError> {
+        self.list_stored_routines(include_inactive)
+    }
+
+    fn get_routine(&self, id: i64) -> Result<Option<Routine>, RoutineRepositoryError> {
+        self.load_routine(id)
+    }
+
+    fn insert_routine(
+        &self,
+        fields: &RoutineFields,
+        timestamp: &str,
+    ) -> Result<Routine, RoutineRepositoryError> {
+        self.save_routine(fields, timestamp)
+    }
+
+    fn update_routine(
+        &self,
+        id: i64,
+        fields: &RoutineFields,
+        updated_at: &str,
+    ) -> Result<Option<Routine>, RoutineRepositoryError> {
+        self.replace_routine(id, fields, updated_at)
+    }
+
+    fn deactivate_routine(
+        &self,
+        id: i64,
+        updated_at: &str,
+    ) -> Result<Option<Routine>, RoutineRepositoryError> {
+        self.deactivate_stored_routine(id, updated_at)
+    }
+
+    fn count_active_routines(&self) -> Result<usize, RoutineRepositoryError> {
+        self.active_routine_count()
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum SqliteRepositoryError {
     #[error("failed to open SQLite database at {}", path.display())]
@@ -328,15 +573,16 @@ pub enum SqliteRepositoryError {
 #[cfg(test)]
 mod tests {
     use chrono::{DateTime, FixedOffset};
-    use rusqlite::Connection;
+    use rusqlite::{Connection, params};
 
-    use super::SqliteTaskRepository;
+    use super::{MIGRATION_V1, SqliteTaskRepository};
     use crate::{
         domain::{
             day::SummaryDay,
+            routine::{Routine, RoutineFields},
             task::{CheckedTask, Task},
         },
-        usecase::ports::TaskRepository,
+        usecase::ports::{RoutineRepository, RoutineRepositoryError, TaskRepository},
     };
 
     fn repository() -> SqliteTaskRepository {
@@ -363,7 +609,7 @@ mod tests {
     }
 
     #[test]
-    fn migrates_schema_to_version_one_on_startup() {
+    fn migrates_new_database_to_version_two_on_startup() {
         let repository = repository();
         let connection = repository
             .connection()
@@ -376,7 +622,8 @@ mod tests {
                 .prepare(
                     "SELECT name
                      FROM sqlite_master
-                     WHERE type = 'table' AND name IN ('task_days', 'task_checks')
+                     WHERE type = 'table'
+                       AND name IN ('routines', 'task_days', 'task_checks')
                      ORDER BY name",
                 )
                 .expect("schema query should prepare");
@@ -386,9 +633,226 @@ mod tests {
                 .collect::<Result<_, _>>()
                 .expect("schema rows should decode")
         };
+        let routine_index_exists: bool = connection
+            .query_row(
+                "SELECT EXISTS(
+                    SELECT 1
+                    FROM sqlite_master
+                    WHERE type = 'index' AND name = 'routines_identity'
+                )",
+                [],
+                |row| row.get(0),
+            )
+            .expect("routine index should be queryable");
 
-        assert_eq!(version, 1);
-        assert_eq!(tables, vec!["task_checks", "task_days"]);
+        assert_eq!(version, 2);
+        assert_eq!(tables, vec!["routines", "task_checks", "task_days"]);
+        assert!(routine_index_exists);
+    }
+
+    #[test]
+    fn migrates_version_one_with_existing_data_without_changing_snapshots() {
+        let connection = Connection::open_in_memory().expect("in-memory SQLite should open");
+        connection
+            .execute_batch(MIGRATION_V1)
+            .expect("version one schema should initialize");
+        connection
+            .execute(
+                "INSERT INTO task_days (
+                    date, task_id, interval, time, effort, tool, content, sort_no
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    "2026-07-26",
+                    "existing-task",
+                    "毎日",
+                    "7:30",
+                    "10分",
+                    "slack",
+                    "既存データ",
+                    0
+                ],
+            )
+            .expect("existing task day should insert");
+        connection
+            .execute(
+                "INSERT INTO task_checks (date, task_id, done, checked_at)
+                 VALUES (?1, ?2, ?3, ?4)",
+                params![
+                    "2026-07-26",
+                    "existing-task",
+                    1,
+                    "2026-07-26T08:00:00+09:00"
+                ],
+            )
+            .expect("existing task check should insert");
+
+        let repository = SqliteTaskRepository::from_connection(connection)
+            .expect("version one database should migrate");
+        let connection = repository
+            .connection()
+            .expect("repository connection should lock");
+        let version: i64 = connection
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("schema version should be readable");
+        let stored: (String, String, i64, String) = connection
+            .query_row(
+                "SELECT d.content, d.tool, c.done, c.checked_at
+                 FROM task_days d
+                 JOIN task_checks c
+                   ON c.date = d.date AND c.task_id = d.task_id
+                 WHERE d.date = ?1 AND d.task_id = ?2",
+                params!["2026-07-26", "existing-task"],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .expect("existing snapshot data should remain");
+        let routine_count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM routines", [], |row| row.get(0))
+            .expect("routines should be queryable");
+
+        assert_eq!(version, 2);
+        assert_eq!(
+            stored,
+            (
+                "既存データ".to_owned(),
+                "slack".to_owned(),
+                1,
+                "2026-07-26T08:00:00+09:00".to_owned()
+            )
+        );
+        assert_eq!(routine_count, 0);
+        println!(
+            "migration v1→v2: user_version={version}, existing_task_days=1, \
+             existing_task_checks=1, routines={routine_count}"
+        );
+    }
+
+    fn routine_fields(interval: &str, time: &str, content: &str) -> RoutineFields {
+        RoutineFields {
+            interval: interval.to_owned(),
+            time: time.to_owned(),
+            effort: "10分".to_owned(),
+            tool: "slack".to_owned(),
+            content: content.to_owned(),
+        }
+    }
+
+    #[test]
+    fn inserts_updates_and_logically_deletes_routines() {
+        let repository = repository();
+        let first_fields = routine_fields("毎日", "7:30", "最初");
+        let second_fields = routine_fields("平日", "8:00", "次");
+        let first = repository
+            .insert_routine(&first_fields, "2026-07-27T09:00:00+09:00")
+            .expect("first routine should insert");
+        let second = repository
+            .insert_routine(&second_fields, "2026-07-27T09:01:00+09:00")
+            .expect("second routine should insert");
+
+        assert_eq!(
+            repository
+                .list_routines(false)
+                .expect("active routines should list")
+                .iter()
+                .map(|routine| routine.id)
+                .collect::<Vec<_>>(),
+            vec![first.id, second.id]
+        );
+        assert_eq!(
+            repository
+                .get_routine(first.id)
+                .expect("routine lookup should succeed"),
+            Some(first.clone())
+        );
+        assert_eq!(
+            repository
+                .count_active_routines()
+                .expect("active routines should count"),
+            2
+        );
+
+        let updated_fields = routine_fields("土曜", "9:30", "更新後");
+        let updated = repository
+            .update_routine(first.id, &updated_fields, "2026-07-27T10:00:00+09:00")
+            .expect("routine update should execute")
+            .expect("active routine should update");
+        assert_eq!(
+            updated,
+            Routine {
+                id: first.id,
+                interval: updated_fields.interval,
+                time: updated_fields.time,
+                effort: updated_fields.effort,
+                tool: updated_fields.tool,
+                content: updated_fields.content,
+                active: true,
+                created_at: "2026-07-27T09:00:00+09:00".to_owned(),
+                updated_at: "2026-07-27T10:00:00+09:00".to_owned(),
+            }
+        );
+
+        let deleted = repository
+            .deactivate_routine(first.id, "2026-07-27T11:00:00+09:00")
+            .expect("routine delete should execute")
+            .expect("active routine should deactivate");
+        assert!(!deleted.active);
+        assert_eq!(deleted.updated_at, "2026-07-27T11:00:00+09:00");
+        assert_eq!(
+            repository
+                .list_routines(false)
+                .expect("active routines should list"),
+            vec![second]
+        );
+        assert_eq!(
+            repository
+                .list_routines(true)
+                .expect("all routines should list")
+                .len(),
+            2
+        );
+        assert_eq!(
+            repository
+                .count_active_routines()
+                .expect("active routines should count"),
+            1
+        );
+        assert!(
+            repository
+                .deactivate_routine(first.id, "2026-07-27T12:00:00+09:00")
+                .expect("repeated delete should execute")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn identifies_active_routine_identity_conflicts() {
+        let repository = repository();
+        let identity = routine_fields("毎日", "7:30", "重複");
+        let first = repository
+            .insert_routine(&identity, "2026-07-27T09:00:00+09:00")
+            .expect("first identity should insert");
+
+        assert!(matches!(
+            repository.insert_routine(&identity, "2026-07-27T09:01:00+09:00"),
+            Err(RoutineRepositoryError::Conflict)
+        ));
+
+        let other = repository
+            .insert_routine(
+                &routine_fields("平日", "8:00", "別の行"),
+                "2026-07-27T09:02:00+09:00",
+            )
+            .expect("other routine should insert");
+        assert!(matches!(
+            repository.update_routine(other.id, &identity, "2026-07-27T09:03:00+09:00"),
+            Err(RoutineRepositoryError::Conflict)
+        ));
+
+        repository
+            .deactivate_routine(first.id, "2026-07-27T09:04:00+09:00")
+            .expect("first routine should deactivate");
+        repository
+            .insert_routine(&identity, "2026-07-27T09:05:00+09:00")
+            .expect("inactive identity should not conflict");
     }
 
     #[test]

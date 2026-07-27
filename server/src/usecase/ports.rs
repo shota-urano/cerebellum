@@ -5,6 +5,7 @@ use thiserror::Error;
 
 use crate::domain::{
     day::SummaryDay,
+    routine::{Routine, RoutineFields},
     task::{CheckedTask, Task},
 };
 
@@ -28,6 +29,29 @@ pub trait TaskRepository: Send + Sync {
         start_date: &str,
         end_date: &str,
     ) -> Result<Vec<SummaryDay>, RepositoryError>;
+}
+
+pub trait RoutineRepository: Send + Sync {
+    fn list_routines(&self, include_inactive: bool)
+    -> Result<Vec<Routine>, RoutineRepositoryError>;
+    fn get_routine(&self, id: i64) -> Result<Option<Routine>, RoutineRepositoryError>;
+    fn insert_routine(
+        &self,
+        fields: &RoutineFields,
+        timestamp: &str,
+    ) -> Result<Routine, RoutineRepositoryError>;
+    fn update_routine(
+        &self,
+        id: i64,
+        fields: &RoutineFields,
+        updated_at: &str,
+    ) -> Result<Option<Routine>, RoutineRepositoryError>;
+    fn deactivate_routine(
+        &self,
+        id: i64,
+        updated_at: &str,
+    ) -> Result<Option<Routine>, RoutineRepositoryError>;
+    fn count_active_routines(&self) -> Result<usize, RoutineRepositoryError>;
 }
 
 pub trait Clock: Send + Sync {
@@ -59,6 +83,25 @@ pub struct RepositoryError {
 impl RepositoryError {
     pub fn new(error: impl Error + Send + Sync + 'static) -> Self {
         Self {
+            source: Box::new(error),
+        }
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum RoutineRepositoryError {
+    #[error("an active routine with the same identity already exists")]
+    Conflict,
+    #[error("routine repository failed")]
+    Internal {
+        #[source]
+        source: Box<dyn Error + Send + Sync>,
+    },
+}
+
+impl RoutineRepositoryError {
+    pub fn internal(error: impl Error + Send + Sync + 'static) -> Self {
+        Self::Internal {
             source: Box::new(error),
         }
     }
