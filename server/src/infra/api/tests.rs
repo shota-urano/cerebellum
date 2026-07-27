@@ -1,10 +1,4 @@
-use std::{
-    path::PathBuf,
-    sync::{
-        Arc,
-        atomic::{AtomicUsize, Ordering},
-    },
-};
+use std::{path::PathBuf, sync::Arc};
 
 use axum::{
     body::{Body, to_bytes},
@@ -19,21 +13,15 @@ use super::{AppState, error::ApiError, router};
 use crate::{
     adapters::sqlite_repo::SqliteTaskRepository,
     config::Config,
+    domain::routine::RoutineFields,
     usecase::{
         error::UsecaseError,
         get_day::GetDay,
         get_summary::GetSummary,
-        ports::{Clock, TaskRepository, VaultReader, VaultReaderError},
+        ports::{Clock, RoutineRepository, TaskRepository},
         toggle_check::ToggleCheck,
     },
 };
-
-const ROUTINE_MARKDOWN: &str = r#"
-| 間隔 | 時間 | 実施 | 確認ツール | 内容 |
-| --- | --- | --- | --- | --- |
-| 毎日 | 8:30 | 10分 | slack | daily later |
-| 毎日 | 7:30 | | slack | daily earlier |
-"#;
 
 struct FakeClock;
 
@@ -44,56 +32,57 @@ impl Clock for FakeClock {
     }
 }
 
-struct FakeVaultReader {
-    read_count: AtomicUsize,
-    available: bool,
-}
-
-impl VaultReader for FakeVaultReader {
-    fn read_routine_markdown(&self) -> Result<String, VaultReaderError> {
-        self.read_count.fetch_add(1, Ordering::SeqCst);
-        if self.available {
-            Ok(ROUTINE_MARKDOWN.to_owned())
-        } else {
-            Err(VaultReaderError::new(std::io::Error::other(
-                "routine markdown is unavailable",
-            )))
-        }
-    }
-}
-
 fn test_app() -> axum::Router {
-    test_app_with_vault(true)
+    test_app_with_routines(true)
 }
 
-fn test_app_with_vault(available: bool) -> axum::Router {
-    let vault_reader: Arc<dyn VaultReader> = Arc::new(FakeVaultReader {
-        read_count: AtomicUsize::new(0),
-        available,
-    });
-    let repository: Arc<dyn TaskRepository> = Arc::new(
+fn test_app_with_routines(seed_routines: bool) -> axum::Router {
+    let repository = Arc::new(
         SqliteTaskRepository::open(std::path::Path::new(":memory:"))
             .expect("in-memory SQLite should initialize"),
     );
+    if seed_routines {
+        for fields in [
+            RoutineFields {
+                interval: "毎日".to_owned(),
+                time: "8:30".to_owned(),
+                effort: "10分".to_owned(),
+                tool: "slack".to_owned(),
+                content: "daily later".to_owned(),
+            },
+            RoutineFields {
+                interval: "毎日".to_owned(),
+                time: "7:30".to_owned(),
+                effort: String::new(),
+                tool: "slack".to_owned(),
+                content: "daily earlier".to_owned(),
+            },
+        ] {
+            repository
+                .insert_routine(&fields, "2026-07-24T12:00:00+09:00")
+                .expect("test routine should insert");
+        }
+    }
+    let routine_repository: Arc<dyn RoutineRepository> = repository.clone();
+    let task_repository: Arc<dyn TaskRepository> = repository;
     let clock: Arc<dyn Clock> = Arc::new(FakeClock);
 
     router(Arc::new(AppState {
         get_day: Arc::new(GetDay::new(
-            Arc::clone(&vault_reader),
-            Arc::clone(&repository),
+            Arc::clone(&routine_repository),
+            Arc::clone(&task_repository),
             Arc::clone(&clock),
         )),
         toggle_check: Arc::new(ToggleCheck::new(
-            Arc::clone(&vault_reader),
-            Arc::clone(&repository),
+            Arc::clone(&routine_repository),
+            Arc::clone(&task_repository),
             Arc::clone(&clock),
         )),
-        get_summary: Arc::new(GetSummary::new(Arc::clone(&repository), clock)),
-        vault_reader,
-        task_repository: repository,
+        get_summary: Arc::new(GetSummary::new(Arc::clone(&task_repository), clock)),
+        routine_repository,
+        task_repository,
         config: Arc::new(Config {
             port: 48210,
-            vault_path: PathBuf::from("/unused"),
             db_path: PathBuf::from(":memory:"),
         }),
     }))
@@ -126,22 +115,32 @@ async fn health_is_always_200_and_reports_each_dependency() {
     assert_eq!(
         json_body(healthy_response).await,
         json!({
-            "vault": "ok",
             "db": "ok",
+            "routines": 2,
             "version": env!("CARGO_PKG_VERSION")
         })
     );
 
-    let unavailable_response = call(test_app_with_vault(false), "GET", "/api/health").await;
-    assert_eq!(unavailable_response.status(), StatusCode::OK);
-    assert_eq!(unavailable_response.headers()[CACHE_CONTROL], "no-store");
+    let empty_response = call(test_app_with_routines(false), "GET", "/api/health").await;
+    assert_eq!(empty_response.status(), StatusCode::OK);
+    assert_eq!(empty_response.headers()[CACHE_CONTROL], "no-store");
     assert_eq!(
-        json_body(unavailable_response).await,
+        json_body(empty_response).await,
         json!({
-            "vault": "ng",
             "db": "ok",
+            "routines": 0,
             "version": env!("CARGO_PKG_VERSION")
         })
+    );
+}
+
+#[tokio::test]
+async fn empty_routine_master_serves_a_taskless_today() {
+    let response = call(test_app_with_routines(false), "GET", "/api/days/today").await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        json_body(response).await["progress"],
+        json!({ "done": 0, "total": 0 })
     );
 }
 
@@ -280,13 +279,6 @@ fn every_usecase_error_maps_mechanically_to_the_api_contract() {
             UsecaseError::NotFound("missing".to_owned()),
             StatusCode::NOT_FOUND,
             "not_found",
-        ),
-        (
-            UsecaseError::VaultUnavailable(VaultReaderError::new(std::io::Error::other(
-                "unavailable",
-            ))),
-            StatusCode::SERVICE_UNAVAILABLE,
-            "vault_unavailable",
         ),
         (
             UsecaseError::Internal(Box::new(std::io::Error::other("broken"))),

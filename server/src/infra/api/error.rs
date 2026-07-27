@@ -53,11 +53,6 @@ impl From<UsecaseError> for ApiError {
             error @ UsecaseError::NotFound(_) => {
                 Self::new(StatusCode::NOT_FOUND, "not_found", error.to_string())
             }
-            error @ UsecaseError::VaultUnavailable(_) => Self::new(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "vault_unavailable",
-                error.to_string(),
-            ),
             error @ UsecaseError::Internal(_) => Self::new(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "internal",

@@ -11,32 +11,21 @@ use thiserror::Error;
 /// 実運用の Vault は Google Drive 上にあり、その絶対パスは利用者ごとに異なる
 /// （アカウント名を含む）。**個人を特定できる値をリポジトリに置かない**ため、
 /// 既定値は中立な `$HOME/second-brain` とし、実際の場所は env `CEREBELLUM_VAULT`
-/// で与える（launchd plist に記載する）。未設定で既定値が存在しない場合は
-/// Vault 不能として起動は継続し、該当リクエストのみ 503 になる（docs/specs/06 §3.2・§6）。
+/// または import-routines の `--vault` で与える。
 const DEFAULT_VAULT_RELATIVE_PATH: &str = "second-brain";
 const ROUTINE_RELATIVE_PATH: &str = "80_運用ガイド/人間のルーティン.md";
 
 #[derive(Debug)]
 pub struct Config {
     pub port: u16,
-    pub vault_path: PathBuf,
     pub db_path: PathBuf,
 }
 
 impl Config {
     pub fn from_env(port: u16) -> Result<Self, ConfigError> {
-        let vault_path = Self::resolve_vault_path(None)?;
         let db_path = Self::resolve_db_path()?;
 
-        Ok(Self {
-            port,
-            vault_path,
-            db_path,
-        })
-    }
-
-    pub fn routine_path(&self) -> PathBuf {
-        self.vault_path.join(ROUTINE_RELATIVE_PATH)
+        Ok(Self { port, db_path })
     }
 
     pub fn resolve_vault_path(override_path: Option<PathBuf>) -> Result<PathBuf, ConfigError> {
