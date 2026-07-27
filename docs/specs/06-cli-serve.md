@@ -43,8 +43,15 @@ cerebellum import-routines [--vault <path>] [--dry-run] [--force]
 ### 3.3 静的配信（infra/assets.rs）
 
 - rust-embed `#[folder = "../web/out"]` でバイナリに内蔵
-- パスに一致するファイルがあれば配信（Content-Type は拡張子から）。無ければ `index.html` を返す（SPA フォールバック）。`/api/` 配下は対象外（404 JSON）
-- 静的アセットは `Cache-Control: public, max-age=3600`、`index.html` は `no-cache`
+- **解決順**（先に見つかったものを返す。2026-07-27 明文化）:
+  1. 要求パスに一致するファイル
+  2. `{path}.html`（`next build` は `/history` を `history.html` として出力する）
+  3. `{path}/index.html`
+  4. `index.html`（SPA フォールバック）
+  - 末尾スラッシュは 2・3 の判定前に落とす。`/api/` 配下は対象外（404 JSON）
+  - **2 を飛ばすと `/history`・`/routines` の直リンクが全てトップ画面になる**（2026-07-27 に実機で発覚。Phase 1 から潜在。dev サーバでは Next 側が解決するため露見しなかった）
+- Content-Type は拡張子から決める
+- キャッシュ: `.html` は `no-cache`（ページはビルドごとに中身が変わる）、それ以外の静的アセットは `public, max-age=3600`
 
 ### 3.4 /api/health
 
