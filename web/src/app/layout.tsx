@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { JetBrains_Mono, Noto_Sans_JP } from 'next/font/google';
-import { HudStatus, TabBar } from '@/shared/ui';
+import { HudStatus } from '@/shared/ui';
 import './globals.css';
 
 const mono = JetBrains_Mono({ subsets: ['latin'], weight: ['400', '500', '700'], variable: '--font-jetbrains-mono' });
@@ -34,7 +34,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <HudStatus />
             {children}
           </div>
-          <TabBar />
         </div>
       </body>
     </html>
