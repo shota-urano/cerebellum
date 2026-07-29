@@ -7,7 +7,7 @@
 
 | # | 画面名 | 詳細仕様 | ソース種別 | 素材パス（ルート基準） | 対応spec | 未定の状態 |
 |---|---|---|---|---|---|---|
-| 01 | 共通シェル | [`01-shell.md`](./01-shell.md) | コード | docs/design/reference/nextjs/app/layout.tsx ・ docs/design/reference/nextjs/app/globals.css ・ docs/design/reference/nextjs/components/HudStatus.tsx ・ docs/design/reference/nextjs/components/TabBar.tsx | docs/specs/07-web-foundation.md | なし |
+| 01 | 共通シェル（HUD 行＋ドロワー） | [`01-shell.md`](./01-shell.md) | コード | docs/design/reference/nextjs/app/layout.tsx ・ docs/design/reference/nextjs/app/globals.css ・ docs/design/reference/nextjs/components/HudStatus.tsx （ナビは素材なし・実装が正: web/src/shared/ui/NavDrawer.tsx） | docs/specs/07-web-foundation.md ・ docs/specs/16-web-navigation.md | HUD 右の画面タグが digest / nightshift 未対応 |
 | 02 | 今日（消し込み） | [`02-today.md`](./02-today.md) | コード | docs/design/reference/nextjs/app/page.tsx ・ docs/design/reference/nextjs/components/HeaderPanel.tsx ・ docs/design/reference/nextjs/components/SegmentBar.tsx ・ docs/design/reference/nextjs/components/TaskList.tsx ・ docs/design/reference/nextjs/components/TaskRow.tsx ・ docs/design/reference/nextjs/components/CheckRing.tsx ・ docs/design/reference/nextjs/components/AllClear.tsx ・ docs/design/reference/nextjs/components/EmptyState.tsx ・ docs/design/reference/nextjs/components/ErrorBanner.tsx ・ docs/design/reference/nextjs/lib/data.ts ・ docs/design/reference/nextjs/lib/theme.ts | docs/specs/08-web-today.md | ロード中スケルトン（素材に無し） |
 | 03 | 履歴（読み取り専用＋サマリ） | [`03-history.md`](./03-history.md) | コード | docs/design/reference/nextjs/app/history/page.tsx ・ docs/design/reference/nextjs/components/DateNav.tsx ・ docs/design/reference/nextjs/components/WeekSummary.tsx ・ docs/design/reference/nextjs/components/TaskList.tsx ・ docs/design/reference/nextjs/components/TaskRow.tsx ・ docs/design/reference/nextjs/components/CheckRing.tsx ・ docs/design/reference/nextjs/components/EmptyState.tsx ・ docs/design/reference/nextjs/lib/data.ts ・ docs/design/reference/nextjs/lib/theme.ts | docs/specs/09-web-history.md | ロード中スケルトン（素材に無し） |
 | 04 | ルーティン（マスタ編集） | 専用の詳細仕様なし（実装が正。docs/specs/10-web-routines.md が画面仕様） | 素材なし（新規画面） | 流用元: web/src/features/day/components/ ・ web/src/features/history/components/ ・ docs/design/system/01-tokens.md | docs/specs/10-web-routines.md | なし |
@@ -32,5 +32,5 @@
 
 - 今日画面 = specs 08、履歴画面 = specs 09、シェル = specs 07、ルーティン画面 = specs 10 に対応。**specs に無い画面は無い**
 - ルーティン画面（04）だけはプロトタイプが無く、**既存2画面の実装とトークンから起こした**（2026-07-27 判断。docs/specs/10-web-routines.md §8）。判定の正はプロトタイプではなく既存実装との一貫性
-- プロトタイプが specs に無い要素を追加している（採用として仕様化済み）: HUD ステータス行・下部タブバー（01）、ALL CLEAR バナー・TASKS リストヘッダ・PROGRESS/REMAINING 行（02）、サマリ行タップでその日へ移動（03）。specs 側への追記は要確認リスト参照
+- プロトタイプが specs に無い要素を追加している（採用として仕様化済み）: HUD ステータス行・~~下部タブバー~~（01。タブバーは 2026-07-29 に廃止し、ヘッダーのハンバーガー＋ドロワーへ移行。docs/specs/16-web-navigation.md）、ALL CLEAR バナー・TASKS リストヘッダ・PROGRESS/REMAINING 行（02）、サマリ行タップでその日へ移動（03）。specs 側への追記は要確認リスト参照
 - ~~エラーバナー文言は「Vault が読み取れません。同期完了後に自動で再試行します」~~ → **廃止**（2026-07-27。マスタ SQLite 移管で 503 `vault_unavailable` が無くなったため。現在はサーバーの `message` をそのまま表示する。docs/specs/07-web-foundation.md §6）
