@@ -27,6 +27,7 @@ Rust（axum）と Next.js（`shared/api/types.ts` に手動同期）が共有す
 | POST | `/api/harness/proposals` | ハーネス取り込み提案を日単位で取り込む | [17](./17-harness-approval.md) |
 | GET | `/api/harness/proposals?date={date}` | その日のハーネス取り込み提案。`date`=`today` 可・省略時は `today` | [17](./17-harness-approval.md) |
 | GET | `/api/harness/proposals?status=approved&applyState=pending` | 日付を問わず承認済み・適用待ちの提案を古い順で取得 | [17](./17-harness-approval.md) |
+| GET | `/api/harness/proposals?applyState=failed` | 日付を問わず適用失敗の提案を新しい順で取得（画面の「未処理の失敗」枠。2026-07-29 追加） | [17](./17-harness-approval.md) |
 | POST | `/api/harness/proposals/{id}/decision` | ハーネス取り込み提案への承認意思を記録 | [17](./17-harness-approval.md) |
 | POST | `/api/harness/proposals/{id}/apply-result` | ハーネス取り込み提案の適用結果を書き戻す | [17](./17-harness-approval.md) |
 | GET | `/api/health` | 自己診断（DB 可否・マスタ件数） | [06](./06-cli-serve.md) |
@@ -172,7 +173,7 @@ Rust（axum）と Next.js（`shared/api/types.ts` に手動同期）が共有す
 - `POST /api/digests` の検証（400 `bad_request`）: `date` が `%Y-%m-%d` でも `today` でもない ／ `body` が空 ／ `body` が 64KiB 超
 - ダイジェストが未受信の日は **404 にせず** `sections: []` を 200 で返す
 - `POST /api/harness/proposals` の検証（400 `bad_request`）: 詳細は [17](./17-harness-approval.md) §3.1〜§3.2。body は 512KiB 以下、`proposals` は1〜30件、`detailMd` は1件128KiB以下。`adopt` / `experiment` は `challengeVerdict` 必須
-- ハーネス一覧 GET のクエリは、`date` だけ（省略時 `today`）または `status=approved&applyState=pending` のどちらか。未知パラメータ・混在・値違い・適用待ち条件の片方欠落など、その他は理由文字列つきの 400 `bad_request`
+- ハーネス一覧 GET のクエリは、`date` だけ（省略時 `today`）／`status=approved&applyState=pending`／`applyState=failed` の**3形のみ**（2026-07-29 に failed 形を追加）。未知パラメータ・混在・値違い・条件の片方欠落など、その他は理由文字列つきの 400 `bad_request`
 - ハーネスの decision / apply-result の状態遷移検証は [17](./17-harness-approval.md) §3.3〜§3.4。不正な遷移は 400 `bad_request`
 - ハーネス提案が未着の日は **404 にせず** `receivedAt: null`・`proposals: []` を 200 で返す
 - 過去日でスナップショットが無い日: `tasks: []`・`progress: {done:0,total:0}`・`readonly:true` を 200 で返し、フロントが「記録なし」表示にする
@@ -190,7 +191,7 @@ Rust（axum）と Next.js（`shared/api/types.ts` に手動同期）が共有す
 | 400 | `bad_request` | date が `%Y-%m-%d` でも `today` でもない／`days` が正整数でない／ルーティン・ハーネスの入力検証違反またはハーネスの不正な状態遷移（§3） |
 | 403 | `readonly_day` | 過去日への書き込み |
 | 404 | `not_found` | 未知の taskId／未知の routine id／未知の harness proposal id／未知のパス（API 配下） |
-| 409 | `conflict` | 間隔・時刻・内容が既存の有効な行と重複（`routines_identity` 違反）／`status` が `proposed` 以外（`approved` / `rejected` / `killed`）の行が1件でもある日へのハーネス提案再送 |
+| 409 | `conflict` | 間隔・時刻・内容が既存の有効な行と重複（`routines_identity` 違反）／`approved` / `rejected` または `apply_state ≠ pending` の行が1件でもある日へのハーネス提案再送（`killed`・`proposed` のみの日は置換可・2026-07-29 改訂） |
 | 500 | `internal` | DB 障害ほか予期しないエラー |
 
 `vault_unavailable`（503）は**廃止**した。マスタが SQLite に移り、通常運用で Vault を読まなくなったため（2026-07-27）。md からの取り込みは CLI の `import-routines` のみで、失敗はプロセスの終了コードで返す（[`06-cli-serve.md`](./06-cli-serve.md)）。
