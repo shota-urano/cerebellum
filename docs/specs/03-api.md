@@ -28,6 +28,12 @@ Rust（axum）と Next.js（`shared/api/types.ts` に手動同期）が共有す
 | GET | `/api/learning/sets/{date}` | その日の学習セット。`{date}`=`today` 可 | [14](./14-learning.md) |
 | POST | `/api/learning/sets/{date}/result` | その日の自己採点・感想を記録。`{date}`=`today` 可 | [14](./14-learning.md) |
 | GET | `/api/learning/sets/{date}/result` | 記録済みの自己採点・感想を取得。`{date}`=`today` 可 | [14](./14-learning.md) |
+| POST | `/api/harness/proposals` | ハーネス取り込み提案を日単位で取り込む | [17](./17-harness-approval.md) |
+| GET | `/api/harness/proposals?date={date}` | その日のハーネス取り込み提案。`date`=`today` 可・省略時は `today` | [17](./17-harness-approval.md) |
+| GET | `/api/harness/proposals?status=approved&applyState=pending` | 日付を問わず承認済み・適用待ちの提案を古い順で取得 | [17](./17-harness-approval.md) |
+| GET | `/api/harness/proposals?applyState=failed` | 日付を問わず適用失敗の提案を新しい順で取得（画面の「未処理の失敗」枠。2026-07-29 追加） | [17](./17-harness-approval.md) |
+| POST | `/api/harness/proposals/{id}/decision` | ハーネス取り込み提案への承認意思を記録 | [17](./17-harness-approval.md) |
+| POST | `/api/harness/proposals/{id}/apply-result` | ハーネス取り込み提案の適用結果を書き戻す | [17](./17-harness-approval.md) |
 | GET | `/api/health` | 自己診断（DB 可否・マスタ件数） | [06](./06-cli-serve.md) |
 | GET | 上記以外 | 静的アセット配信＋SPA フォールバック | [06](./06-cli-serve.md) |
 
@@ -152,6 +158,68 @@ Rust（axum）と Next.js（`shared/api/types.ts` に手動同期）が共有す
 
 // GET /api/learning/sets/2026-07-29/result   （"today" も可）
 // → 200（POST のレスポンスと同形）。未記録なら 404
+// POST /api/harness/proposals
+// kind 省略時は "daily"。同じ date への再送は、その日の全行が proposed の場合だけ一括置換
+{
+  "date": "2026-07-29",               // "today" も可
+  "kind": "daily",                    // daily | prune | model_switch
+  "proposals": [                      // 1〜30件
+    {
+      "slug": "検索状態外置き",
+      "insightName": "検索状態のハーネス外置きで20Bが長期検索でフロンティア級に届く",
+      "verdict": "experiment",         // adopt | experiment | killed
+      "category": "⑥実験（新機軸）",  // killed は null 可
+      "summary": "AIに全部覚えさせず外にメモ帳を置く方式を試す",
+      "challengeVerdict": "weaken",   // hold | weaken | refute。killed は null 可
+      "challengeNote": "合格ラインを数字で明確にした",
+      "detailPath": "40_Projects/harness/判定/2026-07-29-検索状態外置き.md",
+      "detailMd": "# 判定\n\n全文"
+    }
+  ]
+}
+// → 200。GET /api/harness/proposals?date=2026-07-29 も同じ形
+{
+  "date": "2026-07-29",
+  "receivedAt": "2026-07-29T06:40:00+09:00",
+  "proposals": [
+    {
+      "id": 1,
+      "date": "2026-07-29",
+      "kind": "daily",
+      "slug": "検索状態外置き",
+      "insightName": "検索状態のハーネス外置きで20Bが長期検索でフロンティア級に届く",
+      "verdict": "experiment",
+      "category": "⑥実験（新機軸）",
+      "summary": "AIに全部覚えさせず外にメモ帳を置く方式を試す",
+      "challengeVerdict": "weaken",
+      "challengeNote": "合格ラインを数字で明確にした",
+      "detailPath": "40_Projects/harness/判定/2026-07-29-検索状態外置き.md",
+      "detailMd": "# 判定\n\n全文",
+      "status": "proposed",            // proposed | approved | rejected | killed
+      "decidedAt": null,
+      "applyState": "pending",         // pending | applied | failed
+      "appliedAt": null,
+      "error": null,
+      "snapshotPath": null
+    }
+  ]
+}
+// 未着日は 200 { "date": "...", "receivedAt": null, "proposals": [] }
+
+// GET /api/harness/proposals?status=approved&applyState=pending
+// → 200。日付昇順、同日内 id 昇順
+{ "proposals": [ { /* 上記 proposal と同形 */ } ] }
+
+// POST /api/harness/proposals/{id}/decision
+{ "status": "approved" }              // proposed | approved | rejected
+// → 200
+{ "proposal": { /* 上記 proposal と同形 */ } }
+
+// POST /api/harness/proposals/{id}/apply-result
+{ "state": "applied", "snapshotPath": "40_Projects/harness/archive/2026-07-30-検索状態外置き/" }
+// failed のとき: { "state": "failed", "error": "失敗理由" }
+// → 200
+{ "proposal": { /* 上記 proposal と同形 */ } }
 
 // GET /api/health
 { "db": "ok", "routines": 13, "version": "0.1.0" }
@@ -168,6 +236,10 @@ Rust（axum）と Next.js（`shared/api/types.ts` に手動同期）が共有す
 - ダイジェストが未受信の日は **404 にせず** `sections: []` を 200 で返す
 - 学習セットが未取り込みの日は 404 `not_found`
 - 学習成績が未記録の日は 404 `not_found`
+- `POST /api/harness/proposals` の検証（400 `bad_request`）: 詳細は [17](./17-harness-approval.md) §3.1〜§3.2。body は 512KiB 以下、`proposals` は1〜30件、`detailMd` は1件128KiB以下。`adopt` / `experiment` は `challengeVerdict` 必須
+- ハーネス一覧 GET のクエリは、`date` だけ（省略時 `today`）／`status=approved&applyState=pending`／`applyState=failed` の**3形のみ**（2026-07-29 に failed 形を追加）。未知パラメータ・混在・値違い・条件の片方欠落など、その他は理由文字列つきの 400 `bad_request`
+- ハーネスの decision / apply-result の状態遷移検証は [17](./17-harness-approval.md) §3.3〜§3.4。不正な遷移は 400 `bad_request`
+- ハーネス提案が未着の日は **404 にせず** `receivedAt: null`・`proposals: []` を 200 で返す
 - 過去日でスナップショットが無い日: `tasks: []`・`progress: {done:0,total:0}`・`readonly:true` を 200 で返し、フロントが「記録なし」表示にする
 
 ## 4. エラーレスポンス（確定形）
@@ -184,6 +256,10 @@ Rust（axum）と Next.js（`shared/api/types.ts` に手動同期）が共有す
 | 403 | `readonly_day` | 過去日への書き込み |
 | 404 | `not_found` | 未知の taskId／未知の routine id／未取り込みの学習セット date／未記録の学習成績 date／未知のパス（API 配下） |
 | 409 | `conflict` | 間隔・時刻・内容が既存の有効な行と重複（`routines_identity` 違反。task_id が衝突するため） |
+| 400 | `bad_request` | date が `%Y-%m-%d` でも `today` でもない／`days` が正整数でない／ルーティン・ハーネスの入力検証違反またはハーネスの不正な状態遷移（§3） |
+| 403 | `readonly_day` | 過去日への書き込み |
+| 404 | `not_found` | 未知の taskId／未知の routine id／未知の harness proposal id／未知のパス（API 配下） |
+| 409 | `conflict` | 間隔・時刻・内容が既存の有効な行と重複（`routines_identity` 違反）／`approved` / `rejected` または `apply_state ≠ pending` の行が1件でもある日へのハーネス提案再送（`killed`・`proposed` のみの日は置換可・2026-07-29 改訂） |
 | 500 | `internal` | DB 障害ほか予期しないエラー |
 
 `vault_unavailable`（503）は**廃止**した。マスタが SQLite に移り、通常運用で Vault を読まなくなったため（2026-07-27）。md からの取り込みは CLI の `import-routines` のみで、失敗はプロセスの終了コードで返す（[`06-cli-serve.md`](./06-cli-serve.md)）。

@@ -30,25 +30,7 @@ second-brain の `night-harness` が毎朝出す「ハーネス取り込み判�
 
 ### 3.1 提案 JSON の形
 
-```json
-{
-  "date": "2026-07-29",
-  "kind": "daily",
-  "proposals": [
-    {
-      "slug": "検索状態外置き",
-      "insightName": "検索状態のハーネス外置きで20Bが長期検索でフロンティア級に届く",
-      "verdict": "experiment",
-      "category": "⑥実験（新機軸）",
-      "summary": "Vaultを調べるとき、AIに全部覚えさせるのをやめて外にメモ帳を置く方式を試す",
-      "challengeVerdict": "weaken",
-      "challengeNote": "重複は無いが合格ラインが曖昧だったので、3問中2問・再現率+20%と数字を入れさせた",
-      "detailPath": "40_Projects/harness/判定/2026-07-29-検索状態外置き.md",
-      "detailMd": "...(判定文の全文 markdown)..."
-    }
-  ]
-}
-```
+提案の具体的な JSON 契約（リクエスト・レスポンスのフィールド、値、null 可否）は [`03-api.md`](./03-api.md) §3 を正本とする。本節には検証規則と各フィールドの処理上の意味だけを定める。
 
 - 必須: `date`・`proposals[]`（1〜30件、各 `slug`・`insightName`・`verdict`・`summary`・`detailMd`）
 - `kind` は `daily`（毎朝の取り込み判定・省略時これ）| `prune`（月次の資産剪定）| `model_switch`（モデル乗り換え時の補助輪点検）。**3モードはどれも「提案 → 承認 → 適用」で形が同じなので同じテーブルに載せる**。件数上限が30件なのは剪定がアーカイブ候補を十数件出すため
@@ -65,15 +47,13 @@ second-brain の `night-harness` が毎朝出す「ハーネス取り込み判�
 
 1. `date` は `%Y-%m-%d` または `today`（`Clock` で解決）。それ以外は `bad_request`
 2. body はサイズ上限 512KiB（`detailMd` は1件 128KiB まで）。必須欠落・`proposals` 空・`slug` 重複は `bad_request`——**崩れた入力は保存しない**（学習 [`14`](./14-learning.md) §3.2 と同じ判断。承認は構造が本体であり、壊れたまま出すと誤承認を招く）
-3. 同じ `date` への再送は**その日の行をまとめて置換**（DELETE→INSERT を1トランザクション）。ただし **`status` が `proposed` 以外の行が1件でもあれば `conflict`（409）で拒否**——承認済み・適用済みの意思を再送で消さないため
+3. 同じ `date` への再送は**その日の行をまとめて置換**（DELETE→INSERT を1トランザクション）。ただし **人間の意思が付いた行（`status` が `approved` / `rejected`）または適用が動いた行（`apply_state ≠ pending`）が1件でもあれば `conflict`（409）で拒否**——守るのは人間の承認・却下と機械の適用結果だけ。**`killed`（機械の見送り判定）は保護対象にしない**（killed はほぼ毎日含まれるため、保護すると再生成・リトライの再送が常に 409 になる——2026-07-29 改訂。旧仕様は `status ≠ proposed` 全部を保護していた）
 4. 取り込み時の初期状態: `verdict` が `killed` の行は `status = "killed"`、それ以外は `status = "proposed"`。`apply_state` は全行 `pending`
 5. `received_at` は `Clock`
 
 ### 3.3 承認の記録（save_decision）
 
-```json
-{ "status": "approved" }
-```
+`POST /api/harness/proposals/{id}/decision` のリクエスト・レスポンス DTO は [`03-api.md`](./03-api.md) §3 を正本とする。
 
 1. `status` は `approved` | `rejected` | `proposed`（**取り消し＝`proposed` に戻す**。誤タップの救済路。翌朝の適用までは何度でも変更できる）
 2. `status = "killed"` の行への decision は `bad_request`（見送り判定は人間の承認対象ではない・表示のみ）
@@ -84,12 +64,11 @@ second-brain の `night-harness` が毎朝出す「ハーネス取り込み判�
 
 **読み出し**: `GET /api/harness/proposals?status=approved&applyState=pending` が、日付を問わず適用待ちの行を古い順に返す。日付で絞らないのは、**承認した翌朝に適用される（＝別日の行を拾う）のが正常動作**だから。
 
+**失敗の読み出し**: `GET /api/harness/proposals?applyState=failed` が、日付を問わず適用失敗の行を**新しい順**に返す（2026-07-29 追加）。画面の「未処理の失敗」枠（[`18`](./18-web-harness.md) §3.3——失敗は日をまたいでも人間が気づくまで出し続ける）の取得元。失敗行が `failed → applied` へ書き戻されれば自然に消える。
+
 **書き戻し**: `POST /api/harness/proposals/{id}/apply-result`
 
-```json
-{ "state": "applied", "snapshotPath": "40_Projects/harness/archive/2026-07-30-検索状態外置き/" }
-{ "state": "failed",  "error": "state.py の配置先が既に存在し上書きを避けて中断" }
-```
+リクエスト・レスポンス DTO は [`03-api.md`](./03-api.md) §3 を正本とする。
 
 1. `state` は `applied` | `failed`。`failed` のとき `error`（≤1000文字）必須
 2. `status = "approved"` 以外の行への書き戻しは `bad_request`
@@ -124,7 +103,7 @@ second-brain の `night-harness` が毎朝出す「ハーネス取り込み判�
 | 事象 | 応答 |
 |---|---|
 | date 不正・body 検証 NG・不正な状態遷移 | 400 `bad_request`（理由文字列つき） |
-| 承認済み・適用済みがある日への再 POST | 409 `conflict` |
+| `approved` / `rejected` の行、または `apply_state ≠ pending` の行が1件でもある日への再 POST（`killed`・`proposed` のみの日は置換可） | 409 `conflict` |
 | 存在しない id への decision / apply-result | 404 `not_found` |
 | 未着の date への一覧 GET | **200**（`receivedAt: null` ・ `proposals: []`。§3.5） |
 
@@ -152,11 +131,13 @@ second-brain の `night-harness` が毎朝出す「ハーネス取り込み判�
 
 ## 実装単位
 
-- [ ] [Backend] migration `005_harness.sql`（`harness_proposals`・`user_version=5`。v4 は学習 [`14`](./14-learning.md)）＋ `02-data-model.md` への追記
+- [ ] [Backend] 2026-07-29 改訂の追従: 再送 409 条件の変更（killed・proposed のみの日は置換可）＋ `GET ?applyState=failed`（日付問わず・新しい順）の追加
+  - 受け入れ基準: テストが通る——killed のみ／killed+proposed の日への再送が置換成功・approved / rejected / apply_state≠pending を含む日は 409・`?applyState=failed` が日付をまたいで新しい順に返る・failed→applied 書き戻し後は failed 一覧から消える・クエリ許可形（date／approved&pending／applyState=failed の3形・他は400）のテスト更新。`make verify` PASS
+- [x] [Backend] migration `005_harness.sql`（`harness_proposals`・`user_version=5`。v4 は学習 [`14`](./14-learning.md)）＋ `02-data-model.md` への追記（2026-07-29 完了・PR #18）
   - 受け入れ基準: 学習 migration 適用済みの DB（user_version=4）に migration が適用できるテストと、`UNIQUE(date, slug)` 違反が検知されるテストが通る。`make verify` PASS
-- [ ] [Backend] `domain/harness.rs`（提案・状態遷移の検証。I/O 依存ゼロ）
+- [x] [Backend] `domain/harness.rs`（提案・状態遷移の検証。I/O 依存ゼロ）
   - 受け入れ基準: 検証ルールのテストが通る——必須欠落・`proposals` 空・`slug` 重複・サイズ超過（512KiB / detailMd 128KiB）の拒否、**`verdict` が `adopt`/`experiment` で `challengeVerdict` 欠落の拒否**、`killed` 行への decision 拒否、`apply_state ≠ pending` 行への decision 拒否、`status ≠ approved` 行への apply-result 拒否、`proposed ⇄ approved / rejected` の往復可。`make verify` PASS
-- [ ] [Backend] `usecase/manage_harness.rs`（取り込み・承認記録・適用待ち抽出・結果書き戻し）
+- [x] [Backend] `usecase/manage_harness.rs`（取り込み・承認記録・適用待ち抽出・結果書き戻し）（2026-07-29 完了・PR #19）
   - 受け入れ基準: テストが通る——同一 date 再送の一括置換（1トランザクション）／`status ≠ proposed` の行がある日への再送 409／`killed` は取り込み時に `status=killed`／適用待ち抽出が日付を問わず古い順／`failed` → `applied` の再送上書き。`make verify` PASS
-- [ ] [Backend] `infra/api` に5エンドポイント追加＋ `03-api.md` への追記
+- [x] [Backend] `infra/api` に5エンドポイント追加＋ `03-api.md` への追記（2026-07-29 完了・PR #19）
   - 受け入れ基準: HTTP 契約の結合テストが通る——取り込み→一覧→decision→適用待ち抽出→apply-result の一連、エラー表（400/404/409）、未着日の `GET ?date=today` が 200 で `receivedAt: null`・`proposals: []`。`make verify` PASS
