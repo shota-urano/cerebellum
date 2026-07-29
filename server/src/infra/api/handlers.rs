@@ -2,17 +2,22 @@ use std::sync::Arc;
 
 use axum::{
     Json,
+    body::{Body, to_bytes},
     extract::{
-        Path, Query, State,
+        Path, Query, Request, State,
         rejection::{JsonRejection, PathRejection, QueryRejection},
     },
 };
 use serde::Deserialize;
 
+use crate::domain::harness::MAX_PROPOSAL_BODY_BYTES;
+
 use super::{
     AppState,
     dto::{
-        DayDto, DigestDto, DigestInputDto, DigestStoredDto, HealthDto, RoutineInputDto,
+        DayDto, DigestDto, DigestInputDto, DigestStoredDto, HarnessApplyResultInputDto,
+        HarnessDecisionInputDto, HarnessProposalBatchInputDto, HarnessProposalListDto,
+        HarnessProposalResponseDto, HarnessProposalsDto, HealthDto, RoutineInputDto,
         RoutineResponseDto, RoutinesDto, SummaryDto,
     },
     error::ApiError,
@@ -156,6 +161,88 @@ pub(super) async fn get_digest(
     Ok(Json(view.into()))
 }
 
+pub(super) async fn save_harness_proposals(
+    State(state): State<Arc<AppState>>,
+    request: Request,
+) -> Result<Json<HarnessProposalListDto>, ApiError> {
+    let body = read_harness_body(request.into_body()).await?;
+    let input = serde_json::from_slice::<HarnessProposalBatchInputDto>(&body)
+        .map_err(|error| ApiError::bad_request(error.to_string()))?;
+    let body_size = body.len();
+    let usecase = Arc::clone(&state.manage_harness);
+    let proposals =
+        tokio::task::spawn_blocking(move || usecase.save_proposals(input.into(), body_size))
+            .await
+            .map_err(ApiError::from_join)??;
+
+    Ok(Json(proposals.into()))
+}
+
+pub(super) async fn get_harness_proposals(
+    State(state): State<Arc<AppState>>,
+    query: Result<Query<HarnessProposalsQuery>, QueryRejection>,
+) -> Result<Json<HarnessProposalsResponse>, ApiError> {
+    let Query(query) = query.map_err(|error| ApiError::bad_request(error.to_string()))?;
+    let usecase = Arc::clone(&state.manage_harness);
+
+    match (query.date, query.status, query.apply_state) {
+        (date, None, None) => {
+            let date = date.unwrap_or_else(|| "today".to_owned());
+            let proposals = tokio::task::spawn_blocking(move || usecase.list_proposals(&date))
+                .await
+                .map_err(ApiError::from_join)??;
+            Ok(Json(HarnessProposalsResponse::ByDate(proposals.into())))
+        }
+        (None, Some(status), Some(apply_state))
+            if status == "approved" && apply_state == "pending" =>
+        {
+            let proposals = tokio::task::spawn_blocking(move || usecase.pending_approved())
+                .await
+                .map_err(ApiError::from_join)??;
+            Ok(Json(HarnessProposalsResponse::Pending(proposals.into())))
+        }
+        _ => Err(ApiError::bad_request(
+            "query must contain date only, or status=approved&applyState=pending",
+        )),
+    }
+}
+
+pub(super) async fn save_harness_decision(
+    State(state): State<Arc<AppState>>,
+    path: Result<Path<i64>, PathRejection>,
+    body: Result<Json<HarnessDecisionInputDto>, JsonRejection>,
+) -> Result<Json<HarnessProposalResponseDto>, ApiError> {
+    let Path(id) = path.map_err(|error| ApiError::bad_request(error.to_string()))?;
+    let Json(input) = body.map_err(|error| ApiError::bad_request(error.to_string()))?;
+    let usecase = Arc::clone(&state.manage_harness);
+    let proposal = tokio::task::spawn_blocking(move || usecase.save_decision(id, &input.status))
+        .await
+        .map_err(ApiError::from_join)??;
+
+    Ok(Json(proposal.into()))
+}
+
+pub(super) async fn save_harness_apply_result(
+    State(state): State<Arc<AppState>>,
+    path: Result<Path<i64>, PathRejection>,
+    body: Result<Json<HarnessApplyResultInputDto>, JsonRejection>,
+) -> Result<Json<HarnessProposalResponseDto>, ApiError> {
+    let Path(id) = path.map_err(|error| ApiError::bad_request(error.to_string()))?;
+    let Json(input) = body.map_err(|error| ApiError::bad_request(error.to_string()))?;
+    let usecase = Arc::clone(&state.manage_harness);
+    let proposal = tokio::task::spawn_blocking(move || usecase.save_apply_result(id, input.into()))
+        .await
+        .map_err(ApiError::from_join)??;
+
+    Ok(Json(proposal.into()))
+}
+
+async fn read_harness_body(body: Body) -> Result<axum::body::Bytes, ApiError> {
+    to_bytes(body, MAX_PROPOSAL_BODY_BYTES + 1)
+        .await
+        .map_err(|error| ApiError::bad_request(error.to_string()))
+}
+
 pub(super) async fn not_found() -> ApiError {
     ApiError::not_found("API path not found")
 }
@@ -169,4 +256,19 @@ pub(super) struct SummaryQuery {
 #[serde(default, rename_all = "camelCase")]
 pub(super) struct RoutinesQuery {
     include_inactive: bool,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub(super) struct HarnessProposalsQuery {
+    date: Option<String>,
+    status: Option<String>,
+    apply_state: Option<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(untagged)]
+pub(super) enum HarnessProposalsResponse {
+    ByDate(HarnessProposalListDto),
+    Pending(HarnessProposalsDto),
 }
