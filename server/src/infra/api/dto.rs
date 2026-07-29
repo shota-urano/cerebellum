@@ -3,12 +3,15 @@ use serde::{Deserialize, Serialize};
 use crate::domain::{
     day::{DaySnapshot, Progress, SummaryDay},
     digest::{Block, Section},
-    learning::{LearningProblem, LearningProblemInput, LearningSetInput},
+    learning::{
+        LearningGrade, LearningGradeInput, LearningGradeValue, LearningProblem,
+        LearningProblemInput, LearningResultInput, LearningSetInput,
+    },
     routine::{Routine, RoutineFields},
     task::CheckedTask,
 };
 use crate::usecase::manage_digest::{DigestView, StoredAt};
-use crate::usecase::manage_learning::{LearningSetView, LearningStoredAt};
+use crate::usecase::manage_learning::{LearningResultView, LearningSetView, LearningStoredAt};
 
 #[derive(Debug, Serialize)]
 pub(super) struct HealthDto {
@@ -416,6 +419,76 @@ impl From<LearningProblem> for LearningProblemDto {
             question_md: problem.question_md,
             answer_md: problem.answer_md,
             workdir: problem.workdir,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct LearningResultInputDto {
+    grades: Option<Vec<LearningGradeInputDto>>,
+    feeling: Option<String>,
+}
+
+impl From<LearningResultInputDto> for LearningResultInput {
+    fn from(input: LearningResultInputDto) -> Self {
+        Self {
+            grades: input
+                .grades
+                .map(|grades| grades.into_iter().map(Into::into).collect()),
+            feeling: input.feeling,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LearningGradeInputDto {
+    no: Option<u32>,
+    grade: Option<String>,
+}
+
+impl From<LearningGradeInputDto> for LearningGradeInput {
+    fn from(input: LearningGradeInputDto) -> Self {
+        Self {
+            no: input.no,
+            grade: input.grade,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct LearningResultDto {
+    date: String,
+    grades: Vec<LearningGradeDto>,
+    feeling: String,
+    completed_at: String,
+}
+
+impl From<LearningResultView> for LearningResultDto {
+    fn from(view: LearningResultView) -> Self {
+        Self {
+            date: view.date,
+            grades: view.result.grades.into_iter().map(Into::into).collect(),
+            feeling: view.result.feeling,
+            completed_at: view.completed_at,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LearningGradeDto {
+    no: u32,
+    grade: LearningGradeValue,
+}
+
+impl From<LearningGrade> for LearningGradeDto {
+    fn from(grade: LearningGrade) -> Self {
+        Self {
+            no: grade.no,
+            grade: grade.grade,
         }
     }
 }

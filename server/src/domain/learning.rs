@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 pub const MAX_LEARNING_SET_BYTES: usize = 256 * 1024;
+pub const MAX_LEARNING_FEELING_CHARS: usize = 2000;
 
 const DEFAULT_SOURCE: &str = "theme";
 const DEFAULT_KIND: &str = "quiz";
@@ -44,6 +45,38 @@ pub struct LearningProblemInput {
     pub workdir: Option<String>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct LearningResult {
+    pub grades: Vec<LearningGrade>,
+    pub feeling: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct LearningGrade {
+    pub no: u32,
+    pub grade: LearningGradeValue,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LearningGradeValue {
+    O,
+    D,
+    X,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct LearningResultInput {
+    pub grades: Option<Vec<LearningGradeInput>>,
+    pub feeling: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct LearningGradeInput {
+    pub no: Option<u32>,
+    pub grade: Option<String>,
+}
+
 #[derive(Debug, Error, Eq, PartialEq)]
 pub enum LearningValidationError {
     #[error("{0} is required")]
@@ -56,6 +89,20 @@ pub enum LearningValidationError {
     InvalidSource,
     #[error("problem kind must be one of: quiz, code")]
     InvalidKind,
+    #[error("grades is required")]
+    GradesRequired,
+    #[error("grades[].no is required")]
+    GradeNoRequired,
+    #[error("grades[].grade is required")]
+    GradeRequired,
+    #[error("grade must be one of: o, d, x")]
+    InvalidGrade,
+    #[error("problem no {0} does not exist in the learning set")]
+    UnknownProblemNo(u32),
+    #[error("feeling is required")]
+    FeelingRequired,
+    #[error("feeling must not exceed {MAX_LEARNING_FEELING_CHARS} characters")]
+    FeelingTooLong,
 }
 
 impl LearningSetInput {
@@ -110,6 +157,45 @@ impl LearningSetInput {
     }
 }
 
+impl LearningResultInput {
+    pub fn validate(
+        self,
+        problem_numbers: &HashSet<u32>,
+    ) -> Result<LearningResult, LearningValidationError> {
+        let grades = self
+            .grades
+            .ok_or(LearningValidationError::GradesRequired)?
+            .into_iter()
+            .map(|grade| {
+                let no = grade.no.ok_or(LearningValidationError::GradeNoRequired)?;
+                if !problem_numbers.contains(&no) {
+                    return Err(LearningValidationError::UnknownProblemNo(no));
+                }
+                let grade = match grade
+                    .grade
+                    .ok_or(LearningValidationError::GradeRequired)?
+                    .as_str()
+                {
+                    "o" => LearningGradeValue::O,
+                    "d" => LearningGradeValue::D,
+                    "x" => LearningGradeValue::X,
+                    _ => return Err(LearningValidationError::InvalidGrade),
+                };
+
+                Ok(LearningGrade { no, grade })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let feeling = self
+            .feeling
+            .ok_or(LearningValidationError::FeelingRequired)?;
+        if feeling.chars().count() > MAX_LEARNING_FEELING_CHARS {
+            return Err(LearningValidationError::FeelingTooLong);
+        }
+
+        Ok(LearningResult { grades, feeling })
+    }
+}
+
 fn required(value: Option<String>, field: &'static str) -> Result<String, LearningValidationError> {
     value
         .filter(|value| !value.trim().is_empty())
@@ -118,7 +204,12 @@ fn required(value: Option<String>, field: &'static str) -> Result<String, Learni
 
 #[cfg(test)]
 mod tests {
-    use super::{LearningProblemInput, LearningSetInput, LearningValidationError};
+    use std::collections::HashSet;
+
+    use super::{
+        LearningGradeInput, LearningGradeValue, LearningProblemInput, LearningResultInput,
+        LearningSetInput, LearningValidationError, MAX_LEARNING_FEELING_CHARS,
+    };
 
     fn valid_input() -> LearningSetInput {
         LearningSetInput {
@@ -222,6 +313,85 @@ mod tests {
         assert_eq!(
             invalid_kind.validate(),
             Err(LearningValidationError::InvalidKind)
+        );
+    }
+
+    fn result_input(grades: Vec<(u32, &str)>, feeling: &str) -> LearningResultInput {
+        LearningResultInput {
+            grades: Some(
+                grades
+                    .into_iter()
+                    .map(|(no, grade)| LearningGradeInput {
+                        no: Some(no),
+                        grade: Some(grade.to_owned()),
+                    })
+                    .collect(),
+            ),
+            feeling: Some(feeling.to_owned()),
+        }
+    }
+
+    #[test]
+    fn accepts_all_grade_values_partial_grading_and_empty_feeling() {
+        let problem_numbers = HashSet::from([1, 2, 3, 4]);
+        let result = result_input(vec![(1, "o"), (2, "d"), (3, "x")], "")
+            .validate(&problem_numbers)
+            .expect("valid grades should pass");
+
+        assert_eq!(result.grades.len(), 3);
+        assert_eq!(result.grades[0].grade, LearningGradeValue::O);
+        assert_eq!(result.grades[1].grade, LearningGradeValue::D);
+        assert_eq!(result.grades[2].grade, LearningGradeValue::X);
+        assert_eq!(result.feeling, "");
+    }
+
+    #[test]
+    fn rejects_unknown_grade_and_problem_number() {
+        let problem_numbers = HashSet::from([1]);
+
+        assert_eq!(
+            result_input(vec![(1, "triangle")], "")
+                .validate(&problem_numbers)
+                .expect_err("unknown grade should fail"),
+            LearningValidationError::InvalidGrade
+        );
+        assert_eq!(
+            result_input(vec![(2, "o")], "")
+                .validate(&problem_numbers)
+                .expect_err("unknown problem number should fail"),
+            LearningValidationError::UnknownProblemNo(2)
+        );
+    }
+
+    #[test]
+    fn validates_required_result_fields_and_feeling_character_limit() {
+        let problem_numbers = HashSet::from([1]);
+
+        assert_eq!(
+            LearningResultInput {
+                grades: None,
+                feeling: Some(String::new()),
+            }
+            .validate(&problem_numbers),
+            Err(LearningValidationError::GradesRequired)
+        );
+        assert_eq!(
+            LearningResultInput {
+                grades: Some(Vec::new()),
+                feeling: None,
+            }
+            .validate(&problem_numbers),
+            Err(LearningValidationError::FeelingRequired)
+        );
+        assert!(
+            result_input(Vec::new(), &"界".repeat(MAX_LEARNING_FEELING_CHARS))
+                .validate(&problem_numbers)
+                .is_ok()
+        );
+        assert_eq!(
+            result_input(Vec::new(), &"界".repeat(MAX_LEARNING_FEELING_CHARS + 1))
+                .validate(&problem_numbers),
+            Err(LearningValidationError::FeelingTooLong)
         );
     }
 }

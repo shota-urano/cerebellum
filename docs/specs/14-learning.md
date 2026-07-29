@@ -44,10 +44,7 @@ HTTP DTO の具体形は [`03-api.md`](./03-api.md) §3 を正とする。
 
 ### 3.3 成績記録（save_learning_result）
 
-```json
-{ "grades": [ { "no": 1, "grade": "o" }, { "no": 2, "grade": "x" } ],
-  "feeling": "WAL の checkpoint が曖昧だった" }
-```
+HTTP DTO の具体形は [`03-api.md`](./03-api.md) §3 を正とする。
 
 1. `grade` は `o` | `d` | `x`（○△×）。`grades` の `no` はセットの `problems` と突き合わせ、不明な `no` は `bad_request`。全問分なくてもよい（途中まで採点も受ける）
 2. `feeling` は ≤2000 文字・空可
@@ -81,6 +78,7 @@ HTTP DTO の具体形は [`03-api.md`](./03-api.md) §3 を正とする。
 |---|---|
 | date 不正・body 検証 NG | 400 `bad_request`（理由文字列つき） |
 | セット未取り込みの date への GET | 404 `not_found`（画面は「今日の学習セットはありません」表示） |
+| セット未取り込みの date への result POST | 404 `not_found`（問題番号との突き合わせが成立しない） |
 | result 未記録の date への GET | 404 `not_found`（night-study 側は「未着手」と解釈） |
 
 ## 7. スコープ外
