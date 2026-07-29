@@ -13,8 +13,9 @@ use crate::domain::{
     task::{CheckedTask, Task},
 };
 use crate::usecase::ports::{
-    DigestRepository, RepositoryError, RoutineImportRepository, RoutineImportRepositoryError,
-    RoutineRepository, RoutineRepositoryError, StoredDigest, TaskRepository,
+    DigestRepository, LearningRepository, RepositoryError, RoutineImportRepository,
+    RoutineImportRepositoryError, RoutineRepository, RoutineRepositoryError, StoredDigest,
+    StoredLearningSet, TaskRepository,
 };
 
 const MIGRATION_V1: &str = include_str!("migrations/001_init.sql");
@@ -699,6 +700,43 @@ impl DigestRepository for SqliteTaskRepository {
                 |row| {
                     Ok(StoredDigest {
                         body: row.get(0)?,
+                        received_at: row.get(1)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(|source| RepositoryError::new(SqliteRepositoryError::Query(source)))
+    }
+}
+
+impl LearningRepository for SqliteTaskRepository {
+    fn save_learning_set(
+        &self,
+        date: &str,
+        raw: &str,
+        received_at: &str,
+    ) -> Result<(), RepositoryError> {
+        self.connection()
+            .map_err(RepositoryError::new)?
+            .execute(
+                "INSERT INTO learning_sets (date, raw, received_at)
+                 VALUES (?1, ?2, ?3)
+                 ON CONFLICT(date) DO UPDATE SET raw = ?2, received_at = ?3",
+                params![date, raw, received_at],
+            )
+            .map_err(|source| RepositoryError::new(SqliteRepositoryError::Query(source)))?;
+        Ok(())
+    }
+
+    fn get_learning_set(&self, date: &str) -> Result<Option<StoredLearningSet>, RepositoryError> {
+        self.connection()
+            .map_err(RepositoryError::new)?
+            .query_row(
+                "SELECT raw, received_at FROM learning_sets WHERE date = ?1",
+                [date],
+                |row| {
+                    Ok(StoredLearningSet {
+                        raw: row.get(0)?,
                         received_at: row.get(1)?,
                     })
                 },

@@ -13,6 +13,7 @@ use crate::{
         get_day::GetDay,
         get_summary::GetSummary,
         manage_digest::ManageDigest,
+        manage_learning::ManageLearning,
         manage_routines::ManageRoutines,
         ports::{RoutineRepository, TaskRepository},
         toggle_check::ToggleCheck,
@@ -29,6 +30,7 @@ pub struct AppState {
     pub get_summary: Arc<GetSummary>,
     pub manage_routines: Arc<ManageRoutines>,
     pub manage_digest: Arc<ManageDigest>,
+    pub manage_learning: Arc<ManageLearning>,
     pub routine_repository: Arc<dyn RoutineRepository>,
     pub task_repository: Arc<dyn TaskRepository>,
     pub config: Arc<Config>,
@@ -45,6 +47,8 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/summary", get(handlers::get_summary))
         .route("/digests", post(handlers::save_digest))
         .route("/digests/{date}", get(handlers::get_digest))
+        .route("/learning/sets", post(handlers::save_learning_set))
+        .route("/learning/sets/{date}", get(handlers::get_learning_set))
         .route(
             "/routines",
             get(handlers::list_routines).post(handlers::create_routine),

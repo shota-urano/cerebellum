@@ -3,10 +3,12 @@ use serde::{Deserialize, Serialize};
 use crate::domain::{
     day::{DaySnapshot, Progress, SummaryDay},
     digest::{Block, Section},
+    learning::{LearningProblem, LearningProblemInput, LearningSetInput},
     routine::{Routine, RoutineFields},
     task::CheckedTask,
 };
 use crate::usecase::manage_digest::{DigestView, StoredAt};
+use crate::usecase::manage_learning::{LearningSetView, LearningStoredAt};
 
 #[derive(Debug, Serialize)]
 pub(super) struct HealthDto {
@@ -296,6 +298,124 @@ impl From<Block> for BlockDto {
             kind: block.kind,
             text: block.text,
             note_path: block.note_path,
+        }
+    }
+}
+
+// ---- 学習セット（docs/specs/03-api.md §3・docs/specs/14-learning.md）----
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct LearningInputDto {
+    pub(super) date: String,
+    theme: Option<String>,
+    source: Option<String>,
+    lesson_md: Option<String>,
+    problems: Option<Vec<LearningProblemInputDto>>,
+    closing_md: Option<String>,
+}
+
+impl From<LearningInputDto> for LearningSetInput {
+    fn from(input: LearningInputDto) -> Self {
+        Self {
+            theme: input.theme,
+            source: input.source,
+            lesson_md: input.lesson_md,
+            problems: input
+                .problems
+                .map(|problems| problems.into_iter().map(Into::into).collect()),
+            closing_md: input.closing_md,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LearningProblemInputDto {
+    no: Option<u32>,
+    kind: Option<String>,
+    question_md: Option<String>,
+    answer_md: Option<String>,
+    workdir: Option<String>,
+}
+
+impl From<LearningProblemInputDto> for LearningProblemInput {
+    fn from(input: LearningProblemInputDto) -> Self {
+        Self {
+            no: input.no,
+            kind: input.kind,
+            question_md: input.question_md,
+            answer_md: input.answer_md,
+            workdir: input.workdir,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct LearningStoredDto {
+    date: String,
+    received_at: String,
+}
+
+impl From<LearningStoredAt> for LearningStoredDto {
+    fn from(stored: LearningStoredAt) -> Self {
+        Self {
+            date: stored.date,
+            received_at: stored.received_at,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct LearningSetDto {
+    date: String,
+    received_at: String,
+    theme: String,
+    source: String,
+    lesson_md: String,
+    problems: Vec<LearningProblemDto>,
+    closing_md: Option<String>,
+}
+
+impl From<LearningSetView> for LearningSetDto {
+    fn from(view: LearningSetView) -> Self {
+        Self {
+            date: view.date,
+            received_at: view.received_at,
+            theme: view.learning_set.theme,
+            source: view.learning_set.source,
+            lesson_md: view.learning_set.lesson_md,
+            problems: view
+                .learning_set
+                .problems
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+            closing_md: view.learning_set.closing_md,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LearningProblemDto {
+    no: u32,
+    kind: String,
+    question_md: String,
+    answer_md: String,
+    workdir: Option<String>,
+}
+
+impl From<LearningProblem> for LearningProblemDto {
+    fn from(problem: LearningProblem) -> Self {
+        Self {
+            no: problem.no,
+            kind: problem.kind,
+            question_md: problem.question_md,
+            answer_md: problem.answer_md,
+            workdir: problem.workdir,
         }
     }
 }

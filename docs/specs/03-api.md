@@ -24,6 +24,8 @@ Rust（axum）と Next.js（`shared/api/types.ts` に手動同期）が共有す
 | DELETE | `/api/routines/{id}` | ルーティン行の削除（論理削除） | [05](./05-day-usecase.md) |
 | POST | `/api/digests` | 朝ダイジェストの取り込み（second-brain の deliver.sh が送る） | [11](./11-digest.md) |
 | GET | `/api/digests/{date}` | その日のダイジェスト（構造化済み）。`{date}`=`today` 可 | [11](./11-digest.md) |
+| POST | `/api/learning/sets` | 学習セットの取り込み（second-brain の night-study が送る） | [14](./14-learning.md) |
+| GET | `/api/learning/sets/{date}` | その日の学習セット。`{date}`=`today` 可 | [14](./14-learning.md) |
 | GET | `/api/health` | 自己診断（DB 可否・マスタ件数） | [06](./06-cli-serve.md) |
 | GET | 上記以外 | 静的アセット配信＋SPA フォールバック | [06](./06-cli-serve.md) |
 
@@ -92,6 +94,40 @@ Rust（axum）と Next.js（`shared/api/types.ts` に手動同期）が共有す
 // block.kind = lead | chain | bullet | saved | warning | text（→ 11-digest.md §3.2）
 // notePath は該当する行のみ（無ければキーごと省略せず null）
 
+// POST /api/learning/sets
+// body（date とセットを同じオブジェクトで送る）
+{
+  "date": "today",                     // YYYY-MM-DD も可
+  "theme": "SQLite の WAL とロック",
+  "source": "theme",                   // theme | memo。省略時 theme
+  "lessonMd": "...",
+  "problems": [
+    { "no": 1, "kind": "quiz",         // quiz | code。省略時 quiz
+      "questionMd": "...", "answerMd": "...", "workdir": null },
+    { "no": 2, "kind": "code",
+      "questionMd": "...", "answerMd": "...",
+      "workdir": "/Users/orion/workspace/learning/2026-07-29/p2" }
+  ],
+  "closingMd": null                    // 任意
+}
+// → 200
+{ "date": "2026-07-29", "receivedAt": "2026-07-29T06:30:00+09:00" }
+// 同じ date への再送はセット全体と receivedAt を上書き
+
+// GET /api/learning/sets/2026-07-29   （"today" も可）
+{
+  "date": "2026-07-29",
+  "receivedAt": "2026-07-29T06:30:00+09:00",
+  "theme": "SQLite の WAL とロック",
+  "source": "theme",
+  "lessonMd": "...",
+  "problems": [
+    { "no": 1, "kind": "quiz",
+      "questionMd": "...", "answerMd": "...", "workdir": null }
+  ],
+  "closingMd": null
+}
+
 // GET /api/health
 { "db": "ok", "routines": 13, "version": "0.1.0" }
 // 異常時は db が "ng"（HTTP 200 のまま返す）。routines はマスタの active 件数
@@ -102,7 +138,9 @@ Rust（axum）と Next.js（`shared/api/types.ts` に手動同期）が共有す
 - リクエストボディの検証（400 `bad_request`）: `interval` 空不可 ／ `content` 空不可 ／ `time` は空文字または `^\d{1,2}:\d{2}$` ／ 各値は trim して保存（`content` の `<br>` 変換は import 時のみ・API では行わない）
 - `routines` の DTO には `detailRef` を含める（省略時 null）。値は [`02-data-model.md`](./02-data-model.md) §6 の4語彙のみ。他の値は 400 `bad_request`
 - `POST /api/digests` の検証（400 `bad_request`）: `date` が `%Y-%m-%d` でも `today` でもない ／ `body` が空 ／ `body` が 64KiB 超
+- `POST /api/learning/sets` の検証（400 `bad_request`）: body が 256KiB 超 ／ `date` が `%Y-%m-%d` でも `today` でもない ／ `theme`・`lessonMd`・`problems` または各問題の `no`・`questionMd`・`answerMd` が欠落・空 ／ `problems` が1〜10件でない ／ `no` が重複 ／ `source`・`kind` が上記語彙外。検証失敗時は保存しない
 - ダイジェストが未受信の日は **404 にせず** `sections: []` を 200 で返す
+- 学習セットが未取り込みの日は 404 `not_found`
 - 過去日でスナップショットが無い日: `tasks: []`・`progress: {done:0,total:0}`・`readonly:true` を 200 で返し、フロントが「記録なし」表示にする
 
 ## 4. エラーレスポンス（確定形）
@@ -115,9 +153,9 @@ Rust（axum）と Next.js（`shared/api/types.ts` に手動同期）が共有す
 
 | HTTP | code | 条件 |
 |---|---|---|
-| 400 | `bad_request` | date が `%Y-%m-%d` でも `today` でもない／`days` が正整数でない／ルーティンの入力検証違反（§3） |
+| 400 | `bad_request` | date が `%Y-%m-%d` でも `today` でもない／`days` が正整数でない／ルーティン・学習セットの入力検証違反（§3） |
 | 403 | `readonly_day` | 過去日への書き込み |
-| 404 | `not_found` | 未知の taskId／未知の routine id／未知のパス（API 配下） |
+| 404 | `not_found` | 未知の taskId／未知の routine id／未取り込みの学習セット date／未知のパス（API 配下） |
 | 409 | `conflict` | 間隔・時刻・内容が既存の有効な行と重複（`routines_identity` 違反。task_id が衝突するため） |
 | 500 | `internal` | DB 障害ほか予期しないエラー |
 
