@@ -190,7 +190,7 @@ Rust（axum）と Next.js（`shared/api/types.ts` に手動同期）が共有す
 | 400 | `bad_request` | date が `%Y-%m-%d` でも `today` でもない／`days` が正整数でない／ルーティン・ハーネスの入力検証違反またはハーネスの不正な状態遷移（§3） |
 | 403 | `readonly_day` | 過去日への書き込み |
 | 404 | `not_found` | 未知の taskId／未知の routine id／未知の harness proposal id／未知のパス（API 配下） |
-| 409 | `conflict` | 間隔・時刻・内容が既存の有効な行と重複（`routines_identity` 違反）／承認済み・適用済みを含む日へのハーネス提案再送 |
+| 409 | `conflict` | 間隔・時刻・内容が既存の有効な行と重複（`routines_identity` 違反）／`status` が `proposed` 以外（`approved` / `rejected` / `killed`）の行が1件でもある日へのハーネス提案再送 |
 | 500 | `internal` | DB 障害ほか予期しないエラー |
 
 `vault_unavailable`（503）は**廃止**した。マスタが SQLite に移り、通常運用で Vault を読まなくなったため（2026-07-27）。md からの取り込みは CLI の `import-routines` のみで、失敗はプロセスの終了コードで返す（[`06-cli-serve.md`](./06-cli-serve.md)）。

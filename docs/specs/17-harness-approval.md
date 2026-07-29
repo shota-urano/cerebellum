@@ -30,25 +30,7 @@ second-brain の `night-harness` が毎朝出す「ハーネス取り込み判�
 
 ### 3.1 提案 JSON の形
 
-```json
-{
-  "date": "2026-07-29",
-  "kind": "daily",
-  "proposals": [
-    {
-      "slug": "検索状態外置き",
-      "insightName": "検索状態のハーネス外置きで20Bが長期検索でフロンティア級に届く",
-      "verdict": "experiment",
-      "category": "⑥実験（新機軸）",
-      "summary": "Vaultを調べるとき、AIに全部覚えさせるのをやめて外にメモ帳を置く方式を試す",
-      "challengeVerdict": "weaken",
-      "challengeNote": "重複は無いが合格ラインが曖昧だったので、3問中2問・再現率+20%と数字を入れさせた",
-      "detailPath": "40_Projects/harness/判定/2026-07-29-検索状態外置き.md",
-      "detailMd": "...(判定文の全文 markdown)..."
-    }
-  ]
-}
-```
+提案の具体的な JSON 契約（リクエスト・レスポンスのフィールド、値、null 可否）は [`03-api.md`](./03-api.md) §3 を正本とする。本節には検証規則と各フィールドの処理上の意味だけを定める。
 
 - 必須: `date`・`proposals[]`（1〜30件、各 `slug`・`insightName`・`verdict`・`summary`・`detailMd`）
 - `kind` は `daily`（毎朝の取り込み判定・省略時これ）| `prune`（月次の資産剪定）| `model_switch`（モデル乗り換え時の補助輪点検）。**3モードはどれも「提案 → 承認 → 適用」で形が同じなので同じテーブルに載せる**。件数上限が30件なのは剪定がアーカイブ候補を十数件出すため
@@ -65,15 +47,13 @@ second-brain の `night-harness` が毎朝出す「ハーネス取り込み判�
 
 1. `date` は `%Y-%m-%d` または `today`（`Clock` で解決）。それ以外は `bad_request`
 2. body はサイズ上限 512KiB（`detailMd` は1件 128KiB まで）。必須欠落・`proposals` 空・`slug` 重複は `bad_request`——**崩れた入力は保存しない**（学習 [`14`](./14-learning.md) §3.2 と同じ判断。承認は構造が本体であり、壊れたまま出すと誤承認を招く）
-3. 同じ `date` への再送は**その日の行をまとめて置換**（DELETE→INSERT を1トランザクション）。ただし **`status` が `proposed` 以外の行が1件でもあれば `conflict`（409）で拒否**——承認済み・適用済みの意思を再送で消さないため
+3. 同じ `date` への再送は**その日の行をまとめて置換**（DELETE→INSERT を1トランザクション）。ただし **`status` が `proposed` 以外（`approved` / `rejected` / `killed`）の行が1件でもあれば `conflict`（409）で拒否**——人間の承認・却下や、取り込み時に確定した見送り判定を再送で消さないため
 4. 取り込み時の初期状態: `verdict` が `killed` の行は `status = "killed"`、それ以外は `status = "proposed"`。`apply_state` は全行 `pending`
 5. `received_at` は `Clock`
 
 ### 3.3 承認の記録（save_decision）
 
-```json
-{ "status": "approved" }
-```
+`POST /api/harness/proposals/{id}/decision` のリクエスト・レスポンス DTO は [`03-api.md`](./03-api.md) §3 を正本とする。
 
 1. `status` は `approved` | `rejected` | `proposed`（**取り消し＝`proposed` に戻す**。誤タップの救済路。翌朝の適用までは何度でも変更できる）
 2. `status = "killed"` の行への decision は `bad_request`（見送り判定は人間の承認対象ではない・表示のみ）
@@ -86,10 +66,7 @@ second-brain の `night-harness` が毎朝出す「ハーネス取り込み判�
 
 **書き戻し**: `POST /api/harness/proposals/{id}/apply-result`
 
-```json
-{ "state": "applied", "snapshotPath": "40_Projects/harness/archive/2026-07-30-検索状態外置き/" }
-{ "state": "failed",  "error": "state.py の配置先が既に存在し上書きを避けて中断" }
-```
+リクエスト・レスポンス DTO は [`03-api.md`](./03-api.md) §3 を正本とする。
 
 1. `state` は `applied` | `failed`。`failed` のとき `error`（≤1000文字）必須
 2. `status = "approved"` 以外の行への書き戻しは `bad_request`
@@ -124,7 +101,7 @@ second-brain の `night-harness` が毎朝出す「ハーネス取り込み判�
 | 事象 | 応答 |
 |---|---|
 | date 不正・body 検証 NG・不正な状態遷移 | 400 `bad_request`（理由文字列つき） |
-| 承認済み・適用済みがある日への再 POST | 409 `conflict` |
+| `status` が `proposed` 以外（`approved` / `rejected` / `killed`）の行が1件でもある日への再 POST | 409 `conflict` |
 | 存在しない id への decision / apply-result | 404 `not_found` |
 | 未着の date への一覧 GET | **200**（`receivedAt: null` ・ `proposals: []`。§3.5） |
 
