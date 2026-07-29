@@ -51,6 +51,7 @@ Phase 1.7 = 学習セッション（[14](./14-learning.md)・[15](./15-web-learn
 | 16 | [`16-web-navigation.md`](./16-web-navigation.md) | ナビゲーション改訂（タブバー廃止→ヘッダー＋ドロワー） | Frontend |
 | 17 | [`17-harness-approval.md`](./17-harness-approval.md) | ハーネス取り込み提案の受け入れ・承認記録（domain/usecase/API） | Backend |
 | 18 | [`18-web-harness.md`](./18-web-harness.md) | ハーネス承認ビュー（1行要約で判断・チェックが翌朝の適用入力になる） | Frontend |
+| 19 | [`19-web-dev-history.md`](./19-web-dev-history.md) | 「開発」画面（夜勤・手動 run の履歴一覧と詳細） | Frontend |
 
 ## 4. 確定済みの初期値（横断・変更禁止）
 
