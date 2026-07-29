@@ -5,16 +5,17 @@
 //! 未知の形は `Text` / `Preamble` に落として必ず返す（パース失敗という状態を作らない）。
 
 /// タスク行から詳細ビューを開くための結び付け（docs/specs/02-data-model.md §6）。
-/// 語彙はこの5つだけ。増やすときは 02 と 12 を同時に更新する。
+/// 語彙はこの6つだけ。増やすときは 02 と対応する詳細ビュー仕様を同時に更新する。
 /// `nightshift.report` はダイジェストではなく夜勤詳細ビュー（/nightshift・
 /// docs/specs/13-web-nightshift.md）への結び付け。サーバーは語彙検証のみで、
 /// データは表示側が夜勤ビューア（:48310）の runs.json を直接読む。
-pub const DETAIL_REFS: [&str; 5] = [
+pub const DETAIL_REFS: [&str; 6] = [
     "digest.connection",
     "digest.derive",
     "digest.idea",
     "digest.consolidate",
     "nightshift.report",
+    "learning.session",
 ];
 
 pub fn is_valid_detail_ref(value: &str) -> bool {
@@ -267,7 +268,8 @@ mod tests {
     #[test]
     fn detail_ref_vocabulary_is_closed() {
         assert!(is_valid_detail_ref("digest.connection"));
-        assert!(!is_valid_detail_ref("digest.unknown"));
+        assert!(is_valid_detail_ref("learning.session"));
+        assert!(!is_valid_detail_ref("learning.unknown"));
         assert!(!is_valid_detail_ref(""));
     }
 }
