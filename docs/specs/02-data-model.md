@@ -100,6 +100,8 @@ task_id = hex(sha1("{間隔}|{時刻}|{内容}"))[0..12]   # 16進小文字・�
 | 1 | 初版（`task_days` / `task_checks`） |
 | 2 | `routines` と `routines_identity` を追加（マスタの SQLite 移管。2026-07-27） |
 | 3 | `digests` を追加、`routines.detail_ref` / `task_days.detail_ref` を追加（ダイジェスト取り込み。2026-07-27） |
+| 4 | `learning_sets` / `learning_results` を追加（学習。[`14-learning.md`](./14-learning.md)。**採番予約 2026-07-29・実装時追加**） |
+| 5 | `harness_proposals` を追加（ハーネス承認。[`17-harness-approval.md`](./17-harness-approval.md)。**採番予約 2026-07-29・実装時追加**） |
 
 - v3 の列追加は `ALTER TABLE ... ADD COLUMN`（既定 NULL）。**既存 `task_days` 行の値は書き換えない**（追加列が NULL のまま残るのは正常。過去日に詳細は無い）
 
