@@ -19,14 +19,14 @@
 .shell（min-height:100dvh・中央寄せ・padding:0）
 └ .col（width:100%・max-width:1024px・padding:0 16px calc(24px + env(safe-area-inset-bottom))）
    ├ HudStatus（上部ステータス行。右端にハンバーガーが同居）
-   └ {画面コンテンツ（今日 / 履歴 / ルーティン / ダイジェスト / 夜勤）}
+   └ {画面コンテンツ（今日 / 履歴 / ルーティン / 開発 ＋ タスク起点の詳細ビュー（ダイジェスト / 夜勤））}
 
 .drawer（開いているときだけ DOM に存在。position:fixed inset:0・z-index:20・flex で右寄せ）
 ├ .drawer__backdrop（absolute inset:0・background rgba(5,11,26,.72)・要素は <button>）
 └ .drawer__panel（<nav>・width:min(280px,82vw)・height:100%・surface 背景・左辺 border 1px
    ・padding 18px 16px calc(22px + env(safe-area-inset-bottom))・縦 flex gap:8px・overflow-y:auto）
    ├ .drawer__title（`NAVIGATION`・mono label・padding 0 2px 6px）
-   └ .drawer__item ×5
+   └ .drawer__item ×4
 ```
 
 - 常時ダーク（`color-scheme: dark`）。背景 `--bg`・文字 `--text`
@@ -44,11 +44,12 @@
 | HudStatus 右（`.hud__right`） | `TODAY` / `HISTORY` / `ROUTINES` | 画面タグ（11px・letter-spacing .14em）＋ハンバーガー。gap 12px |
 | ハンバーガー（`.navbtn`） | アイコンのみ（`aria-label="メニュー"`） | 44×44px・横棒3本（高さ 1.5px・gap 4px・`--muted`）。padding 0 11px／margin-right -10px で HUD 右端に光学的に揃える。hover で棒が accent |
 | バックドロップ（`.drawer__backdrop`） | — （`aria-label="メニューを閉じる"`） | 全面 `rgba(5,11,26,.72)`。タップで閉じる |
-| ドロワー項目（`.drawer__item`） | `今日` / `履歴` / `ルーティン` / `ダイジェスト` / `夜勤` | min-height 46px・padding 13px 14px・12.5px・letter-spacing .14em・border 1px `--border`・radius-sm・背景 `--bg`・文字 `--muted` |
+| ドロワー項目（`.drawer__item`） | `今日` / `履歴` / `ルーティン` / `開発` | min-height 46px・padding 13px 14px・12.5px・letter-spacing .14em・border 1px `--border`・radius-sm・背景 `--bg`・文字 `--muted` |
 | 　同 active（`--active`） | 現在画面の1件 | accent 枠＋accent 文字＋`rgba(56,229,255,.06)` 背景＋グロー `glowShadow(9,.2)`（インライン）。`aria-current="page"` |
 | 　同 hover | — | 枠・文字が accent |
 
-- 遷移先: `今日`=`/`・`履歴`=`/history`・`ルーティン`=`/routines`・`ダイジェスト`=`/digest`・`夜勤`=`/nightshift`。並びは使用頻度順（specs 16 §3.3）。追加は `NavDrawer.tsx` の `NAV_ITEMS` 1箇所で完結させる
+- 遷移先: `今日`=`/`・`履歴`=`/history`・`ルーティン`=`/routines`・`開発`=`/dev`。並びは使用頻度順（specs 16 §3.3）。追加は `NavDrawer.tsx` の `NAV_ITEMS` 1箇所で完結させる
+- ダイジェスト（`/digest`）・夜勤（`/nightshift`）はドロワーに置かない（2026-07-29 夕方改訂・specs 16 §3.6）。入口は今日画面のタスク行（detailRef）で、過去の run は「開発」（specs 19）から辿る
 - アクティブ判定はパス前方一致（`/` のみ完全一致）＝旧タブと同じ
 - `prefers-reduced-motion: reduce` では HUD ドットの点滅とドロワー active のグローを止める
 
@@ -57,7 +58,7 @@
 - ハンバーガータップでドロワーを開く（`aria-expanded` が連動）。開いている間だけ `.drawer` を描画する
 - 閉じる経路は3つ: 項目タップ（遷移とセット）・バックドロップタップ・**Escape キー**
 - 遷移は `next/link`。項目タップでドロワーを閉じてから遷移する
-- 実装は specs 07 / 16 の5ページ構成（`/`・`/history`・`/routines`・`/digest`・`/nightshift`）に対応する
+- 実装のページは `/`・`/history`・`/routines`・`/dev`（ドロワー）＋ `/digest`・`/nightshift`（タスク行からの詳細ビュー）
 - ドロワーはナビゲーションのみを持ち、feature を import しない（`shared/ui/`）
 
 ## 未定事項

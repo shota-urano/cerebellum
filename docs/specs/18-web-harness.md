@@ -51,7 +51,7 @@ confirmed_rev: 9db4adc
 - `applied` … ✅「適用済み（{appliedAt}）」＋ `snapshotPath` をコピー可能に（**戻したくなったときの入口**）
 - `failed` … 🚨「適用失敗」＋ `error` 全文。**カードを一覧の先頭に固定し、赤帯で出す**（失敗が下に埋もれるとSlack廃止で気づけなくなる）
 
-失敗カードは日付をまたいでも当日の一覧に出す（`applyState=failed` を別枠 `未処理の失敗` として上部に表示）。
+失敗カードは日付をまたいでも当日の一覧に出す——**取得元は `GET /api/harness/proposals?applyState=failed`**（[`17`](./17-harness-approval.md) §3.4・2026-07-29 追加。日付問わず新しい順）。当日一覧とは別にこれを引き、`未処理の失敗` 枠として上部に表示する。`failed → applied` へ書き戻されれば自然に消える。
 
 ## 4. 状態と縁ケース
 

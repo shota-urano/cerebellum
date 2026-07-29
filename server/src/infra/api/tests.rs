@@ -22,8 +22,9 @@ use crate::{
         get_day::GetDay,
         get_summary::GetSummary,
         manage_digest::ManageDigest,
+        manage_harness::ManageHarness,
         manage_routines::ManageRoutines,
-        ports::{Clock, DigestRepository, RoutineRepository, TaskRepository},
+        ports::{Clock, DigestRepository, HarnessRepository, RoutineRepository, TaskRepository},
         toggle_check::ToggleCheck,
     },
 };
@@ -72,6 +73,7 @@ fn test_app_with_routines(seed_routines: bool) -> axum::Router {
     }
     let routine_repository: Arc<dyn RoutineRepository> = repository.clone();
     let digest_repository: Arc<dyn DigestRepository> = repository.clone();
+    let harness_repository: Arc<dyn HarnessRepository> = repository.clone();
     let task_repository: Arc<dyn TaskRepository> = repository;
     let clock: Arc<dyn Clock> = Arc::new(FakeClock);
     let manage_routines = Arc::new(ManageRoutines::new(
@@ -79,6 +81,7 @@ fn test_app_with_routines(seed_routines: bool) -> axum::Router {
         Arc::clone(&clock),
     ));
     let manage_digest = Arc::new(ManageDigest::new(digest_repository, Arc::clone(&clock)));
+    let manage_harness = Arc::new(ManageHarness::new(harness_repository, Arc::clone(&clock)));
 
     router(Arc::new(AppState {
         get_day: Arc::new(GetDay::new(
@@ -97,6 +100,7 @@ fn test_app_with_routines(seed_routines: bool) -> axum::Router {
         )),
         manage_routines,
         manage_digest,
+        manage_harness,
         routine_repository,
         task_repository,
         config: Arc::new(Config {
@@ -572,4 +576,236 @@ async fn detail_ref_is_validated_and_reaches_the_day_response() {
         .find(|task| task["content"] == "daily earlier")
         .expect("seeded routine should appear too");
     assert_eq!(without_detail["detailRef"], Value::Null);
+}
+
+fn harness_batch(date: &str, slug: &str, verdict: &str) -> Value {
+    let challenge = if verdict == "killed" {
+        Value::Null
+    } else {
+        json!("weaken")
+    };
+    json!({
+        "date": date,
+        "kind": "daily",
+        "proposals": [{
+            "slug": slug,
+            "insightName": format!("{slug} insight"),
+            "verdict": verdict,
+            "category": "⑥実験（新機軸）",
+            "summary": format!("{slug} summary"),
+            "challengeVerdict": challenge,
+            "challengeNote": "条件を狭めれば成立する",
+            "detailPath": format!("40_Projects/harness/判定/{date}-{slug}.md"),
+            "detailMd": format!("# {slug}\n\n全文"),
+        }],
+    })
+}
+
+/// docs/specs/17-harness-approval.md §2〜§3.4 の HTTP 契約。
+#[tokio::test]
+async fn harness_round_trip_covers_both_query_modes_and_oldest_first_order() {
+    let app = test_app();
+
+    let current = call_json(
+        app.clone(),
+        "POST",
+        "/api/harness/proposals",
+        harness_batch("today", "current", "experiment"),
+    )
+    .await;
+    assert_eq!(current.status(), StatusCode::OK);
+    let current = json_body(current).await;
+    assert_eq!(current["date"], "2026-07-25");
+    assert!(current["receivedAt"].is_string());
+    assert_eq!(current["proposals"][0]["kind"], "daily");
+    assert_eq!(current["proposals"][0]["challengeVerdict"], "weaken");
+    assert_eq!(
+        current["proposals"][0]["challengeNote"],
+        "条件を狭めれば成立する"
+    );
+    assert_eq!(current["proposals"][0]["applyState"], "pending");
+    let current_id = current["proposals"][0]["id"]
+        .as_i64()
+        .expect("proposal id should be numeric");
+
+    let listed = call(app.clone(), "GET", "/api/harness/proposals?date=2026-07-25").await;
+    assert_eq!(listed.status(), StatusCode::OK);
+    assert_eq!(json_body(listed).await, current);
+
+    let older = call_json(
+        app.clone(),
+        "POST",
+        "/api/harness/proposals",
+        harness_batch("2026-07-24", "older", "adopt"),
+    )
+    .await;
+    assert_eq!(older.status(), StatusCode::OK);
+    let older_id = json_body(older).await["proposals"][0]["id"]
+        .as_i64()
+        .expect("older proposal id should be numeric");
+
+    for id in [current_id, older_id] {
+        let decision = call_json(
+            app.clone(),
+            "POST",
+            &format!("/api/harness/proposals/{id}/decision"),
+            json!({ "status": "approved" }),
+        )
+        .await;
+        assert_eq!(decision.status(), StatusCode::OK);
+        let decision = json_body(decision).await;
+        assert_eq!(decision["proposal"]["status"], "approved");
+        assert!(decision["proposal"]["decidedAt"].is_string());
+    }
+
+    let pending = call(
+        app.clone(),
+        "GET",
+        "/api/harness/proposals?status=approved&applyState=pending",
+    )
+    .await;
+    assert_eq!(pending.status(), StatusCode::OK);
+    let pending = json_body(pending).await;
+    assert_eq!(pending["proposals"][0]["id"], older_id);
+    assert_eq!(pending["proposals"][1]["id"], current_id);
+
+    let conflict = call_json(
+        app.clone(),
+        "POST",
+        "/api/harness/proposals",
+        harness_batch("today", "replacement", "adopt"),
+    )
+    .await;
+    assert_eq!(conflict.status(), StatusCode::CONFLICT);
+    assert_eq!(json_body(conflict).await["error"]["code"], "conflict");
+
+    let applied = call_json(
+        app.clone(),
+        "POST",
+        &format!("/api/harness/proposals/{older_id}/apply-result"),
+        json!({
+            "state": "applied",
+            "snapshotPath": "40_Projects/harness/archive/2026-07-25-older/",
+        }),
+    )
+    .await;
+    assert_eq!(applied.status(), StatusCode::OK);
+    let applied = json_body(applied).await;
+    assert_eq!(applied["proposal"]["applyState"], "applied");
+    assert_eq!(
+        applied["proposal"]["snapshotPath"],
+        "40_Projects/harness/archive/2026-07-25-older/"
+    );
+    assert_eq!(applied["proposal"]["error"], Value::Null);
+
+    let pending_after_apply = json_body(
+        call(
+            app,
+            "GET",
+            "/api/harness/proposals?status=approved&applyState=pending",
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(
+        pending_after_apply["proposals"].as_array().unwrap().len(),
+        1
+    );
+    assert_eq!(pending_after_apply["proposals"][0]["id"], current_id);
+}
+
+/// docs/specs/17-harness-approval.md §3.5・§6 の 200/400/404 契約。
+#[tokio::test]
+async fn harness_missing_day_and_error_table_are_mapped_at_http_boundary() {
+    let app = test_app();
+
+    let missing = call(app.clone(), "GET", "/api/harness/proposals?date=today").await;
+    assert_eq!(missing.status(), StatusCode::OK);
+    assert_eq!(
+        json_body(missing).await,
+        json!({
+            "date": "2026-07-25",
+            "receivedAt": null,
+            "proposals": [],
+        })
+    );
+
+    let default_today = call(app.clone(), "GET", "/api/harness/proposals").await;
+    assert_eq!(default_today.status(), StatusCode::OK);
+    assert_eq!(json_body(default_today).await["receivedAt"], Value::Null);
+
+    let bad_body = call_json(
+        app.clone(),
+        "POST",
+        "/api/harness/proposals",
+        harness_batch("not-a-date", "invalid", "adopt"),
+    )
+    .await;
+    assert_eq!(bad_body.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(json_body(bad_body).await["error"]["code"], "bad_request");
+
+    let bad_query = call(app.clone(), "GET", "/api/harness/proposals?status=approved").await;
+    assert_eq!(bad_query.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(json_body(bad_query).await["error"]["code"], "bad_request");
+
+    for path in [
+        "/api/harness/proposals/999/decision",
+        "/api/harness/proposals/999/apply-result",
+    ] {
+        let body = if path.ends_with("decision") {
+            json!({ "status": "approved" })
+        } else {
+            json!({ "state": "applied" })
+        };
+        let missing_id = call_json(app.clone(), "POST", path, body).await;
+        assert_eq!(missing_id.status(), StatusCode::NOT_FOUND);
+        assert_eq!(json_body(missing_id).await["error"]["code"], "not_found");
+    }
+
+    let killed = call_json(
+        app.clone(),
+        "POST",
+        "/api/harness/proposals",
+        harness_batch("today", "killed", "killed"),
+    )
+    .await;
+    assert_eq!(killed.status(), StatusCode::OK);
+    let killed_id = json_body(killed).await["proposals"][0]["id"]
+        .as_i64()
+        .expect("killed proposal id should be numeric");
+    let invalid_transition = call_json(
+        app,
+        "POST",
+        &format!("/api/harness/proposals/{killed_id}/decision"),
+        json!({ "status": "approved" }),
+    )
+    .await;
+    assert_eq!(invalid_transition.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        json_body(invalid_transition).await["error"]["code"],
+        "bad_request"
+    );
+}
+
+/// docs/specs/03-api.md §3 の一覧クエリ許可形。
+#[tokio::test]
+async fn harness_list_rejects_unknown_and_mixed_query_parameters() {
+    let app = test_app();
+
+    for path in [
+        "/api/harness/proposals?date=today&foo=bar",
+        "/api/harness/proposals?status=approved&aplyState=pending",
+        "/api/harness/proposals?date=today&status=approved&applyState=pending",
+    ] {
+        let response = call(app.clone(), "GET", path).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{path}");
+        let body = json_body(response).await;
+        assert_eq!(body["error"]["code"], "bad_request", "{path}");
+        assert!(
+            body["error"]["message"]
+                .as_str()
+                .is_some_and(|message| !message.is_empty()),
+            "{path}"
+        );
+    }
 }

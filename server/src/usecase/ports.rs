@@ -5,6 +5,10 @@ use thiserror::Error;
 
 use crate::domain::{
     day::SummaryDay,
+    harness::{
+        ApplyResult, ApplyState, ChallengeVerdict, HarnessKind, HarnessProposalBatch,
+        HarnessStatus, HarnessVerdict,
+    },
     routine::{Routine, RoutineFields},
     task::{CheckedTask, Task},
 };
@@ -77,6 +81,59 @@ pub struct StoredDigest {
     pub received_at: String,
 }
 
+pub trait HarnessRepository: Send + Sync {
+    fn replace_harness_proposals(
+        &self,
+        batch: &HarnessProposalBatch,
+        received_at: &str,
+    ) -> Result<(), HarnessRepositoryError>;
+    fn list_harness_proposals(
+        &self,
+        date: &str,
+    ) -> Result<Vec<StoredHarnessProposal>, HarnessRepositoryError>;
+    fn get_harness_proposal(
+        &self,
+        id: i64,
+    ) -> Result<Option<StoredHarnessProposal>, HarnessRepositoryError>;
+    fn save_harness_decision(
+        &self,
+        id: i64,
+        expected_status: HarnessStatus,
+        status: HarnessStatus,
+        decided_at: &str,
+    ) -> Result<StoredHarnessProposal, HarnessRepositoryError>;
+    fn list_pending_approved(&self) -> Result<Vec<StoredHarnessProposal>, HarnessRepositoryError>;
+    fn save_harness_apply_result(
+        &self,
+        id: i64,
+        result: &ApplyResult,
+        applied_at: &str,
+    ) -> Result<StoredHarnessProposal, HarnessRepositoryError>;
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StoredHarnessProposal {
+    pub id: i64,
+    pub date: String,
+    pub kind: HarnessKind,
+    pub slug: String,
+    pub insight_name: String,
+    pub verdict: HarnessVerdict,
+    pub category: Option<String>,
+    pub summary: String,
+    pub challenge_verdict: Option<ChallengeVerdict>,
+    pub challenge_note: Option<String>,
+    pub detail_path: Option<String>,
+    pub detail_md: String,
+    pub status: HarnessStatus,
+    pub decided_at: Option<String>,
+    pub apply_state: ApplyState,
+    pub applied_at: Option<String>,
+    pub apply_error: Option<String>,
+    pub snapshot_path: Option<String>,
+    pub received_at: String,
+}
+
 pub trait Clock: Send + Sync {
     fn now(&self) -> DateTime<FixedOffset>;
 }
@@ -142,6 +199,27 @@ pub enum RoutineImportRepositoryError {
 }
 
 impl RoutineImportRepositoryError {
+    pub fn internal(error: impl Error + Send + Sync + 'static) -> Self {
+        Self::Internal {
+            source: Box::new(error),
+        }
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum HarnessRepositoryError {
+    #[error("harness proposals for the date are no longer all proposed")]
+    Conflict,
+    #[error("harness proposal no longer matches the expected state")]
+    StateMismatch,
+    #[error("harness repository failed")]
+    Internal {
+        #[source]
+        source: Box<dyn Error + Send + Sync>,
+    },
+}
+
+impl HarnessRepositoryError {
     pub fn internal(error: impl Error + Send + Sync + 'static) -> Self {
         Self::Internal {
             source: Box::new(error),
