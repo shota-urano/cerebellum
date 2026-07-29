@@ -1,3 +1,8 @@
+---
+status: confirmed
+confirmed_rev: f57c53f
+---
+
 # 08. 「今日」画面仕様（Frontend）
 
 **親**: [`00-overview.md`](./00-overview.md) ｜ **担当**: Frontend ｜ **範囲**: `app/page.tsx`＋`features/day/`（F1 表示・F2 消し込み）
