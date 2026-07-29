@@ -10,13 +10,19 @@ import { glowShadow } from '@/shared/lib';
  * 下部タブバーの置き換え。画面幅による分岐は持たない（常設サイドバー不採用・§4）。
  */
 
-/** 遷移先の追加はこの配列1箇所で完結させる（docs/specs/16 §4）。並びは使用頻度順（§3.3）。 */
+/**
+ * 遷移先の追加はこの配列1箇所で完結させる（docs/specs/16 §4）。並びは使用頻度順（§3.3）。
+ *
+ * ダイジェスト・夜勤は**常設ナビに置かない**（2026-07-29 夕方改訂・docs/specs/16 §3.6）。
+ * どちらもタスク起点の詳細ビューで、入口は「今日」のタスク行（detailRef）。過去の run を
+ * 後から見る入口は「開発」（docs/specs/19-web-dev-history.md）。
+ * ハーネス（`/harness`）は docs/specs/18 の実装時に足す。
+ */
 const NAV_ITEMS = [
   { href: '/', label: '今日' },
   { href: '/history', label: '履歴' },
   { href: '/routines', label: 'ルーティン' },
-  { href: '/digest', label: 'ダイジェスト' },
-  { href: '/nightshift', label: '夜勤' },
+  { href: '/dev', label: '開発' },
 ];
 
 export function NavDrawer() {
