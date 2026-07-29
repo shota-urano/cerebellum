@@ -31,7 +31,11 @@ test('ハンバーガーでドロワーが開き、バックドロップタッ�
   // 5項目が頻度順に並んでいる（docs/specs/16 §3.3）
   await expect(drawer.getByRole('link')).toHaveText(NAV_ITEMS.map((item) => item.label));
 
-  await page.getByRole('button', { name: 'メニューを閉じる' }).click();
+  // バックドロップの中心はドロワーパネル（右から min(280px,82vw)）に覆われるため、
+  // モバイル幅ではパネル外の左端を明示的にタップする（人間の「外側タップ」と同じ位置）
+  await page
+    .getByRole('button', { name: 'メニューを閉じる' })
+    .click({ position: { x: 20, y: 400 } });
   await expect(drawer).toBeHidden();
   // 閉じただけで遷移していない
   expect(pathnameOf(page.url())).toBe('/');
