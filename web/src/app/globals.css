@@ -43,9 +43,10 @@ a:hover { color: #8FF2FF; }
 @keyframes pulse { 0%, 100% { opacity: .55 } 50% { opacity: 1 } }
 
 /* ---- layout ---- */
-/* 下部タブバー廃止に伴い、タブ分の padding-bottom を撤去（docs/specs/16-web-navigation.md §3.1） */
-.shell { min-height: 100dvh; display: flex; justify-content: center; padding: 0 0 24px; }
-.col { width: 100%; max-width: 1024px; padding: 0 16px; }
+/* 下部タブバー廃止に伴い、タブ分の padding-bottom を撤去（docs/specs/16-web-navigation.md §3.1）。
+   シェルは余白を持たず、コンテンツ下端の余白は内容側（.col）で持つ */
+.shell { min-height: 100dvh; display: flex; justify-content: center; padding: 0; }
+.col { width: 100%; max-width: 1024px; padding: 0 16px calc(24px + env(safe-area-inset-bottom)); }
 .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
 .stack { display: flex; flex-direction: column; }
 

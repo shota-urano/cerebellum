@@ -1,5 +1,3 @@
-import path from 'node:path';
-
 import { expect, test } from '@playwright/test';
 
 // cerebellum-6b0.1 [Frontend] TabBar 廃止・ヘッダーのハンバーガー＋ドロワー
@@ -48,7 +46,11 @@ test('ドロワーの5項目それぞれへ遷移し、遷移先でアクティ�
   };
 
   for (const item of NAV_ITEMS) {
-    await page.goto('/');
+    // 開始地点は必ず遷移先と別の画面にする（同じ画面から始めると、リンクが遷移しなくても
+    // 「遷移先にいる」が成立してしまい、遷移を検証したことにならない）
+    const from = item.href === '/' ? '/history' : '/';
+    await page.goto(from);
+    expect(pathnameOf(page.url())).toBe(from);
     const drawer = await openDrawer();
     await drawer.getByRole('link', { name: item.label, exact: true }).click();
 
@@ -77,15 +79,4 @@ test('下部タブバーが存在しない', async ({ page }) => {
     await expect(page.locator('.tabs')).toHaveCount(0);
     await expect(page.locator('.tab')).toHaveCount(0);
   }
-});
-
-test('ドロワーを開いた状態のスクリーンショットを残す', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 }); // iPhone 相当（このアプリはモバイル前提）
-  await page.goto('/');
-  await page.getByRole('button', { name: 'メニュー', exact: true }).click();
-  await expect(page.getByRole('navigation', { name: 'ナビゲーション' })).toBeVisible();
-  // 発光ドットの点滅が止まるのを待たずに撮ると差分が出るが、記録用なので気にしない
-  await page.screenshot({
-    path: path.resolve(__dirname, '../../docs/design/screenshots/cerebellum-6b0.1-navigation.png'),
-  });
 });
