@@ -66,3 +66,4 @@
 {"id":"int-fad0a406c569815e088faac2b38b7314","kind":"field_change","created_at":"2026-07-29T09:08:03.663371Z","actor":"shota-urano","issue_id":"cerebellum-5cg","extra":{"field":"status","new_value":"closed","old_value":"open","reason":"全子タスク完了（integrate-close.sh）"}}
 {"id":"int-c71e8705a6a4898dc89ff3ccddeb3251","kind":"field_change","created_at":"2026-07-29T09:08:05.978301Z","actor":"shota-urano","issue_id":"cerebellum-6ub.1","extra":{"field":"status","new_value":"in_progress","old_value":"open"}}
 {"id":"int-81fbca21de8ec8a2b74d067ca42250ec","kind":"field_change","created_at":"2026-07-29T09:38:45.118766Z","actor":"shota-urano","issue_id":"cerebellum-6ub.1","extra":{"field":"status","new_value":"blocked","old_value":"in_progress"}}
+{"id":"int-77739cf68de5c54362efa3847ceb8860","kind":"field_change","created_at":"2026-07-29T11:32:02.504627Z","actor":"shota-urano","issue_id":"cerebellum-6ub.1","extra":{"field":"status","new_value":"open","old_value":"blocked"}}
