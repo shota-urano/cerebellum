@@ -1,8 +1,24 @@
 import Link from 'next/link';
-import type { TaskDto } from '@/shared/api';
+import type { DetailRef, TaskDto } from '@/shared/api';
 import { GLOW } from '@/shared/lib';
 import { metaOf } from '../lib/meta';
 import { CheckRing } from './CheckRing';
+
+/**
+ * `detailRef` の語彙（docs/specs/02-data-model.md §6）ごとの遷移先。
+ * どれもアプリ内ビューで、`date`（その日）と `taskId`（消し込み対象）を必ず渡す。
+ *
+ * - `nightshift.report` → 夜勤詳細（docs/specs/13-web-nightshift.md）
+ * - `learning.session`  → 学習セッション（docs/specs/15-web-learning.md §2）
+ * - `digest.*`          → ダイジェスト詳細（docs/specs/12-web-digest.md §3.1。section 付き）
+ */
+function detailHref(detailRef: DetailRef, date: string, taskId: string) {
+  const day = encodeURIComponent(date);
+  const task = encodeURIComponent(taskId);
+  if (detailRef === 'nightshift.report') return `/nightshift?date=${day}&taskId=${task}`;
+  if (detailRef === 'learning.session') return `/learning?date=${day}&taskId=${task}`;
+  return `/digest?date=${day}&section=${encodeURIComponent(detailRef)}&taskId=${task}`;
+}
 
 type Props = {
   task: TaskDto;
@@ -33,22 +49,9 @@ export function TaskRow({ task, onToggle, date }: Props) {
    * 詳細リンクを持つ行（docs/specs/12-web-digest.md §3.1）:
    * **チェックリングだけがトグル、それ以外の面はすべて詳細へ遷移**する。
    * リングは 22px だが、タップ領域は 44px 以上を確保する（同 §3.1）。
-   * `nightshift.report` は夜勤詳細（/nightshift・docs/specs/13-web-nightshift.md）、
-   * `digest.*` はダイジェスト詳細（/digest）へ。どちらもアプリ内ビュー。
    */
   if (task.detailRef) {
-    const href =
-      task.detailRef === 'nightshift.report'
-        ? '/nightshift?date=' +
-          encodeURIComponent(date) +
-          '&taskId=' +
-          encodeURIComponent(task.id)
-        : '/digest?date=' +
-          encodeURIComponent(date) +
-          '&section=' +
-          encodeURIComponent(task.detailRef) +
-          '&taskId=' +
-          encodeURIComponent(task.id);
+    const href = detailHref(task.detailRef, date, task.id);
 
     return (
       <div className="row row--split" style={{ background }}>

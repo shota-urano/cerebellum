@@ -25,7 +25,8 @@ export type DetailRef =
   | 'digest.derive'
   | 'digest.idea'
   | 'digest.consolidate'
-  | 'nightshift.report';
+  | 'nightshift.report'
+  | 'learning.session';
 
 /** 03-api.md §3: `progress` */
 export interface ProgressDto {
@@ -114,6 +115,53 @@ export interface DigestResponse {
   date: string;
   receivedAt: string | null;
   sections: DigestSectionDto[];
+}
+
+/** 03-api.md §3: `problems[]` の要素（14-learning.md §3.1） */
+export interface LearningProblemDto {
+  no: number;
+  kind: 'quiz' | 'code';
+  questionMd: string;
+  answerMd: string;
+  /** code 問題の作業ディレクトリ。quiz は null */
+  workdir: string | null;
+}
+
+/** 03-api.md §3: `GET /api/learning/sets/{date}`。未取り込みの日は 404 `not_found` */
+export interface LearningSetResponse {
+  date: string;
+  receivedAt: string;
+  theme: string;
+  source: 'theme' | 'memo';
+  lessonMd: string;
+  problems: LearningProblemDto[];
+  closingMd: string | null;
+}
+
+/** 03-api.md §3: 自己採点の値（`o`=○ / `d`=△ / `x`=×） */
+export type LearningGrade = 'o' | 'd' | 'x';
+
+/** 03-api.md §3: `grades[]` の要素 */
+export interface LearningGradeDto {
+  no: number;
+  grade: LearningGrade;
+}
+
+/** 03-api.md §3: `POST /api/learning/sets/{date}/result` のリクエストボディ */
+export interface LearningResultInput {
+  grades: LearningGradeDto[];
+  feeling: string;
+}
+
+/**
+ * 03-api.md §3: `POST /api/learning/sets/{date}/result` と
+ * `GET /api/learning/sets/{date}/result` のレスポンス。未記録の日は 404 `not_found`
+ */
+export interface LearningResultResponse {
+  date: string;
+  grades: LearningGradeDto[];
+  feeling: string;
+  completedAt: string;
 }
 
 /** 03-api.md §3: health の各フィールド */
