@@ -1,3 +1,8 @@
+---
+status: confirmed
+confirmed_rev: e129318
+---
+
 # 13. 夜勤詳細ビュー仕様（画面）
 
 **親**: [`00-overview.md`](./00-overview.md) ｜ **担当**: Frontend ｜ **範囲**: `app/nightshift/page.tsx`・`features/nightshift/`
@@ -32,7 +37,7 @@ cerebellum のサーバーは経由しない。`runs.json` の1件は viewer の
 
 - ビューアのポート `48310` 固定。ホスト名は `window.location.hostname` を使う（localhost でも MagicDNS 名でも同じコードで届く。ハードコードしない）
 - **https（Tailscale Serve 経由）のときは同一オリジンの path マウント `/loop-reports` を使う**（`tailscale serve --set-path /loop-reports http://127.0.0.1:48310` を設定済み）。https ページから `http://…:48310` を読むと混在コンテンツでブロックされ Failed to fetch になるため（2026-07-28 実測）。動画 src も同じ base を使うので一緒に解決される
-- タブバーには追加しない（タスクからの詳細ビューという位置づけ。digest と同じ）
+- 当初はタスクからの導線のみ（タブバーには追加しない・2026-07-28）→ 2026-07-29 のナビ改訂でドロワー項目に追加（[`16-web-navigation.md`](./16-web-navigation.md)）。タスクからの導線は従来どおり残す（digest と同じ）
 - warning の様式はダイジェストの `dg__warn` を流用（成果物欠落の判定基準は night-shift 側 `build-viewer.py` の `artifact_missing` と同一思想）
 
 ## 5. インターフェース
