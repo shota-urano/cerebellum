@@ -56,10 +56,6 @@ pub enum LearningValidationError {
     InvalidSource,
     #[error("problem kind must be one of: quiz, code")]
     InvalidKind,
-    #[error("learning set must not exceed {MAX_LEARNING_SET_BYTES} bytes")]
-    TooLarge,
-    #[error("learning set could not be serialized")]
-    Serialization,
 }
 
 impl LearningSetInput {
@@ -104,21 +100,13 @@ impl LearningSetInput {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        let learning_set = LearningSet {
+        Ok(LearningSet {
             theme,
             source,
             lesson_md,
             problems,
             closing_md: self.closing_md,
-        };
-        let size = serde_json::to_vec(&learning_set)
-            .map_err(|_| LearningValidationError::Serialization)?
-            .len();
-        if size > MAX_LEARNING_SET_BYTES {
-            return Err(LearningValidationError::TooLarge);
-        }
-
-        Ok(learning_set)
+        })
     }
 }
 
@@ -130,9 +118,7 @@ fn required(value: Option<String>, field: &'static str) -> Result<String, Learni
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        LearningProblemInput, LearningSetInput, LearningValidationError, MAX_LEARNING_SET_BYTES,
-    };
+    use super::{LearningProblemInput, LearningSetInput, LearningValidationError};
 
     fn valid_input() -> LearningSetInput {
         LearningSetInput {
@@ -237,14 +223,5 @@ mod tests {
             invalid_kind.validate(),
             Err(LearningValidationError::InvalidKind)
         );
-    }
-
-    #[test]
-    fn rejects_serialized_sets_over_256_kib() {
-        let oversized = LearningSetInput {
-            lesson_md: Some("x".repeat(MAX_LEARNING_SET_BYTES)),
-            ..valid_input()
-        };
-        assert_eq!(oversized.validate(), Err(LearningValidationError::TooLarge));
     }
 }

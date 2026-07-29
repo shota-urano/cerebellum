@@ -123,16 +123,36 @@ async fn call(app: axum::Router, method: &str, uri: &str) -> Response {
 }
 
 async fn call_json(app: axum::Router, method: &str, uri: &str, body: Value) -> Response {
+    call_json_body(app, method, uri, body.to_string()).await
+}
+
+async fn call_json_body(app: axum::Router, method: &str, uri: &str, body: String) -> Response {
     app.oneshot(
         Request::builder()
             .method(method)
             .uri(uri)
             .header(CONTENT_TYPE, "application/json")
-            .body(Body::from(body.to_string()))
+            .body(Body::from(body))
             .expect("test request should build"),
     )
     .await
     .expect("router should respond")
+}
+
+fn learning_set_body_with_size(size: usize) -> String {
+    let mut payload = json!({
+        "date": "today",
+        "theme": "theme",
+        "lessonMd": "",
+        "problems": [{ "no": 1, "questionMd": "q", "answerMd": "a" }]
+    });
+    let base_size = payload.to_string().len();
+    assert!(base_size < size, "target size must fit a valid payload");
+    payload["lessonMd"] = Value::String("x".repeat(size - base_size));
+
+    let body = payload.to_string();
+    assert_eq!(body.len(), size);
+    body
 }
 
 async fn json_body(response: Response) -> Value {
@@ -717,16 +737,11 @@ async fn learning_set_rejects_unknown_vocab_bad_dates_and_oversized_bodies() {
         assert_eq!(json_body(response).await["error"]["code"], "bad_request");
     }
 
-    let oversized = call_json(
+    let oversized = call_json_body(
         test_app(),
         "POST",
         "/api/learning/sets",
-        json!({
-            "date": "today",
-            "theme": "theme",
-            "lessonMd": "x".repeat(256 * 1024),
-            "problems": [{ "no": 1, "questionMd": "q", "answerMd": "a" }]
-        }),
+        learning_set_body_with_size(256 * 1024 + 1),
     )
     .await;
     assert_eq!(oversized.status(), StatusCode::BAD_REQUEST);
@@ -735,6 +750,46 @@ async fn learning_set_rejects_unknown_vocab_bad_dates_and_oversized_bodies() {
     let bad_get = call(test_app(), "GET", "/api/learning/sets/tomorrow").await;
     assert_eq!(bad_get.status(), StatusCode::BAD_REQUEST);
     assert_eq!(json_body(bad_get).await["error"]["code"], "bad_request");
+}
+
+#[tokio::test]
+async fn learning_set_accepts_body_at_256_kib() {
+    let response = call_json_body(
+        test_app(),
+        "POST",
+        "/api/learning/sets",
+        learning_set_body_with_size(256 * 1024),
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn learning_set_accepts_exactly_ten_problems() {
+    let problems = (1..=10)
+        .map(|no| {
+            json!({
+                "no": no,
+                "questionMd": format!("question {no}"),
+                "answerMd": format!("answer {no}")
+            })
+        })
+        .collect::<Vec<_>>();
+    let response = call_json(
+        test_app(),
+        "POST",
+        "/api/learning/sets",
+        json!({
+            "date": "today",
+            "theme": "theme",
+            "lessonMd": "lesson",
+            "problems": problems
+        }),
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
 }
 
 #[tokio::test]
