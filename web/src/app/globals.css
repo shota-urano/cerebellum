@@ -203,3 +203,7 @@ a:hover { color: #8FF2FF; }
 .ns__videos { display: grid; gap: 12px; margin: 12px 0; }
 .ns__video { margin: 0; }
 .ns__video video { display: block; width: 100%; border-radius: var(--radius-sm); background: #000; }
+
+/* 「開発」= run 履歴（docs/specs/19-web-dev-history.md）。row 様式の上に載せる最小限の追加 */
+.dev__badge { margin-left: 8px; font-size: 11px; letter-spacing: .06em; color: var(--muted); }
+.dev__bad { color: var(--error); }
