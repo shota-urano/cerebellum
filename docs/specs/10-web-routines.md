@@ -1,3 +1,8 @@
+---
+status: confirmed
+confirmed_rev: b7d2f1e
+---
+
 # 10. 「ルーティン」画面仕様（マスタ編集）
 
 **親**: [`00-overview.md`](./00-overview.md) ｜ **担当**: Frontend ｜ **範囲**: `app/routines/page.tsx`・`features/routines/`
@@ -10,7 +15,7 @@
 
 - **入力**: `GET /api/routines`（[`03-api.md`](./03-api.md) §2）
 - **出力**: `POST /api/routines`・`PUT /api/routines/{id}`・`DELETE /api/routines/{id}`
-- **経路**: `/routines`（タブバー3つ目）
+- **経路**: `/routines`（当初タブバー3つ目 → 2026-07-29 ドロワー項目へ移行 [`16-web-navigation.md`](./16-web-navigation.md)）
 
 ## 3. 処理詳細
 
