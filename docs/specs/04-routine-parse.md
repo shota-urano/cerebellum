@@ -1,3 +1,8 @@
+---
+status: confirmed
+confirmed_rev: 7cb823b
+---
+
 # 04. ルーティン表パース・due 判定仕様（domain）
 
 **親**: [`00-overview.md`](./00-overview.md) ｜ **担当**: Backend ｜ **範囲**: `domain/routine.rs`・`domain/due.rs`・`domain/task.rs`
