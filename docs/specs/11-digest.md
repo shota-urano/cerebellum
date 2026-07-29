@@ -1,3 +1,8 @@
+---
+status: confirmed
+confirmed_rev: 01e4aa4
+---
+
 # 11. 朝ダイジェストの取り込み・パース仕様（domain・usecase・API）
 
 **親**: [`00-overview.md`](./00-overview.md) ｜ **担当**: Backend ｜ **範囲**: `domain/digest.rs`・`usecase/manage_digest.rs`・`infra/api`（`/api/digests`）
