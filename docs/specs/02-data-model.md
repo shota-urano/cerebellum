@@ -68,6 +68,30 @@ CREATE TABLE learning_results (
   completed_at TEXT NOT NULL       -- ISO8601 オフセット付き
 );
 
+-- ハーネス取り込み提案（second-brain の night-harness が生成。§17）
+CREATE TABLE harness_proposals (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  date              TEXT NOT NULL, -- "YYYY-MM-DD"（ローカルタイム）
+  kind              TEXT NOT NULL, -- daily | prune | model_switch
+  slug              TEXT NOT NULL,
+  insight_name      TEXT NOT NULL,
+  verdict           TEXT NOT NULL, -- adopt | experiment | killed
+  category          TEXT,
+  summary           TEXT NOT NULL,
+  challenge_verdict TEXT,          -- hold | weaken | refute
+  challenge_note    TEXT,
+  detail_path       TEXT,          -- Vault 相対パス（サーバーはアクセスしない）
+  detail_md         TEXT NOT NULL,
+  status            TEXT NOT NULL, -- proposed | approved | rejected | killed
+  decided_at        TEXT,
+  apply_state       TEXT NOT NULL, -- pending | applied | failed
+  applied_at        TEXT,
+  apply_error       TEXT,
+  snapshot_path     TEXT,
+  received_at       TEXT NOT NULL,
+  UNIQUE(date, slug)
+);
+
 -- 消し込み状態
 CREATE TABLE task_checks (
   date       TEXT NOT NULL,
@@ -116,7 +140,7 @@ task_id = hex(sha1("{間隔}|{時刻}|{内容}"))[0..12]   # 16進小文字・�
 | 2 | `routines` と `routines_identity` を追加（マスタの SQLite 移管。2026-07-27） |
 | 3 | `digests` を追加、`routines.detail_ref` / `task_days.detail_ref` を追加（ダイジェスト取り込み。2026-07-27） |
 | 4 | `learning_sets` / `learning_results` を追加（学習。[`14-learning.md`](./14-learning.md)。2026-07-29） |
-| 5 | `harness_proposals` を追加（ハーネス承認。[`17-harness-approval.md`](./17-harness-approval.md)。**採番予約 2026-07-29・実装時追加**） |
+| 5 | `harness_proposals` を追加（ハーネス承認。[`17-harness-approval.md`](./17-harness-approval.md)。2026-07-29） |
 
 - v3 の列追加は `ALTER TABLE ... ADD COLUMN`（既定 NULL）。**既存 `task_days` 行の値は書き換えない**（追加列が NULL のまま残るのは正常。過去日に詳細は無い）
 
@@ -127,10 +151,11 @@ task_id = hex(sha1("{間隔}|{時刻}|{内容}"))[0..12]   # 16進小文字・�
 
 タスク行から「その日の詳細」を開くための結び付け。
 
-- `detail_ref` の語彙は**次の6つのみ**（これ以外は保存時に `bad_request`）:
-  `digest.connection` ／ `digest.derive` ／ `digest.idea` ／ `digest.consolidate` ／ `nightshift.report` ／ `learning.session`
+- `detail_ref` の語彙は**次の7つのみ**（これ以外は保存時に `bad_request`）:
+  `digest.connection` ／ `digest.derive` ／ `digest.idea` ／ `digest.consolidate` ／ `nightshift.report` ／ `learning.session` ／ `harness.proposals`
 - `nightshift.report` はダイジェストではなく**夜勤詳細ビュー**（`/nightshift`・[`13-web-nightshift.md`](./13-web-nightshift.md)）への結び付け（2026-07-28 追加）。サーバーは語彙検証のみ行い、データは cerebellum を経由しない（表示側が夜勤ビューアの `runs.json` を直接読む）
 - `learning.session` は**学習詳細ビュー**（`/learning`・[`15-web-learning.md`](./15-web-learning.md)）への結び付け。対応する学習セットと成績は `learning_sets` / `learning_results` に保存する（[`14-learning.md`](./14-learning.md)）
+- `harness.proposals` は**ハーネス提案画面**（`/harness`・[`18-web-harness.md`](./18-web-harness.md)）への結び付け。対応する提案と承認・適用状態は `harness_proposals` に保存する（[`17-harness-approval.md`](./17-harness-approval.md)）
 - スナップショット確定時に `routines.detail_ref` を `task_days.detail_ref` へコピーする。以後マスタ側を変えても過去日の結び付きは変わらない（§4 不変性と同じ理由）
 - `digests.body` は**受信原文をそのまま保存**する。セクション分割・整形は表示時のパースで行い、保存時には行わない（[`11-digest.md`](./11-digest.md) §3）。フォーマットが変わっても再パースで救えるようにするため
 - 同じ date への再 POST は**上書き**（`received_at` を更新）。ダイジェストは生成物であり、`task_days` のような不変記録ではない
