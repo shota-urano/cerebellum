@@ -259,7 +259,7 @@ pub(super) struct RoutinesQuery {
 }
 
 #[derive(Debug, Default, Deserialize)]
-#[serde(default, rename_all = "camelCase")]
+#[serde(default, rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct HarnessProposalsQuery {
     date: Option<String>,
     status: Option<String>,

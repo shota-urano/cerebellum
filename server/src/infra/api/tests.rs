@@ -786,3 +786,26 @@ async fn harness_missing_day_and_error_table_are_mapped_at_http_boundary() {
         "bad_request"
     );
 }
+
+/// docs/specs/03-api.md §3 の一覧クエリ許可形。
+#[tokio::test]
+async fn harness_list_rejects_unknown_and_mixed_query_parameters() {
+    let app = test_app();
+
+    for path in [
+        "/api/harness/proposals?date=today&foo=bar",
+        "/api/harness/proposals?status=approved&aplyState=pending",
+        "/api/harness/proposals?date=today&status=approved&applyState=pending",
+    ] {
+        let response = call(app.clone(), "GET", path).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{path}");
+        let body = json_body(response).await;
+        assert_eq!(body["error"]["code"], "bad_request", "{path}");
+        assert!(
+            body["error"]["message"]
+                .as_str()
+                .is_some_and(|message| !message.is_empty()),
+            "{path}"
+        );
+    }
+}

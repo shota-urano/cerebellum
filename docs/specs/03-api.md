@@ -172,7 +172,7 @@ Rust（axum）と Next.js（`shared/api/types.ts` に手動同期）が共有す
 - `POST /api/digests` の検証（400 `bad_request`）: `date` が `%Y-%m-%d` でも `today` でもない ／ `body` が空 ／ `body` が 64KiB 超
 - ダイジェストが未受信の日は **404 にせず** `sections: []` を 200 で返す
 - `POST /api/harness/proposals` の検証（400 `bad_request`）: 詳細は [17](./17-harness-approval.md) §3.1〜§3.2。body は 512KiB 以下、`proposals` は1〜30件、`detailMd` は1件128KiB以下。`adopt` / `experiment` は `challengeVerdict` 必須
-- ハーネス一覧 GET のクエリは、`date` だけ（省略時 `today`）または `status=approved&applyState=pending` のどちらか。混在・値違い・適用待ち条件の片方欠落は 400 `bad_request`
+- ハーネス一覧 GET のクエリは、`date` だけ（省略時 `today`）または `status=approved&applyState=pending` のどちらか。未知パラメータ・混在・値違い・適用待ち条件の片方欠落など、その他は理由文字列つきの 400 `bad_request`
 - ハーネスの decision / apply-result の状態遷移検証は [17](./17-harness-approval.md) §3.3〜§3.4。不正な遷移は 400 `bad_request`
 - ハーネス提案が未着の日は **404 にせず** `receivedAt: null`・`proposals: []` を 200 で返す
 - 過去日でスナップショットが無い日: `tasks: []`・`progress: {done:0,total:0}`・`readonly:true` を 200 で返し、フロントが「記録なし」表示にする
