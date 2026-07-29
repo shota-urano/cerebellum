@@ -1,4 +1,6 @@
 export { ApiError, SWR_OPTIONS, apiDelete, apiPost, apiPut, fetcher } from './client';
+export { runSource, useRuns, viewerBase } from './runs';
+export type { Run } from './runs';
 export type {
   ApiErrorBody,
   ApiErrorCode,
