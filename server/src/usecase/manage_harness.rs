@@ -64,10 +64,16 @@ impl ManageHarness {
             .map_err(domain_error)?;
         let decided_at = self.clock.now().to_rfc3339();
 
-        self.repository
-            .save_harness_decision(id, status, &decided_at)
-            .map_err(repository_error)?
-            .ok_or_else(|| UsecaseError::NotFound(format!("harness proposal {id}")))
+        match self
+            .repository
+            .save_harness_decision(id, current.status, status, &decided_at)
+        {
+            Ok(proposal) => Ok(proposal),
+            Err(HarnessRepositoryError::StateMismatch) => {
+                self.resolve_decision_state_mismatch(id, requested_status)
+            }
+            Err(error) => Err(repository_error(error)),
+        }
     }
 
     pub fn list_proposals(&self, date: &str) -> Result<HarnessProposalList, UsecaseError> {
@@ -92,13 +98,19 @@ impl ManageHarness {
             .get_harness_proposal(id)
             .map_err(repository_error)?
             .ok_or_else(|| UsecaseError::NotFound(format!("harness proposal {id}")))?;
-        let result = validate_apply_result(current.status, input).map_err(domain_error)?;
+        let result = validate_apply_result(current.status, input.clone()).map_err(domain_error)?;
         let applied_at = self.clock.now().to_rfc3339();
 
-        self.repository
+        match self
+            .repository
             .save_harness_apply_result(id, &result, &applied_at)
-            .map_err(repository_error)?
-            .ok_or_else(|| UsecaseError::NotFound(format!("harness proposal {id}")))
+        {
+            Ok(proposal) => Ok(proposal),
+            Err(HarnessRepositoryError::StateMismatch) => {
+                self.resolve_apply_result_state_mismatch(id, input)
+            }
+            Err(error) => Err(repository_error(error)),
+        }
     }
 
     fn list_resolved(&self, date: &str) -> Result<HarnessProposalList, UsecaseError> {
@@ -116,6 +128,34 @@ impl ManageHarness {
             proposals,
         })
     }
+
+    fn resolve_decision_state_mismatch(
+        &self,
+        id: i64,
+        requested_status: &str,
+    ) -> Result<StoredHarnessProposal, UsecaseError> {
+        let current = self.reload_after_state_mismatch(id)?;
+        validate_decision(current.status, current.apply_state, requested_status)
+            .map_err(domain_error)?;
+        Err(concurrent_state_conflict(id))
+    }
+
+    fn resolve_apply_result_state_mismatch(
+        &self,
+        id: i64,
+        input: ApplyResultInput,
+    ) -> Result<StoredHarnessProposal, UsecaseError> {
+        let current = self.reload_after_state_mismatch(id)?;
+        validate_apply_result(current.status, input).map_err(domain_error)?;
+        Err(concurrent_state_conflict(id))
+    }
+
+    fn reload_after_state_mismatch(&self, id: i64) -> Result<StoredHarnessProposal, UsecaseError> {
+        self.repository
+            .get_harness_proposal(id)
+            .map_err(repository_error)?
+            .ok_or_else(|| UsecaseError::NotFound(format!("harness proposal {id}")))
+    }
 }
 
 fn domain_error(error: DomainError) -> UsecaseError {
@@ -127,8 +167,15 @@ fn repository_error(error: HarnessRepositoryError) -> UsecaseError {
         HarnessRepositoryError::Conflict => {
             UsecaseError::Conflict("non-proposed harness proposals cannot be replaced".to_owned())
         }
+        HarnessRepositoryError::StateMismatch => {
+            UsecaseError::Conflict("harness proposal state changed concurrently".to_owned())
+        }
         error @ HarnessRepositoryError::Internal { .. } => UsecaseError::Internal(Box::new(error)),
     }
+}
+
+fn concurrent_state_conflict(id: i64) -> UsecaseError {
+    UsecaseError::Conflict(format!("harness proposal {id} changed concurrently"))
 }
 
 #[cfg(test)]
@@ -158,6 +205,24 @@ mod tests {
     struct RepositoryState {
         next_id: i64,
         rows: Vec<StoredHarnessProposal>,
+        apply_before_next_decision: bool,
+        reject_before_next_apply_result: bool,
+    }
+
+    impl InMemoryHarnessRepository {
+        fn apply_before_next_decision(&self) {
+            self.state
+                .lock()
+                .expect("repository should lock")
+                .apply_before_next_decision = true;
+        }
+
+        fn reject_before_next_apply_result(&self) {
+            self.state
+                .lock()
+                .expect("repository should lock")
+                .reject_before_next_apply_result = true;
+        }
     }
 
     impl HarnessRepository for InMemoryHarnessRepository {
@@ -242,16 +307,25 @@ mod tests {
         fn save_harness_decision(
             &self,
             id: i64,
+            expected_status: HarnessStatus,
             status: HarnessStatus,
             decided_at: &str,
-        ) -> Result<Option<StoredHarnessProposal>, HarnessRepositoryError> {
+        ) -> Result<StoredHarnessProposal, HarnessRepositoryError> {
             let mut state = self.state.lock().expect("repository should lock");
+            let apply_before_update = state.apply_before_next_decision;
+            state.apply_before_next_decision = false;
             let Some(row) = state.rows.iter_mut().find(|row| row.id == id) else {
-                return Ok(None);
+                return Err(HarnessRepositoryError::StateMismatch);
             };
+            if apply_before_update {
+                row.apply_state = ApplyState::Applied;
+            }
+            if row.status != expected_status || row.apply_state != ApplyState::Pending {
+                return Err(HarnessRepositoryError::StateMismatch);
+            }
             row.status = status;
             row.decided_at = Some(decided_at.to_owned());
-            Ok(Some(row.clone()))
+            Ok(row.clone())
         }
 
         fn list_pending_approved(
@@ -281,16 +355,24 @@ mod tests {
             id: i64,
             result: &ApplyResult,
             applied_at: &str,
-        ) -> Result<Option<StoredHarnessProposal>, HarnessRepositoryError> {
+        ) -> Result<StoredHarnessProposal, HarnessRepositoryError> {
             let mut state = self.state.lock().expect("repository should lock");
+            let reject_before_update = state.reject_before_next_apply_result;
+            state.reject_before_next_apply_result = false;
             let Some(row) = state.rows.iter_mut().find(|row| row.id == id) else {
-                return Ok(None);
+                return Err(HarnessRepositoryError::StateMismatch);
             };
+            if reject_before_update {
+                row.status = HarnessStatus::Rejected;
+            }
+            if row.status != HarnessStatus::Approved {
+                return Err(HarnessRepositoryError::StateMismatch);
+            }
             row.apply_state = result.state;
             row.applied_at = Some(applied_at.to_owned());
             row.apply_error = result.error.clone();
             row.snapshot_path = result.snapshot_path.clone();
-            Ok(Some(row.clone()))
+            Ok(row.clone())
         }
     }
 
@@ -304,9 +386,14 @@ mod tests {
     }
 
     fn manage() -> ManageHarness {
-        ManageHarness::new(
-            Arc::new(InMemoryHarnessRepository::default()),
-            Arc::new(FixedClock),
+        manage_with_repository().0
+    }
+
+    fn manage_with_repository() -> (ManageHarness, Arc<InMemoryHarnessRepository>) {
+        let repository = Arc::new(InMemoryHarnessRepository::default());
+        (
+            ManageHarness::new(repository.clone(), Arc::new(FixedClock)),
+            repository,
         )
     }
 
@@ -473,5 +560,70 @@ mod tests {
         assert_eq!(applied.apply_state, ApplyState::Applied);
         assert_eq!(applied.snapshot_path.as_deref(), Some("archive/retry"));
         assert!(applied.apply_error.is_none());
+    }
+
+    #[test]
+    fn decision_rereads_after_apply_result_wins_the_race() {
+        let (manage, repository) = manage_with_repository();
+        let stored = manage
+            .save_proposals(
+                batch("2026-07-29", vec![proposal("apply-first", "adopt")]),
+                1,
+            )
+            .expect("batch should save");
+        let id = stored.proposals[0].id;
+        manage
+            .save_decision(id, "approved")
+            .expect("proposal should be approved");
+        repository.apply_before_next_decision();
+
+        let error = manage
+            .save_decision(id, "rejected")
+            .expect_err("stale decision should be rejected");
+
+        assert!(matches!(error, UsecaseError::BadRequest(_)));
+        assert!(error.to_string().contains("apply_state pending"));
+        let current = repository
+            .get_harness_proposal(id)
+            .expect("proposal read should succeed")
+            .expect("proposal should exist");
+        assert_eq!(current.status, HarnessStatus::Approved);
+        assert_eq!(current.apply_state, ApplyState::Applied);
+    }
+
+    #[test]
+    fn apply_result_rereads_after_decision_wins_the_race() {
+        let (manage, repository) = manage_with_repository();
+        let stored = manage
+            .save_proposals(
+                batch("2026-07-29", vec![proposal("decision-first", "adopt")]),
+                1,
+            )
+            .expect("batch should save");
+        let id = stored.proposals[0].id;
+        manage
+            .save_decision(id, "approved")
+            .expect("proposal should be approved");
+        repository.reject_before_next_apply_result();
+
+        let error = manage
+            .save_apply_result(
+                id,
+                ApplyResultInput {
+                    state: Some("applied".to_owned()),
+                    snapshot_path: Some("archive/decision-first".to_owned()),
+                    error: None,
+                },
+            )
+            .expect_err("stale apply result should be rejected");
+
+        assert!(matches!(error, UsecaseError::BadRequest(_)));
+        assert!(error.to_string().contains("status approved"));
+        let current = repository
+            .get_harness_proposal(id)
+            .expect("proposal read should succeed")
+            .expect("proposal should exist");
+        assert_eq!(current.status, HarnessStatus::Rejected);
+        assert_eq!(current.apply_state, ApplyState::Pending);
     }
 }

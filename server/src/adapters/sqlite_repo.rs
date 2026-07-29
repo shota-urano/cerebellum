@@ -839,9 +839,10 @@ impl HarnessRepository for SqliteTaskRepository {
     fn save_harness_decision(
         &self,
         id: i64,
+        expected_status: HarnessStatus,
         status: HarnessStatus,
         decided_at: &str,
-    ) -> Result<Option<StoredHarnessProposal>, HarnessRepositoryError> {
+    ) -> Result<StoredHarnessProposal, HarnessRepositoryError> {
         let connection = self
             .connection()
             .map_err(HarnessRepositoryError::internal)?;
@@ -849,12 +850,14 @@ impl HarnessRepository for SqliteTaskRepository {
             .execute(
                 "UPDATE harness_proposals
                  SET status = ?1, decided_at = ?2
-                 WHERE id = ?3",
-                params![status.as_str(), decided_at, id],
+                 WHERE id = ?3
+                   AND status = ?4
+                   AND apply_state = 'pending'",
+                params![status.as_str(), decided_at, id, expected_status.as_str()],
             )
             .map_err(HarnessRepositoryError::internal)?;
         if changed == 0 {
-            return Ok(None);
+            return Err(HarnessRepositoryError::StateMismatch);
         }
 
         connection
@@ -869,7 +872,6 @@ impl HarnessRepository for SqliteTaskRepository {
                 [id],
                 harness_proposal_from_row,
             )
-            .map(Some)
             .map_err(HarnessRepositoryError::internal)
     }
 
@@ -901,7 +903,7 @@ impl HarnessRepository for SqliteTaskRepository {
         id: i64,
         result: &ApplyResult,
         applied_at: &str,
-    ) -> Result<Option<StoredHarnessProposal>, HarnessRepositoryError> {
+    ) -> Result<StoredHarnessProposal, HarnessRepositoryError> {
         let connection = self
             .connection()
             .map_err(HarnessRepositoryError::internal)?;
@@ -912,7 +914,8 @@ impl HarnessRepository for SqliteTaskRepository {
                      applied_at = ?2,
                      apply_error = ?3,
                      snapshot_path = ?4
-                 WHERE id = ?5",
+                 WHERE id = ?5
+                   AND status = 'approved'",
                 params![
                     result.state.as_str(),
                     applied_at,
@@ -923,7 +926,7 @@ impl HarnessRepository for SqliteTaskRepository {
             )
             .map_err(HarnessRepositoryError::internal)?;
         if changed == 0 {
-            return Ok(None);
+            return Err(HarnessRepositoryError::StateMismatch);
         }
 
         connection
@@ -938,7 +941,6 @@ impl HarnessRepository for SqliteTaskRepository {
                 [id],
                 harness_proposal_from_row,
             )
-            .map(Some)
             .map_err(HarnessRepositoryError::internal)
     }
 }
@@ -1061,7 +1063,8 @@ mod tests {
             task::{CheckedTask, Task},
         },
         usecase::ports::{
-            HarnessRepository, RoutineRepository, RoutineRepositoryError, TaskRepository,
+            HarnessRepository, HarnessRepositoryError, RoutineRepository, RoutineRepositoryError,
+            TaskRepository,
         },
     };
 
@@ -1423,11 +1426,11 @@ mod tests {
         let current = repository
             .save_harness_decision(
                 current_rows[0].id,
+                HarnessStatus::Proposed,
                 HarnessStatus::Approved,
                 "2026-07-29T08:00:00+09:00",
             )
-            .expect("decision should save")
-            .expect("current proposal should exist");
+            .expect("decision should save");
         assert_eq!(current.status, HarnessStatus::Approved);
         assert!(matches!(
             repository.replace_harness_proposals(
@@ -1450,6 +1453,7 @@ mod tests {
         repository
             .save_harness_decision(
                 older.id,
+                HarnessStatus::Proposed,
                 HarnessStatus::Approved,
                 "2026-07-28T08:00:00+09:00",
             )
@@ -1474,8 +1478,7 @@ mod tests {
                 },
                 "2026-07-30T06:20:00+09:00",
             )
-            .expect("failed result should save")
-            .expect("current proposal should exist");
+            .expect("failed result should save");
         assert_eq!(failed.apply_state, ApplyState::Failed);
         assert_eq!(failed.apply_error.as_deref(), Some("destination exists"));
 
@@ -1489,11 +1492,120 @@ mod tests {
                 },
                 "2026-07-30T06:30:00+09:00",
             )
-            .expect("applied retry should save")
-            .expect("current proposal should exist");
+            .expect("applied retry should save");
         assert_eq!(applied.apply_state, ApplyState::Applied);
         assert_eq!(applied.snapshot_path.as_deref(), Some("archive/current"));
         assert!(applied.apply_error.is_none());
+    }
+
+    #[test]
+    fn decision_cas_rejects_a_stale_read_after_apply_result() {
+        let repository = repository();
+        repository
+            .replace_harness_proposals(
+                &harness_batch("2026-07-29", &["apply-first"]),
+                "2026-07-29T06:40:00+09:00",
+            )
+            .expect("batch should save");
+        let proposed = repository
+            .list_harness_proposals("2026-07-29")
+            .expect("batch should list")
+            .remove(0);
+        repository
+            .save_harness_decision(
+                proposed.id,
+                HarnessStatus::Proposed,
+                HarnessStatus::Approved,
+                "2026-07-29T08:00:00+09:00",
+            )
+            .expect("proposal should be approved");
+        let stale_for_decision = repository
+            .get_harness_proposal(proposed.id)
+            .expect("proposal read should succeed")
+            .expect("proposal should exist");
+
+        repository
+            .save_harness_apply_result(
+                proposed.id,
+                &ApplyResult {
+                    state: ApplyState::Applied,
+                    snapshot_path: Some("archive/apply-first".to_owned()),
+                    error: None,
+                },
+                "2026-07-30T06:20:00+09:00",
+            )
+            .expect("apply result should win the race");
+
+        assert!(matches!(
+            repository.save_harness_decision(
+                proposed.id,
+                stale_for_decision.status,
+                HarnessStatus::Rejected,
+                "2026-07-30T06:20:01+09:00",
+            ),
+            Err(HarnessRepositoryError::StateMismatch)
+        ));
+        let stored = repository
+            .get_harness_proposal(proposed.id)
+            .expect("proposal read should succeed")
+            .expect("proposal should exist");
+        assert_eq!(stored.status, HarnessStatus::Approved);
+        assert_eq!(stored.apply_state, ApplyState::Applied);
+    }
+
+    #[test]
+    fn apply_result_cas_rejects_a_stale_read_after_decision() {
+        let repository = repository();
+        repository
+            .replace_harness_proposals(
+                &harness_batch("2026-07-29", &["decision-first"]),
+                "2026-07-29T06:40:00+09:00",
+            )
+            .expect("batch should save");
+        let proposed = repository
+            .list_harness_proposals("2026-07-29")
+            .expect("batch should list")
+            .remove(0);
+        repository
+            .save_harness_decision(
+                proposed.id,
+                HarnessStatus::Proposed,
+                HarnessStatus::Approved,
+                "2026-07-29T08:00:00+09:00",
+            )
+            .expect("proposal should be approved");
+        let stale_for_apply = repository
+            .get_harness_proposal(proposed.id)
+            .expect("proposal read should succeed")
+            .expect("proposal should exist");
+
+        repository
+            .save_harness_decision(
+                proposed.id,
+                stale_for_apply.status,
+                HarnessStatus::Rejected,
+                "2026-07-30T06:20:00+09:00",
+            )
+            .expect("decision should win the race");
+
+        assert!(matches!(
+            repository.save_harness_apply_result(
+                proposed.id,
+                &ApplyResult {
+                    state: ApplyState::Applied,
+                    snapshot_path: Some("archive/decision-first".to_owned()),
+                    error: None,
+                },
+                "2026-07-30T06:20:01+09:00",
+            ),
+            Err(HarnessRepositoryError::StateMismatch)
+        ));
+        let stored = repository
+            .get_harness_proposal(proposed.id)
+            .expect("proposal read should succeed")
+            .expect("proposal should exist");
+        assert_eq!(stored.status, HarnessStatus::Rejected);
+        assert_eq!(stored.apply_state, ApplyState::Pending);
     }
 
     #[test]

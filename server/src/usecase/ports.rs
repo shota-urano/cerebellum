@@ -98,16 +98,17 @@ pub trait HarnessRepository: Send + Sync {
     fn save_harness_decision(
         &self,
         id: i64,
+        expected_status: HarnessStatus,
         status: HarnessStatus,
         decided_at: &str,
-    ) -> Result<Option<StoredHarnessProposal>, HarnessRepositoryError>;
+    ) -> Result<StoredHarnessProposal, HarnessRepositoryError>;
     fn list_pending_approved(&self) -> Result<Vec<StoredHarnessProposal>, HarnessRepositoryError>;
     fn save_harness_apply_result(
         &self,
         id: i64,
         result: &ApplyResult,
         applied_at: &str,
-    ) -> Result<Option<StoredHarnessProposal>, HarnessRepositoryError>;
+    ) -> Result<StoredHarnessProposal, HarnessRepositoryError>;
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -209,6 +210,8 @@ impl RoutineImportRepositoryError {
 pub enum HarnessRepositoryError {
     #[error("harness proposals for the date are no longer all proposed")]
     Conflict,
+    #[error("harness proposal no longer matches the expected state")]
+    StateMismatch,
     #[error("harness repository failed")]
     Internal {
         #[source]
