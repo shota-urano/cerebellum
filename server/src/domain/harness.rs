@@ -404,6 +404,16 @@ mod tests {
         }
     }
 
+    fn proposals_with_unique_slugs(count: usize) -> Vec<HarnessProposalInput> {
+        (0..count)
+            .map(|index| {
+                let mut item = proposal();
+                item.slug = Some(format!("proposal-{index}"));
+                item
+            })
+            .collect()
+    }
+
     fn assert_invalid(input: HarnessProposalBatchInput) {
         assert!(validate_proposal_batch(input, 1).is_err());
     }
@@ -447,9 +457,19 @@ mod tests {
     }
 
     #[test]
-    fn rejects_empty_or_too_many_proposals() {
+    fn rejects_empty_proposals() {
         assert_invalid(batch(Vec::new()));
-        assert_invalid(batch((0..31).map(|_| proposal()).collect()));
+    }
+
+    #[test]
+    fn rejects_more_than_30_unique_proposals() {
+        assert_invalid(batch(proposals_with_unique_slugs(31)));
+    }
+
+    #[test]
+    fn accepts_30_unique_proposals() {
+        let validated = validate_proposal_batch(batch(proposals_with_unique_slugs(30)), 1).unwrap();
+        assert_eq!(validated.proposals.len(), 30);
     }
 
     #[test]
@@ -492,6 +512,19 @@ mod tests {
     }
 
     #[test]
+    fn accepts_supported_explicit_kinds() {
+        for (kind, expected) in [
+            ("prune", HarnessKind::Prune),
+            ("model_switch", HarnessKind::ModelSwitch),
+        ] {
+            let mut input = batch(vec![proposal()]);
+            input.kind = Some(kind.to_owned());
+            let validated = validate_proposal_batch(input, 1).unwrap();
+            assert_eq!(validated.kind, expected);
+        }
+    }
+
+    #[test]
     fn requires_challenge_verdict_for_adopt_and_experiment() {
         for verdict in ["adopt", "experiment"] {
             let mut item = proposal();
@@ -515,6 +548,17 @@ mod tests {
         let mut long_challenge_note = proposal();
         long_challenge_note.challenge_note = Some("界".repeat(301));
         assert_invalid(batch(vec![long_challenge_note]));
+    }
+
+    #[test]
+    fn accepts_summary_at_200_character_limit() {
+        let summary = "界".repeat(200);
+        let mut item = proposal();
+        item.summary = Some(summary.clone());
+
+        let validated = validate_proposal_batch(batch(vec![item]), 1).unwrap();
+        assert_eq!(validated.proposals[0].summary, summary);
+        assert_eq!(validated.proposals[0].summary.chars().count(), 200);
     }
 
     #[test]
