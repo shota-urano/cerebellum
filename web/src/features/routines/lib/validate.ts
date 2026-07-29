@@ -48,6 +48,7 @@ export const DETAIL_REF_OPTIONS: { value: DetailRef | ''; label: string }[] = [
   { value: 'digest.idea', label: 'ダイジェスト: アイデア' },
   { value: 'digest.consolidate', label: 'ダイジェスト: consolidate' },
   { value: 'nightshift.report', label: '夜勤レポ（PR・検証動画）' },
+  { value: 'learning.session', label: '学習セッション（レッスン・問題）' },
 ];
 
 /** trim 済みの入力を検証する。返り値が空オブジェクトなら送信してよい。 */
