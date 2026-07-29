@@ -41,6 +41,8 @@ second-brain の `night-harness` が毎朝出す「ハーネス取り込み判�
       "verdict": "experiment",
       "category": "⑥実験（新機軸）",
       "summary": "Vaultを調べるとき、AIに全部覚えさせるのをやめて外にメモ帳を置く方式を試す",
+      "challengeVerdict": "weaken",
+      "challengeNote": "重複は無いが合格ラインが曖昧だったので、3問中2問・再現率+20%と数字を入れさせた",
       "detailPath": "40_Projects/harness/判定/2026-07-29-検索状態外置き.md",
       "detailMd": "...(判定文の全文 markdown)..."
     }
@@ -56,6 +58,8 @@ second-brain の `night-harness` が毎朝出す「ハーネス取り込み判�
 - `detailMd` は判定文の全文。**Vault を読まずに画面へ全文を出すために本文ごと預かる**（AGENTS.md ルール1「`serve` は Vault を参照しない」を守るため。digest が原文を預かるのと同じ理由）
 - `detailPath` は Vault 相対パス。`--apply` がパッチ案を読む先であり、**サーバはこのパスにアクセスしない**（学習仕様の `workdir` と同じ扱い）
 - `category` は6分類の文字列。`verdict: "killed"` のときは省略可
+- `challengeVerdict` は敵対レビュー（`harness-adversary`・fresh-context の反証専任エージェント）の結論。`hold`（崩せなかった）| `weaken`（条件付き・削って通した）| `refute`（潰した）。`challengeNote` はその1〜2文（≤300文字）
+- **`verdict` が `adopt` / `experiment` の行は `challengeVerdict` 必須**（`bad_request` で拒否）。誰にも反証されていない提案を承認画面に出さないための機械ガード。`refute` された候補は送信側で `verdict: "killed"` に落ちて届くので、`killed` 行では省略可
 
 ### 3.2 取り込み（save_harness_proposals）
 
@@ -111,7 +115,7 @@ second-brain の `night-harness` が毎朝出す「ハーネス取り込み判�
 
 ## 5. インターフェース（実装時に他仕様へ追記するもの）
 
-- [`02-data-model.md`](./02-data-model.md): `harness_proposals`（id PK・date・slug・insight_name・verdict・category・summary・detail_path・detail_md・status・decided_at・apply_state・applied_at・apply_error・snapshot_path・received_at、`UNIQUE(date, slug)`）→ migration `005_harness.sql`・`user_version = 5`（**v4 は学習 [`14`](./14-learning.md) が使用**。2026-07-29 に採番衝突を解消）
+- [`02-data-model.md`](./02-data-model.md): `harness_proposals`（id PK・date・kind・slug・insight_name・verdict・category・summary・challenge_verdict・challenge_note・detail_path・detail_md・status・decided_at・apply_state・applied_at・apply_error・snapshot_path・received_at、`UNIQUE(date, slug)`）→ migration `005_harness.sql`・`user_version = 5`（**v4 は学習 [`14`](./14-learning.md) が使用**。2026-07-29 に採番衝突を解消）
 - [`02-data-model.md`](./02-data-model.md) §6: `detail_ref` 語彙に `harness.proposals` を追加（「今日」からハーネス画面へ入る導線用。対応するルーティン行は人間が「ルーティン」画面から追加する）
 - [`03-api.md`](./03-api.md): §3 の5エンドポイントと DTO
 
@@ -151,7 +155,7 @@ second-brain の `night-harness` が毎朝出す「ハーネス取り込み判�
 - [ ] [Backend] migration `005_harness.sql`（`harness_proposals`・`user_version=5`。v4 は学習 [`14`](./14-learning.md)）＋ `02-data-model.md` への追記
   - 受け入れ基準: 学習 migration 適用済みの DB（user_version=4）に migration が適用できるテストと、`UNIQUE(date, slug)` 違反が検知されるテストが通る。`make verify` PASS
 - [ ] [Backend] `domain/harness.rs`（提案・状態遷移の検証。I/O 依存ゼロ）
-  - 受け入れ基準: 検証ルールのテストが通る——必須欠落・`proposals` 空・`slug` 重複・サイズ超過（512KiB / detailMd 128KiB）の拒否、`killed` 行への decision 拒否、`apply_state ≠ pending` 行への decision 拒否、`status ≠ approved` 行への apply-result 拒否、`proposed ⇄ approved / rejected` の往復可。`make verify` PASS
+  - 受け入れ基準: 検証ルールのテストが通る——必須欠落・`proposals` 空・`slug` 重複・サイズ超過（512KiB / detailMd 128KiB）の拒否、**`verdict` が `adopt`/`experiment` で `challengeVerdict` 欠落の拒否**、`killed` 行への decision 拒否、`apply_state ≠ pending` 行への decision 拒否、`status ≠ approved` 行への apply-result 拒否、`proposed ⇄ approved / rejected` の往復可。`make verify` PASS
 - [ ] [Backend] `usecase/manage_harness.rs`（取り込み・承認記録・適用待ち抽出・結果書き戻し）
   - 受け入れ基準: テストが通る——同一 date 再送の一括置換（1トランザクション）／`status ≠ proposed` の行がある日への再送 409／`killed` は取り込み時に `status=killed`／適用待ち抽出が日付を問わず古い順／`failed` → `applied` の再送上書き。`make verify` PASS
 - [ ] [Backend] `infra/api` に5エンドポイント追加＋ `03-api.md` への追記
