@@ -1,6 +1,7 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
+import { NavDrawer } from './NavDrawer';
 
 /** パスから画面タグを決める（docs/design/01-shell.md）。3タブ目の追加分は ROUTINES。 */
 function tagOf(pathname: string) {
@@ -17,7 +18,11 @@ export function HudStatus() {
         <span className="hud__dot" />
         <span className="mono label" style={{ letterSpacing: '.18em', fontSize: 11 }}>ROUTINE / DAILY</span>
       </div>
-      <span className="mono label" style={{ letterSpacing: '.14em', fontSize: 11 }}>{tag}</span>
+      {/* ハンバーガーは HUD 行に同居させる（行を増やさない・docs/specs/16-web-navigation.md §3.2） */}
+      <div className="hud__right">
+        <span className="mono label" style={{ letterSpacing: '.14em', fontSize: 11 }}>{tag}</span>
+        <NavDrawer />
+      </div>
     </div>
   );
 }

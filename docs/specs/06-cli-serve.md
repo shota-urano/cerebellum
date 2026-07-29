@@ -1,3 +1,8 @@
+---
+status: confirmed
+confirmed_rev: 7cc683d
+---
+
 # 06. CLI・サーバー起動・静的配信仕様（infra）
 
 **親**: [`00-overview.md`](./00-overview.md) ｜ **担当**: Backend ｜ **範囲**: `main.rs`・`cli.rs`・`config.rs`・`infra/assets.rs`・`/api/health`・launchd 常駐

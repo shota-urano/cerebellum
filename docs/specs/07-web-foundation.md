@@ -1,3 +1,8 @@
+---
+status: confirmed
+confirmed_rev: be0410a
+---
+
 # 07. Web 基盤仕様（Next.js）
 
 **親**: [`00-overview.md`](./00-overview.md) ｜ **担当**: Frontend ｜ **範囲**: `web/` の構成・データ取得・スタイル・PWA 下準備（画面そのものは 08/09）
@@ -50,7 +55,7 @@ web/
 - SWR 標準設定＋`revalidateOnFocus: true`（スマホでアプリに戻った瞬間に最新化）
 - トグルは optimistic update: `mutate` で UI 即時反映 → POST → 失敗時ロールバック
 - モバイルファースト: `max-width: 1024px` 中央寄せ・それ以下は画面幅に追従・タップターゲット 44px 以上（2026-07-26 改訂。当初 440px 固定だったが実機 iPad で狭かったため画面幅追従へ変更。上限 1024px は超大画面での間延び防止）
-- 共通シェル: 上部 HUD ステータス行（ROUTINE / DAILY＋画面タグ）＋下部固定タブバー（今日／履歴／ルーティン の3タブ。3つ目は [`10-web-routines.md`](./10-web-routines.md) で追加）。見た目の正本は `docs/design/01-shell.md`
+- 共通シェル: 上部 HUD ステータス行（ROUTINE / DAILY＋画面タグ）＋ハンバーガードロワー（[`16-web-navigation.md`](./16-web-navigation.md)。2026-07-29 に下部固定タブバーから移行）。見た目の正本は `docs/design/01-shell.md`
 - フォント: Noto Sans JP（本文）＋ JetBrains Mono（数字・等幅）を `next/font/google` でセルフホスト
 - 常時ダーク（OS追従しない・light テーマなし。トークンの正本は `docs/design/system/01-tokens.md`）
 - PWA は manifest＋ホーム画面追加まで（プッシュ通知は Phase 後半・スコープ外）

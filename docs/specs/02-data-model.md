@@ -1,3 +1,8 @@
+---
+status: confirmed
+confirmed_rev: ef9531d
+---
+
 # 02. データモデル仕様（整合性アンカー）
 
 **親**: [`00-overview.md`](./00-overview.md) ｜ **担当**: Backend ｜ **範囲**: SQLite スキーマ・task_id・スナップショット規約・migration
@@ -48,6 +53,45 @@ CREATE TABLE digests (
   received_at TEXT NOT NULL        -- ISO8601 オフセット付き
 );
 
+-- 学習セット（second-brain の night-study が生成した構造化 JSON）
+CREATE TABLE learning_sets (
+  date        TEXT PRIMARY KEY,    -- "YYYY-MM-DD"（ローカルタイム）
+  raw         TEXT NOT NULL,       -- §14.3.1 のセット JSON をそのまま保持
+  received_at TEXT NOT NULL        -- ISO8601 オフセット付き
+);
+
+-- 学習成績（自己採点と当日の感想）
+CREATE TABLE learning_results (
+  date         TEXT PRIMARY KEY,   -- 対応する learning_sets.date
+  grades       TEXT NOT NULL,      -- §14.3.3 の grades 配列を JSON のまま保持
+  feeling      TEXT NOT NULL,      -- 当日の感想（空文字可）
+  completed_at TEXT NOT NULL       -- ISO8601 オフセット付き
+);
+
+-- ハーネス取り込み提案（second-brain の night-harness が生成。§17）
+CREATE TABLE harness_proposals (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  date              TEXT NOT NULL, -- "YYYY-MM-DD"（ローカルタイム）
+  kind              TEXT NOT NULL, -- daily | prune | model_switch
+  slug              TEXT NOT NULL,
+  insight_name      TEXT NOT NULL,
+  verdict           TEXT NOT NULL, -- adopt | experiment | killed
+  category          TEXT,
+  summary           TEXT NOT NULL,
+  challenge_verdict TEXT,          -- hold | weaken | refute
+  challenge_note    TEXT,
+  detail_path       TEXT,          -- Vault 相対パス（サーバーはアクセスしない）
+  detail_md         TEXT NOT NULL,
+  status            TEXT NOT NULL, -- proposed | approved | rejected | killed
+  decided_at        TEXT,
+  apply_state       TEXT NOT NULL, -- pending | applied | failed
+  applied_at        TEXT,
+  apply_error       TEXT,
+  snapshot_path     TEXT,
+  received_at       TEXT NOT NULL,
+  UNIQUE(date, slug)
+);
+
 -- 消し込み状態
 CREATE TABLE task_checks (
   date       TEXT NOT NULL,
@@ -95,18 +139,23 @@ task_id = hex(sha1("{間隔}|{時刻}|{内容}"))[0..12]   # 16進小文字・�
 | 1 | 初版（`task_days` / `task_checks`） |
 | 2 | `routines` と `routines_identity` を追加（マスタの SQLite 移管。2026-07-27） |
 | 3 | `digests` を追加、`routines.detail_ref` / `task_days.detail_ref` を追加（ダイジェスト取り込み。2026-07-27） |
+| 4 | `learning_sets` / `learning_results` を追加（学習。[`14-learning.md`](./14-learning.md)。2026-07-29） |
+| 5 | `harness_proposals` を追加（ハーネス承認。[`17-harness-approval.md`](./17-harness-approval.md)。2026-07-29） |
 
 - v3 の列追加は `ALTER TABLE ... ADD COLUMN`（既定 NULL）。**既存 `task_days` 行の値は書き換えない**（追加列が NULL のまま残るのは正常。過去日に詳細は無い）
 
 - 既存 DB（user_version=1）にも適用できること。`routines` は空で作成され、中身は `cerebellum import-routines`（[`06-cli-serve.md`](./06-cli-serve.md) §3.1）で md から一度だけ流し込む
 - DB ファイルの置き場所は [`06-cli-serve.md`](./06-cli-serve.md) §設定 を参照
 
-## 6. detail_ref とダイジェスト（確定・変更禁止）
+## 6. detail_ref と詳細ビュー（確定・変更禁止）
 
 タスク行から「その日の詳細」を開くための結び付け。
 
-- `detail_ref` の語彙は**次の4つのみ**（これ以外は保存時に `bad_request`）:
-  `digest.connection` ／ `digest.derive` ／ `digest.idea` ／ `digest.consolidate`
+- `detail_ref` の語彙は**次の7つのみ**（これ以外は保存時に `bad_request`）:
+  `digest.connection` ／ `digest.derive` ／ `digest.idea` ／ `digest.consolidate` ／ `nightshift.report` ／ `learning.session` ／ `harness.proposals`
+- `nightshift.report` はダイジェストではなく**夜勤詳細ビュー**（`/nightshift`・[`13-web-nightshift.md`](./13-web-nightshift.md)）への結び付け（2026-07-28 追加）。サーバーは語彙検証のみ行い、データは cerebellum を経由しない（表示側が夜勤ビューアの `runs.json` を直接読む）
+- `learning.session` は**学習詳細ビュー**（`/learning`・[`15-web-learning.md`](./15-web-learning.md)）への結び付け。対応する学習セットと成績は `learning_sets` / `learning_results` に保存する（[`14-learning.md`](./14-learning.md)）
+- `harness.proposals` は**ハーネス提案画面**（`/harness`・[`18-web-harness.md`](./18-web-harness.md)）への結び付け。対応する提案と承認・適用状態は `harness_proposals` に保存する（[`17-harness-approval.md`](./17-harness-approval.md)）
 - スナップショット確定時に `routines.detail_ref` を `task_days.detail_ref` へコピーする。以後マスタ側を変えても過去日の結び付きは変わらない（§4 不変性と同じ理由）
 - `digests.body` は**受信原文をそのまま保存**する。セクション分割・整形は表示時のパースで行い、保存時には行わない（[`11-digest.md`](./11-digest.md) §3）。フォーマットが変わっても再パースで救えるようにするため
 - 同じ date への再 POST は**上書き**（`received_at` を更新）。ダイジェストは生成物であり、`task_days` のような不変記録ではない

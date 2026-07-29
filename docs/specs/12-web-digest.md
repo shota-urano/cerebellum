@@ -1,3 +1,8 @@
+---
+status: confirmed
+confirmed_rev: 06bb148
+---
+
 # 12. ダイジェスト詳細ビュー仕様（画面）
 
 **親**: [`00-overview.md`](./00-overview.md) ｜ **担当**: Frontend ｜ **範囲**: `app/digest/page.tsx`・`features/digest/`・「今日」画面の詳細導線
@@ -21,7 +26,7 @@
 | 領域 | 動作 |
 |---|---|
 | **チェックリング** | チェックのトグル（従来どおり） |
-| **それ以外の面全体**（内容・メタ・右端のシェブロン） | `/digest?date={その日}&section={detailRef の後半}&taskId={task_id}` へ遷移 |
+| **それ以外の面全体**（内容・メタ・右端のシェブロン） | `/digest?date={その日}&section={detailRef の後半}&taskId={task_id}` へ遷移。`detailRef = nightshift.report` のときは `/nightshift?date={その日}&taskId={task_id}`（夜勤詳細ビュー → [`13-web-nightshift.md`](./13-web-nightshift.md)）へ遷移する（2026-07-28 追加） |
 
 1. リングのタップターゲットは 44px 以上を確保する（リング自体は 22px なので、囲む領域で満たす）
 2. 分割後も**通常行と同じ位置**に揃える（リング中心・本文開始位置を変えない）
@@ -64,7 +69,7 @@
 
 ## 4. 設定値・確定値
 
-- 経路 `/digest`。**タブバーには追加しない**（4つ目のタブにしない。タスクからの詳細ビューという位置づけを保つ）
+- 経路 `/digest`。当初はタスクからの導線のみ（タブバーには追加しない・2026-07-28）→ 2026-07-29 のナビ改訂でドロワー項目に追加（[`16-web-navigation.md`](./16-web-navigation.md)）。タスクからの導線は従来どおり残す
 - 表示順はサーバー返却順（セクション・ブロックとも再ソートしない）
 - ノートリンクは `obsidian://` スキーム固定（Web で中身を表示しない → [`11-digest.md`](./11-digest.md) §7）
 
@@ -87,7 +92,7 @@
 - ダイジェストの編集・再生成の起動
 - 全文検索・過去分の一覧
 - ノート本体の表示（Obsidian に渡すだけ）
-- タブバーへの追加
+- 常設ナビ導線の定義（[`16-web-navigation.md`](./16-web-navigation.md) の責務）
 
 ## 8. 関連仕様
 

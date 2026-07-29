@@ -20,7 +20,9 @@ use crate::usecase::ports::{
 const MIGRATION_V1: &str = include_str!("migrations/001_init.sql");
 const MIGRATION_V2: &str = include_str!("migrations/002_routines.sql");
 const MIGRATION_V3: &str = include_str!("migrations/003_digests.sql");
-const LATEST_SCHEMA_VERSION: i64 = 3;
+const MIGRATION_V4: &str = include_str!("migrations/004_learning.sql");
+const MIGRATION_V5: &str = include_str!("migrations/005_harness.sql");
+const LATEST_SCHEMA_VERSION: i64 = 5;
 
 pub struct SqliteTaskRepository {
     connection: Mutex<Connection>,
@@ -53,9 +55,17 @@ impl SqliteTaskRepository {
             .map_err(SqliteRepositoryError::Migration)?;
 
         let migrations = match version {
-            0 => &[MIGRATION_V1, MIGRATION_V2, MIGRATION_V3][..],
-            1 => &[MIGRATION_V2, MIGRATION_V3][..],
-            2 => &[MIGRATION_V3][..],
+            0 => &[
+                MIGRATION_V1,
+                MIGRATION_V2,
+                MIGRATION_V3,
+                MIGRATION_V4,
+                MIGRATION_V5,
+            ][..],
+            1 => &[MIGRATION_V2, MIGRATION_V3, MIGRATION_V4, MIGRATION_V5][..],
+            2 => &[MIGRATION_V3, MIGRATION_V4, MIGRATION_V5][..],
+            3 => &[MIGRATION_V4, MIGRATION_V5][..],
+            4 => &[MIGRATION_V5][..],
             LATEST_SCHEMA_VERSION => return Ok(()),
             version => return Err(SqliteRepositoryError::UnsupportedSchemaVersion(version)),
         };
@@ -731,7 +741,7 @@ mod tests {
     use chrono::{DateTime, FixedOffset};
     use rusqlite::{Connection, params};
 
-    use super::{MIGRATION_V1, SqliteTaskRepository};
+    use super::{MIGRATION_V1, MIGRATION_V2, MIGRATION_V3, MIGRATION_V4, SqliteTaskRepository};
     use crate::{
         domain::{
             day::SummaryDay,
@@ -780,7 +790,10 @@ mod tests {
                     "SELECT name
                      FROM sqlite_master
                      WHERE type = 'table'
-                       AND name IN ('digests', 'routines', 'task_days', 'task_checks')
+                       AND name IN (
+                         'digests', 'harness_proposals', 'learning_results', 'learning_sets',
+                         'routines', 'task_days', 'task_checks'
+                       )
                      ORDER BY name",
                 )
                 .expect("schema query should prepare");
@@ -802,12 +815,215 @@ mod tests {
             )
             .expect("routine index should be queryable");
 
-        assert_eq!(version, 3);
+        assert_eq!(version, 5);
         assert_eq!(
             tables,
-            vec!["digests", "routines", "task_checks", "task_days"]
+            vec![
+                "digests",
+                "harness_proposals",
+                "learning_results",
+                "learning_sets",
+                "routines",
+                "task_checks",
+                "task_days"
+            ]
         );
         assert!(routine_index_exists);
+    }
+
+    #[test]
+    fn migrates_version_three_with_existing_data_to_latest_schema() {
+        let connection = Connection::open_in_memory().expect("in-memory SQLite should open");
+        connection
+            .execute_batch(MIGRATION_V1)
+            .expect("version one schema should initialize");
+        connection
+            .execute_batch(MIGRATION_V2)
+            .expect("version two schema should initialize");
+        connection
+            .execute_batch(MIGRATION_V3)
+            .expect("version three schema should initialize");
+        let version_before: i64 = connection
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("version three should be readable");
+        assert_eq!(version_before, 3);
+        connection
+            .execute(
+                "INSERT INTO digests (date, body, received_at) VALUES (?1, ?2, ?3)",
+                params!["2026-07-28", "existing digest", "2026-07-28T06:00:00+09:00"],
+            )
+            .expect("existing digest should insert");
+
+        let repository = SqliteTaskRepository::from_connection(connection)
+            .expect("version three database should migrate");
+        let connection = repository
+            .connection()
+            .expect("repository connection should lock");
+        let version: i64 = connection
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("schema version should be readable");
+        let existing_digest: String = connection
+            .query_row(
+                "SELECT body FROM digests WHERE date = ?1",
+                ["2026-07-28"],
+                |row| row.get(0),
+            )
+            .expect("existing digest should remain");
+
+        connection
+            .execute(
+                "INSERT INTO learning_sets (date, raw, received_at) VALUES (?1, ?2, ?3)",
+                params![
+                    "2026-07-29",
+                    r#"{"theme":"SQLite","lesson_md":"lesson","problems":[]}"#,
+                    "2026-07-29T06:00:00+09:00"
+                ],
+            )
+            .expect("learning set should insert after migration");
+        connection
+            .execute(
+                "INSERT INTO learning_results (date, grades, feeling, completed_at)
+                 VALUES (?1, ?2, ?3, ?4)",
+                params![
+                    "2026-07-29",
+                    r#"[{"no":1,"grade":"o"}]"#,
+                    "理解できた",
+                    "2026-07-29T08:00:00+09:00"
+                ],
+            )
+            .expect("learning result should insert after migration");
+        let learning_rows: i64 = connection
+            .query_row(
+                "SELECT
+                   (SELECT COUNT(*) FROM learning_sets)
+                   + (SELECT COUNT(*) FROM learning_results)",
+                [],
+                |row| row.get(0),
+            )
+            .expect("learning tables should be queryable");
+
+        assert_eq!(version, 5);
+        assert_eq!(existing_digest, "existing digest");
+        assert_eq!(learning_rows, 2);
+    }
+
+    #[test]
+    fn migrates_version_four_learning_database_to_harness_schema() {
+        let connection = Connection::open_in_memory().expect("in-memory SQLite should open");
+        for migration in [MIGRATION_V1, MIGRATION_V2, MIGRATION_V3, MIGRATION_V4] {
+            connection
+                .execute_batch(migration)
+                .expect("migration through version four should initialize");
+        }
+        connection
+            .execute(
+                "INSERT INTO learning_sets (date, raw, received_at) VALUES (?1, ?2, ?3)",
+                params![
+                    "2026-07-29",
+                    r#"{"theme":"existing learning set"}"#,
+                    "2026-07-29T06:00:00+09:00"
+                ],
+            )
+            .expect("existing learning set should insert");
+        let version_before: i64 = connection
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("version four should be readable");
+        assert_eq!(version_before, 4);
+
+        let repository = SqliteTaskRepository::from_connection(connection)
+            .expect("version four database should migrate");
+        let connection = repository
+            .connection()
+            .expect("repository connection should lock");
+        let version: i64 = connection
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("schema version should be readable");
+        let learning_raw: String = connection
+            .query_row(
+                "SELECT raw FROM learning_sets WHERE date = ?1",
+                ["2026-07-29"],
+                |row| row.get(0),
+            )
+            .expect("existing learning set should remain");
+        connection
+            .execute(
+                "INSERT INTO harness_proposals (
+                    date, kind, slug, insight_name, verdict, category, summary,
+                    challenge_verdict, challenge_note, detail_path, detail_md,
+                    status, decided_at, apply_state, applied_at, apply_error,
+                    snapshot_path, received_at
+                 ) VALUES (
+                    ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9,
+                    ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18
+                 )",
+                params![
+                    "2026-07-29",
+                    "daily",
+                    "search-state",
+                    "検索状態の外置き",
+                    "experiment",
+                    "⑥実験（新機軸）",
+                    "外部メモを使う方式を試す",
+                    "weaken",
+                    "合格条件を明確にした",
+                    "40_Projects/harness/判定/2026-07-29-search-state.md",
+                    "# 判定",
+                    "proposed",
+                    Option::<String>::None,
+                    "pending",
+                    Option::<String>::None,
+                    Option::<String>::None,
+                    Option::<String>::None,
+                    "2026-07-29T06:40:00+09:00"
+                ],
+            )
+            .expect("harness proposal should insert after migration");
+        let proposal_count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM harness_proposals", [], |row| {
+                row.get(0)
+            })
+            .expect("harness proposals should be queryable");
+
+        assert_eq!(version, 5);
+        assert_eq!(learning_raw, r#"{"theme":"existing learning set"}"#);
+        assert_eq!(proposal_count, 1);
+    }
+
+    #[test]
+    fn rejects_duplicate_harness_proposal_date_and_slug() {
+        let repository = repository();
+        let connection = repository
+            .connection()
+            .expect("repository connection should lock");
+        let insert = |slug: &str| {
+            connection.execute(
+                "INSERT INTO harness_proposals (
+                    date, kind, slug, insight_name, verdict, summary, detail_md,
+                    status, apply_state, received_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                params![
+                    "2026-07-29",
+                    "daily",
+                    slug,
+                    "検索状態の外置き",
+                    "experiment",
+                    "外部メモを使う方式を試す",
+                    "# 判定",
+                    "proposed",
+                    "pending",
+                    "2026-07-29T06:40:00+09:00"
+                ],
+            )
+        };
+
+        insert("search-state").expect("first proposal should insert");
+        let duplicate = insert("search-state").expect_err("duplicate should be rejected");
+
+        assert!(matches!(
+            duplicate,
+            rusqlite::Error::SqliteFailure(error, _)
+                if error.extended_code == rusqlite::ffi::SQLITE_CONSTRAINT_UNIQUE
+        ));
     }
 
     #[test]
@@ -869,7 +1085,7 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM routines", [], |row| row.get(0))
             .expect("routines should be queryable");
 
-        assert_eq!(version, 3);
+        assert_eq!(version, 5);
         assert_eq!(
             stored,
             (
@@ -881,7 +1097,7 @@ mod tests {
         );
         assert_eq!(routine_count, 0);
         println!(
-            "migration v1→v2: user_version={version}, existing_task_days=1, \
+            "migration v1→v5: user_version={version}, existing_task_days=1, \
              existing_task_checks=1, routines={routine_count}"
         );
     }

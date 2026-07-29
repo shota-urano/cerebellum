@@ -1,3 +1,8 @@
+---
+status: confirmed
+confirmed_rev: d1af7ce
+---
+
 # 03. API 契約仕様（整合性アンカー）
 
 **親**: [`00-overview.md`](./00-overview.md) ｜ **担当**: 共通（Rust が実装・Web が消費） ｜ **範囲**: エンドポイント・DTO・エラーレスポンス

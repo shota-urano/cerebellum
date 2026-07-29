@@ -1,3 +1,8 @@
+---
+status: confirmed
+confirmed_rev: 2b44601
+---
+
 # 09. 「履歴」画面仕様（Frontend）
 
 **親**: [`00-overview.md`](./00-overview.md) ｜ **担当**: Frontend ｜ **範囲**: `app/history/page.tsx`＋`features/history/`（F3 過去分閲覧・サマリ）

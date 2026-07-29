@@ -1,3 +1,8 @@
+---
+status: confirmed
+confirmed_rev: 3bf9640
+---
+
 # 05. 日取得・消し込み・サマリ仕様（usecase）
 
 **親**: [`00-overview.md`](./00-overview.md) ｜ **担当**: Backend ｜ **範囲**: `usecase/get_day.rs`・`usecase/toggle_check.rs`・`usecase/get_summary.rs`・`usecase/manage_routines.rs`・`usecase/ports.rs`

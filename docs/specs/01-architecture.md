@@ -1,3 +1,8 @@
+---
+status: confirmed
+confirmed_rev: 48d7cf3
+---
+
 # 01. アーキテクチャ仕様（整合性アンカー）
 
 **親**: [`00-overview.md`](./00-overview.md) ｜ **担当**: 共通 ｜ **範囲**: リポジトリ構成・レイヤ構造・技術スタック・エラー方針・verify 契約
