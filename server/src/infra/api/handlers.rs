@@ -2,18 +2,22 @@ use std::sync::Arc;
 
 use axum::{
     Json,
+    body::to_bytes,
     extract::{
-        Path, Query, State,
+        Path, Query, Request, State,
         rejection::{JsonRejection, PathRejection, QueryRejection},
     },
 };
 use serde::Deserialize;
 
+use crate::domain::learning::MAX_LEARNING_SET_BYTES;
+
 use super::{
     AppState,
     dto::{
-        DayDto, DigestDto, DigestInputDto, DigestStoredDto, HealthDto, RoutineInputDto,
-        RoutineResponseDto, RoutinesDto, SummaryDto,
+        DayDto, DigestDto, DigestInputDto, DigestStoredDto, HealthDto, LearningInputDto,
+        LearningSetDto, LearningStoredDto, RoutineInputDto, RoutineResponseDto, RoutinesDto,
+        SummaryDto,
     },
     error::ApiError,
 };
@@ -150,6 +154,47 @@ pub(super) async fn get_digest(
     let Path(date) = path.map_err(|error| ApiError::bad_request(error.to_string()))?;
     let usecase = Arc::clone(&state.manage_digest);
     let view = tokio::task::spawn_blocking(move || usecase.get(&date))
+        .await
+        .map_err(ApiError::from_join)??;
+
+    Ok(Json(view.into()))
+}
+
+pub(super) async fn save_learning_set(
+    State(state): State<Arc<AppState>>,
+    request: Request,
+) -> Result<Json<LearningStoredDto>, ApiError> {
+    let body = to_bytes(request.into_body(), MAX_LEARNING_SET_BYTES + 1)
+        .await
+        .map_err(|_| {
+            ApiError::bad_request(format!(
+                "body must not exceed {MAX_LEARNING_SET_BYTES} bytes"
+            ))
+        })?;
+    if body.len() > MAX_LEARNING_SET_BYTES {
+        return Err(ApiError::bad_request(format!(
+            "body must not exceed {MAX_LEARNING_SET_BYTES} bytes"
+        )));
+    }
+    let input: LearningInputDto =
+        serde_json::from_slice(&body).map_err(|error| ApiError::bad_request(error.to_string()))?;
+    let date = input.date.clone();
+    let usecase = Arc::clone(&state.manage_learning);
+    let stored =
+        tokio::task::spawn_blocking(move || usecase.save_learning_set(&date, input.into()))
+            .await
+            .map_err(ApiError::from_join)??;
+
+    Ok(Json(stored.into()))
+}
+
+pub(super) async fn get_learning_set(
+    State(state): State<Arc<AppState>>,
+    path: Result<Path<String>, PathRejection>,
+) -> Result<Json<LearningSetDto>, ApiError> {
+    let Path(date) = path.map_err(|error| ApiError::bad_request(error.to_string()))?;
+    let usecase = Arc::clone(&state.manage_learning);
+    let view = tokio::task::spawn_blocking(move || usecase.get_learning_set(&date))
         .await
         .map_err(ApiError::from_join)??;
 
