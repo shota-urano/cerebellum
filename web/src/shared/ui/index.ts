@@ -1,3 +1,3 @@
 export { ErrorBanner } from './ErrorBanner';
 export { HudStatus } from './HudStatus';
-export { TabBar } from './TabBar';
+export { NavDrawer } from './NavDrawer';
