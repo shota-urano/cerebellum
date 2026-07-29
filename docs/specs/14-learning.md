@@ -26,24 +26,15 @@ second-brain の `night-study` が平日朝に生成する学習3点セット（
 
 ### 3.1 セット JSON の形
 
-```json
-{
-  "theme": "SQLite の WAL とロック",
-  "source": "theme",
-  "lesson_md": "...(完全初学者向けレッスン本文)...",
-  "problems": [
-    { "no": 1, "kind": "quiz", "question_md": "...", "answer_md": "..." },
-    { "no": 2, "kind": "code", "question_md": "...", "answer_md": "...",
-      "workdir": "/Users/orion/workspace/learning/2026-07-29/p2" }
-  ],
-  "closing_md": "...(まとめ。任意)..."
-}
-```
+HTTP DTO の具体形は [`03-api.md`](./03-api.md) §3 を正とする。
 
-- 必須: `theme`・`lesson_md`・`problems[]`（1〜10件、各 `no`・`question_md`・`answer_md`）
+- `theme` は学習テーマ、`lessonMd` は完全初学者向けのレッスン本文
+- `problems` は1〜10件。各問題の `no` は問題番号、`questionMd` は問題文、`answerMd` は解答
+- 必須: `theme`・`lessonMd`・`problems[]`（各 `no`・`questionMd`・`answerMd`）
 - `source` は `theme`（学習テーマ契約由来）| `memo`（メモキュー由来。将来拡張）。省略時 `theme`
 - `kind` は `quiz`（画面内で答える）| `code`（ターミナルで解く）。省略時 `quiz`
 - `workdir` は code 問題の作業ディレクトリ（Vault 外のローカルパス）。**サーバはパスにアクセスしない**——画面がコピー用に表示するだけ
+- `closingMd` は学習セット末尾のまとめ。任意
 
 ### 3.2 取り込み（save_learning_set）
 
@@ -53,10 +44,7 @@ second-brain の `night-study` が平日朝に生成する学習3点セット（
 
 ### 3.3 成績記録（save_learning_result）
 
-```json
-{ "grades": [ { "no": 1, "grade": "o" }, { "no": 2, "grade": "x" } ],
-  "feeling": "WAL の checkpoint が曖昧だった" }
-```
+HTTP DTO の具体形は [`03-api.md`](./03-api.md) §3 を正とする。
 
 1. `grade` は `o` | `d` | `x`（○△×）。`grades` の `no` はセットの `problems` と突き合わせ、不明な `no` は `bad_request`。全問分なくてもよい（途中まで採点も受ける）
 2. `feeling` は ≤2000 文字・空可
@@ -72,6 +60,7 @@ second-brain の `night-study` が平日朝に生成する学習3点セット（
 
 ## 4. 送信側の責務（second-brain `night-study`・本仕様の範囲外だが契約として明記）
 
+- DTO は [`03-api.md`](./03-api.md) §3 の `camelCase` を正とする
 - 生成後 `POST /api/learning/sets` で送る。失敗時は🚨通知（成功時の Slack 📚通知は廃止）
 - code 問題の workdir は Vault 外（例 `~/workspace/learning/YYYY-MM-DD/`）に生成する
 - 旧 `40_Projects/learning/exercises/` は移行後アーカイブし、新規生成では使わない
@@ -89,6 +78,7 @@ second-brain の `night-study` が平日朝に生成する学習3点セット（
 |---|---|
 | date 不正・body 検証 NG | 400 `bad_request`（理由文字列つき） |
 | セット未取り込みの date への GET | 404 `not_found`（画面は「今日の学習セットはありません」表示） |
+| セット未取り込みの date への result POST | 404 `not_found`（問題番号との突き合わせが成立しない） |
 | result 未記録の date への GET | 404 `not_found`（night-study 側は「未着手」と解釈） |
 
 ## 7. スコープ外

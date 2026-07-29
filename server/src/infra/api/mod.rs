@@ -14,6 +14,7 @@ use crate::{
         get_summary::GetSummary,
         manage_digest::ManageDigest,
         manage_harness::ManageHarness,
+        manage_learning::ManageLearning,
         manage_routines::ManageRoutines,
         ports::{RoutineRepository, TaskRepository},
         toggle_check::ToggleCheck,
@@ -30,6 +31,7 @@ pub struct AppState {
     pub get_summary: Arc<GetSummary>,
     pub manage_routines: Arc<ManageRoutines>,
     pub manage_digest: Arc<ManageDigest>,
+    pub manage_learning: Arc<ManageLearning>,
     pub manage_harness: Arc<ManageHarness>,
     pub routine_repository: Arc<dyn RoutineRepository>,
     pub task_repository: Arc<dyn TaskRepository>,
@@ -47,6 +49,12 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/summary", get(handlers::get_summary))
         .route("/digests", post(handlers::save_digest))
         .route("/digests/{date}", get(handlers::get_digest))
+        .route("/learning/sets", post(handlers::save_learning_set))
+        .route("/learning/sets/{date}", get(handlers::get_learning_set))
+        .route(
+            "/learning/sets/{date}/result",
+            get(handlers::get_learning_result).post(handlers::save_learning_result),
+        )
         .route(
             "/harness/proposals",
             get(handlers::get_harness_proposals).post(handlers::save_harness_proposals),

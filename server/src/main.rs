@@ -18,8 +18,9 @@ use infra::api::AppState;
 use usecase::import_routines::ImportRoutines;
 use usecase::{
     get_day::GetDay, get_summary::GetSummary, manage_digest::ManageDigest,
-    manage_harness::ManageHarness, manage_routines::ManageRoutines, ports::Clock,
-    ports::DigestRepository, ports::HarnessRepository, ports::RoutineRepository,
+    manage_harness::ManageHarness, manage_learning::ManageLearning,
+    manage_routines::ManageRoutines, ports::Clock, ports::DigestRepository,
+    ports::HarnessRepository, ports::LearningRepository, ports::RoutineRepository,
     ports::TaskRepository, ports::VaultReader, toggle_check::ToggleCheck,
 };
 
@@ -110,6 +111,7 @@ async fn serve(port: u16) -> Result<()> {
     );
     let routine_repository: Arc<dyn RoutineRepository> = repository.clone();
     let digest_repository: Arc<dyn DigestRepository> = repository.clone();
+    let learning_repository: Arc<dyn LearningRepository> = repository.clone();
     let harness_repository: Arc<dyn HarnessRepository> = repository.clone();
     let task_repository: Arc<dyn TaskRepository> = repository;
     let clock: Arc<dyn Clock> = Arc::new(SystemClock);
@@ -133,6 +135,7 @@ async fn serve(port: u16) -> Result<()> {
         Arc::clone(&clock),
     ));
     let manage_digest = Arc::new(ManageDigest::new(digest_repository, Arc::clone(&clock)));
+    let manage_learning = Arc::new(ManageLearning::new(learning_repository, Arc::clone(&clock)));
     let manage_harness = Arc::new(ManageHarness::new(harness_repository, clock));
 
     let state = Arc::new(AppState {
@@ -141,6 +144,7 @@ async fn serve(port: u16) -> Result<()> {
         get_summary,
         manage_routines,
         manage_digest,
+        manage_learning,
         manage_harness,
         routine_repository,
         task_repository,

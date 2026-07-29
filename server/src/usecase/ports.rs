@@ -81,6 +81,40 @@ pub struct StoredDigest {
     pub received_at: String,
 }
 
+pub trait LearningRepository: Send + Sync {
+    fn save_learning_set(
+        &self,
+        date: &str,
+        raw: &str,
+        received_at: &str,
+    ) -> Result<(), RepositoryError>;
+    fn get_learning_set(&self, date: &str) -> Result<Option<StoredLearningSet>, RepositoryError>;
+    fn save_learning_result(
+        &self,
+        date: &str,
+        grades: &str,
+        feeling: &str,
+        completed_at: &str,
+    ) -> Result<(), RepositoryError>;
+    fn get_learning_result(
+        &self,
+        date: &str,
+    ) -> Result<Option<StoredLearningResult>, RepositoryError>;
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StoredLearningSet {
+    pub raw: String,
+    pub received_at: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StoredLearningResult {
+    pub grades: String,
+    pub feeling: String,
+    pub completed_at: String,
+}
+
 pub trait HarnessRepository: Send + Sync {
     fn replace_harness_proposals(
         &self,

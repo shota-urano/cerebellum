@@ -4,12 +4,17 @@ use crate::domain::{
     day::{DaySnapshot, Progress, SummaryDay},
     digest::{Block, Section},
     harness::{ApplyResultInput, HarnessProposalBatchInput, HarnessProposalInput},
+    learning::{
+        LearningGrade, LearningGradeInput, LearningGradeValue, LearningProblem,
+        LearningProblemInput, LearningResultInput, LearningSetInput,
+    },
     routine::{Routine, RoutineFields},
     task::CheckedTask,
 };
 use crate::usecase::{
     manage_digest::{DigestView, StoredAt},
     manage_harness::HarnessProposalList,
+    manage_learning::{LearningResultView, LearningSetView, LearningStoredAt},
     ports::StoredHarnessProposal,
 };
 
@@ -305,6 +310,55 @@ impl From<Block> for BlockDto {
     }
 }
 
+// ---- 学習セット（docs/specs/03-api.md §3・docs/specs/14-learning.md）----
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct LearningInputDto {
+    pub(super) date: String,
+    theme: Option<String>,
+    source: Option<String>,
+    lesson_md: Option<String>,
+    problems: Option<Vec<LearningProblemInputDto>>,
+    closing_md: Option<String>,
+}
+
+impl From<LearningInputDto> for LearningSetInput {
+    fn from(input: LearningInputDto) -> Self {
+        Self {
+            theme: input.theme,
+            source: input.source,
+            lesson_md: input.lesson_md,
+            problems: input
+                .problems
+                .map(|problems| problems.into_iter().map(Into::into).collect()),
+            closing_md: input.closing_md,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LearningProblemInputDto {
+    no: Option<u32>,
+    kind: Option<String>,
+    question_md: Option<String>,
+    answer_md: Option<String>,
+    workdir: Option<String>,
+}
+
+impl From<LearningProblemInputDto> for LearningProblemInput {
+    fn from(input: LearningProblemInputDto) -> Self {
+        Self {
+            no: input.no,
+            kind: input.kind,
+            question_md: input.question_md,
+            answer_md: input.answer_md,
+            workdir: input.workdir,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct HarnessProposalBatchInputDto {
@@ -380,6 +434,53 @@ impl From<HarnessApplyResultInputDto> for ApplyResultInput {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub(super) struct LearningStoredDto {
+    date: String,
+    received_at: String,
+}
+
+impl From<LearningStoredAt> for LearningStoredDto {
+    fn from(stored: LearningStoredAt) -> Self {
+        Self {
+            date: stored.date,
+            received_at: stored.received_at,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct LearningSetDto {
+    date: String,
+    received_at: String,
+    theme: String,
+    source: String,
+    lesson_md: String,
+    problems: Vec<LearningProblemDto>,
+    closing_md: Option<String>,
+}
+
+impl From<LearningSetView> for LearningSetDto {
+    fn from(view: LearningSetView) -> Self {
+        Self {
+            date: view.date,
+            received_at: view.received_at,
+            theme: view.learning_set.theme,
+            source: view.learning_set.source,
+            lesson_md: view.learning_set.lesson_md,
+            problems: view
+                .learning_set
+                .problems
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+            closing_md: view.learning_set.closing_md,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct HarnessProposalListDto {
     date: String,
     received_at: Option<String>,
@@ -425,6 +526,98 @@ impl From<StoredHarnessProposal> for HarnessProposalResponseDto {
     fn from(proposal: StoredHarnessProposal) -> Self {
         Self {
             proposal: proposal.into(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LearningProblemDto {
+    no: u32,
+    kind: String,
+    question_md: String,
+    answer_md: String,
+    workdir: Option<String>,
+}
+
+impl From<LearningProblem> for LearningProblemDto {
+    fn from(problem: LearningProblem) -> Self {
+        Self {
+            no: problem.no,
+            kind: problem.kind,
+            question_md: problem.question_md,
+            answer_md: problem.answer_md,
+            workdir: problem.workdir,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct LearningResultInputDto {
+    grades: Option<Vec<LearningGradeInputDto>>,
+    feeling: Option<String>,
+}
+
+impl From<LearningResultInputDto> for LearningResultInput {
+    fn from(input: LearningResultInputDto) -> Self {
+        Self {
+            grades: input
+                .grades
+                .map(|grades| grades.into_iter().map(Into::into).collect()),
+            feeling: input.feeling,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LearningGradeInputDto {
+    no: Option<u32>,
+    grade: Option<String>,
+}
+
+impl From<LearningGradeInputDto> for LearningGradeInput {
+    fn from(input: LearningGradeInputDto) -> Self {
+        Self {
+            no: input.no,
+            grade: input.grade,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct LearningResultDto {
+    date: String,
+    grades: Vec<LearningGradeDto>,
+    feeling: String,
+    completed_at: String,
+}
+
+impl From<LearningResultView> for LearningResultDto {
+    fn from(view: LearningResultView) -> Self {
+        Self {
+            date: view.date,
+            grades: view.result.grades.into_iter().map(Into::into).collect(),
+            feeling: view.result.feeling,
+            completed_at: view.completed_at,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LearningGradeDto {
+    no: u32,
+    grade: LearningGradeValue,
+}
+
+impl From<LearningGrade> for LearningGradeDto {
+    fn from(grade: LearningGrade) -> Self {
+        Self {
+            no: grade.no,
+            grade: grade.grade,
         }
     }
 }

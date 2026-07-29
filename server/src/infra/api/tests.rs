@@ -23,8 +23,12 @@ use crate::{
         get_summary::GetSummary,
         manage_digest::ManageDigest,
         manage_harness::ManageHarness,
+        manage_learning::ManageLearning,
         manage_routines::ManageRoutines,
-        ports::{Clock, DigestRepository, HarnessRepository, RoutineRepository, TaskRepository},
+        ports::{
+            Clock, DigestRepository, HarnessRepository, LearningRepository, RoutineRepository,
+            TaskRepository,
+        },
         toggle_check::ToggleCheck,
     },
 };
@@ -73,6 +77,7 @@ fn test_app_with_routines(seed_routines: bool) -> axum::Router {
     }
     let routine_repository: Arc<dyn RoutineRepository> = repository.clone();
     let digest_repository: Arc<dyn DigestRepository> = repository.clone();
+    let learning_repository: Arc<dyn LearningRepository> = repository.clone();
     let harness_repository: Arc<dyn HarnessRepository> = repository.clone();
     let task_repository: Arc<dyn TaskRepository> = repository;
     let clock: Arc<dyn Clock> = Arc::new(FakeClock);
@@ -81,6 +86,7 @@ fn test_app_with_routines(seed_routines: bool) -> axum::Router {
         Arc::clone(&clock),
     ));
     let manage_digest = Arc::new(ManageDigest::new(digest_repository, Arc::clone(&clock)));
+    let manage_learning = Arc::new(ManageLearning::new(learning_repository, Arc::clone(&clock)));
     let manage_harness = Arc::new(ManageHarness::new(harness_repository, Arc::clone(&clock)));
 
     router(Arc::new(AppState {
@@ -100,6 +106,7 @@ fn test_app_with_routines(seed_routines: bool) -> axum::Router {
         )),
         manage_routines,
         manage_digest,
+        manage_learning,
         manage_harness,
         routine_repository,
         task_repository,
@@ -123,16 +130,36 @@ async fn call(app: axum::Router, method: &str, uri: &str) -> Response {
 }
 
 async fn call_json(app: axum::Router, method: &str, uri: &str, body: Value) -> Response {
+    call_json_body(app, method, uri, body.to_string()).await
+}
+
+async fn call_json_body(app: axum::Router, method: &str, uri: &str, body: String) -> Response {
     app.oneshot(
         Request::builder()
             .method(method)
             .uri(uri)
             .header(CONTENT_TYPE, "application/json")
-            .body(Body::from(body.to_string()))
+            .body(Body::from(body))
             .expect("test request should build"),
     )
     .await
     .expect("router should respond")
+}
+
+fn learning_set_body_with_size(size: usize) -> String {
+    let mut payload = json!({
+        "date": "today",
+        "theme": "theme",
+        "lessonMd": "",
+        "problems": [{ "no": 1, "questionMd": "q", "answerMd": "a" }]
+    });
+    let base_size = payload.to_string().len();
+    assert!(base_size < size, "target size must fit a valid payload");
+    payload["lessonMd"] = Value::String("x".repeat(size - base_size));
+
+    let body = payload.to_string();
+    assert_eq!(body.len(), size);
+    body
 }
 
 async fn json_body(response: Response) -> Value {
@@ -525,6 +552,403 @@ async fn digest_rejects_empty_bodies_and_bad_dates() {
     )
     .await;
     assert_eq!(bad_date.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn learning_set_round_trip_resolves_today_applies_defaults_and_upserts() {
+    let app = test_app();
+
+    let first = call_json(
+        app.clone(),
+        "POST",
+        "/api/learning/sets",
+        json!({
+            "date": "today",
+            "theme": "SQLite",
+            "lessonMd": "# WAL",
+            "problems": [{
+                "no": 1,
+                "questionMd": "WAL とは？",
+                "answerMd": "write-ahead log"
+            }]
+        }),
+    )
+    .await;
+    assert_eq!(first.status(), StatusCode::OK);
+    assert_eq!(first.headers()[CACHE_CONTROL], "no-store");
+    assert_eq!(
+        json_body(first).await,
+        json!({
+            "date": "2026-07-25",
+            "receivedAt": "2026-07-25T08:01:00+09:00"
+        })
+    );
+
+    let fetched = call(app.clone(), "GET", "/api/learning/sets/today").await;
+    assert_eq!(fetched.status(), StatusCode::OK);
+    assert_eq!(
+        json_body(fetched).await,
+        json!({
+            "date": "2026-07-25",
+            "receivedAt": "2026-07-25T08:01:00+09:00",
+            "theme": "SQLite",
+            "source": "theme",
+            "lessonMd": "# WAL",
+            "problems": [{
+                "no": 1,
+                "kind": "quiz",
+                "questionMd": "WAL とは？",
+                "answerMd": "write-ahead log",
+                "workdir": null
+            }],
+            "closingMd": null
+        })
+    );
+
+    let replacement = call_json(
+        app.clone(),
+        "POST",
+        "/api/learning/sets",
+        json!({
+            "date": "2026-07-25",
+            "theme": "Rust",
+            "source": "memo",
+            "lessonMd": "# Ownership",
+            "problems": [{
+                "no": 2,
+                "kind": "code",
+                "questionMd": "借用を直す",
+                "answerMd": "参照を使う",
+                "workdir": "/tmp/learning/p2"
+            }],
+            "closingMd": "まとめ"
+        }),
+    )
+    .await;
+    assert_eq!(replacement.status(), StatusCode::OK);
+
+    let replaced = json_body(call(app, "GET", "/api/learning/sets/2026-07-25").await).await;
+    assert_eq!(replaced["theme"], "Rust");
+    assert_eq!(replaced["source"], "memo");
+    assert_eq!(replaced["problems"].as_array().map(Vec::len), Some(1));
+    assert_eq!(replaced["problems"][0]["no"], 2);
+    assert_eq!(replaced["problems"][0]["kind"], "code");
+    assert_eq!(replaced["problems"][0]["workdir"], "/tmp/learning/p2");
+    assert_eq!(replaced["closingMd"], "まとめ");
+}
+
+#[tokio::test]
+async fn learning_set_rejects_missing_required_fields_empty_problems_and_duplicates() {
+    let app = test_app();
+    let valid_problem = json!({
+        "no": 1,
+        "questionMd": "question",
+        "answerMd": "answer"
+    });
+    let invalid_payloads = [
+        json!({
+            "theme": "theme",
+            "lessonMd": "lesson",
+            "problems": [valid_problem.clone()]
+        }),
+        json!({
+            "date": "today",
+            "lessonMd": "lesson",
+            "problems": [valid_problem.clone()]
+        }),
+        json!({
+            "date": "today",
+            "theme": "theme",
+            "problems": [valid_problem.clone()]
+        }),
+        json!({
+            "date": "today",
+            "theme": "theme",
+            "lessonMd": "lesson"
+        }),
+        json!({
+            "date": "today",
+            "theme": "theme",
+            "lessonMd": "lesson",
+            "problems": []
+        }),
+        json!({
+            "date": "today",
+            "theme": "theme",
+            "lessonMd": "lesson",
+            "problems": [
+                valid_problem.clone(),
+                { "no": 1, "questionMd": "q2", "answerMd": "a2" }
+            ]
+        }),
+        json!({
+            "date": "today",
+            "theme": "theme",
+            "lessonMd": "lesson",
+            "problems": [{ "questionMd": "q", "answerMd": "a" }]
+        }),
+        json!({
+            "date": "today",
+            "theme": "theme",
+            "lessonMd": "lesson",
+            "problems": [{ "no": 1, "answerMd": "a" }]
+        }),
+        json!({
+            "date": "today",
+            "theme": "theme",
+            "lessonMd": "lesson",
+            "problems": [{ "no": 1, "questionMd": "q" }]
+        }),
+    ];
+
+    for payload in invalid_payloads {
+        let response = call_json(app.clone(), "POST", "/api/learning/sets", payload).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(json_body(response).await["error"]["code"], "bad_request");
+    }
+
+    let missing = call(app, "GET", "/api/learning/sets/today").await;
+    assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn learning_set_rejects_unknown_vocab_bad_dates_and_oversized_bodies() {
+    for payload in [
+        json!({
+            "date": "today",
+            "theme": "theme",
+            "source": "unknown",
+            "lessonMd": "lesson",
+            "problems": [{ "no": 1, "questionMd": "q", "answerMd": "a" }]
+        }),
+        json!({
+            "date": "today",
+            "theme": "theme",
+            "lessonMd": "lesson",
+            "problems": [{
+                "no": 1,
+                "kind": "essay",
+                "questionMd": "q",
+                "answerMd": "a"
+            }]
+        }),
+        json!({
+            "date": "2026-7-25",
+            "theme": "theme",
+            "lessonMd": "lesson",
+            "problems": [{ "no": 1, "questionMd": "q", "answerMd": "a" }]
+        }),
+    ] {
+        let response = call_json(test_app(), "POST", "/api/learning/sets", payload).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(json_body(response).await["error"]["code"], "bad_request");
+    }
+
+    let oversized = call_json_body(
+        test_app(),
+        "POST",
+        "/api/learning/sets",
+        learning_set_body_with_size(256 * 1024 + 1),
+    )
+    .await;
+    assert_eq!(oversized.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(json_body(oversized).await["error"]["code"], "bad_request");
+
+    let bad_get = call(test_app(), "GET", "/api/learning/sets/tomorrow").await;
+    assert_eq!(bad_get.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(json_body(bad_get).await["error"]["code"], "bad_request");
+}
+
+#[tokio::test]
+async fn learning_set_accepts_body_at_256_kib() {
+    let response = call_json_body(
+        test_app(),
+        "POST",
+        "/api/learning/sets",
+        learning_set_body_with_size(256 * 1024),
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn learning_set_accepts_exactly_ten_problems() {
+    let problems = (1..=10)
+        .map(|no| {
+            json!({
+                "no": no,
+                "questionMd": format!("question {no}"),
+                "answerMd": format!("answer {no}")
+            })
+        })
+        .collect::<Vec<_>>();
+    let response = call_json(
+        test_app(),
+        "POST",
+        "/api/learning/sets",
+        json!({
+            "date": "today",
+            "theme": "theme",
+            "lessonMd": "lesson",
+            "problems": problems
+        }),
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn learning_set_returns_not_found_for_dates_without_an_import() {
+    let response = call(test_app(), "GET", "/api/learning/sets/2026-07-24").await;
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    assert_eq!(response.headers()[CACHE_CONTROL], "no-store");
+    assert_eq!(json_body(response).await["error"]["code"], "not_found");
+}
+
+async fn import_learning_set_for_result(app: axum::Router) {
+    let response = call_json(
+        app,
+        "POST",
+        "/api/learning/sets",
+        json!({
+            "date": "today",
+            "theme": "SQLite",
+            "lessonMd": "lesson",
+            "problems": [
+                { "no": 1, "questionMd": "q1", "answerMd": "a1" },
+                { "no": 2, "questionMd": "q2", "answerMd": "a2" },
+                { "no": 3, "questionMd": "q3", "answerMd": "a3" }
+            ]
+        }),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn learning_result_accepts_partial_grading_and_upserts_the_complete_result() {
+    let app = test_app();
+    import_learning_set_for_result(app.clone()).await;
+
+    let partial = call_json(
+        app.clone(),
+        "POST",
+        "/api/learning/sets/today/result",
+        json!({
+            "grades": [{ "no": 1, "grade": "o" }],
+            "feeling": ""
+        }),
+    )
+    .await;
+    assert_eq!(partial.status(), StatusCode::OK);
+    assert_eq!(partial.headers()[CACHE_CONTROL], "no-store");
+    assert_eq!(
+        json_body(partial).await,
+        json!({
+            "date": "2026-07-25",
+            "grades": [{ "no": 1, "grade": "o" }],
+            "feeling": "",
+            "completedAt": "2026-07-25T08:01:00+09:00"
+        })
+    );
+
+    let replacement = call_json(
+        app.clone(),
+        "POST",
+        "/api/learning/sets/2026-07-25/result",
+        json!({
+            "grades": [
+                { "no": 1, "grade": "o" },
+                { "no": 2, "grade": "d" },
+                { "no": 3, "grade": "x" }
+            ],
+            "feeling": "やり直した"
+        }),
+    )
+    .await;
+    assert_eq!(replacement.status(), StatusCode::OK);
+
+    let fetched = call(app, "GET", "/api/learning/sets/2026-07-25/result").await;
+    assert_eq!(fetched.status(), StatusCode::OK);
+    assert_eq!(
+        json_body(fetched).await,
+        json!({
+            "date": "2026-07-25",
+            "grades": [
+                { "no": 1, "grade": "o" },
+                { "no": 2, "grade": "d" },
+                { "no": 3, "grade": "x" }
+            ],
+            "feeling": "やり直した",
+            "completedAt": "2026-07-25T08:01:00+09:00"
+        })
+    );
+}
+
+#[tokio::test]
+async fn learning_result_rejects_unknown_grades_problem_numbers_and_long_feelings() {
+    let app = test_app();
+    import_learning_set_for_result(app.clone()).await;
+
+    for payload in [
+        json!({
+            "grades": [{ "no": 1, "grade": "triangle" }],
+            "feeling": ""
+        }),
+        json!({
+            "grades": [{ "no": 99, "grade": "o" }],
+            "feeling": ""
+        }),
+        json!({
+            "grades": [{ "no": 1, "grade": "o" }],
+            "feeling": "界".repeat(2001)
+        }),
+    ] {
+        let response = call_json(
+            app.clone(),
+            "POST",
+            "/api/learning/sets/today/result",
+            payload,
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(json_body(response).await["error"]["code"], "bad_request");
+    }
+
+    let missing = call(app, "GET", "/api/learning/sets/today/result").await;
+    assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn learning_result_returns_not_found_without_a_set_or_a_recorded_result() {
+    let app = test_app();
+
+    let post_without_set = call_json(
+        app.clone(),
+        "POST",
+        "/api/learning/sets/today/result",
+        json!({
+            "grades": [],
+            "feeling": ""
+        }),
+    )
+    .await;
+    assert_eq!(post_without_set.status(), StatusCode::NOT_FOUND);
+    assert_eq!(
+        json_body(post_without_set).await["error"]["code"],
+        "not_found"
+    );
+
+    import_learning_set_for_result(app.clone()).await;
+    let get_without_result = call(app, "GET", "/api/learning/sets/today/result").await;
+    assert_eq!(get_without_result.status(), StatusCode::NOT_FOUND);
+    assert_eq!(get_without_result.headers()[CACHE_CONTROL], "no-store");
+    assert_eq!(
+        json_body(get_without_result).await["error"]["code"],
+        "not_found"
+    );
 }
 
 /// detail_ref は 02-data-model.md §6 の閉じた語彙のみ。DayResponse まで運ばれることも見る
