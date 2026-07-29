@@ -29,7 +29,8 @@ cerebellum のサーバーは経由しない。`runs.json` の1件は viewer の
 3. 表示（ダイジェスト詳細と同じ `panel dg` 様式）:
    - 見出し: `夜勤レポ — {pj}` ＋ メタ行（run_id・完了/失敗/blocked）
    - **PR**: `pr_url` があれば `btn--primary` のリンク。無ければ warning 行（passed>0 なら「PR が出ていない」、passed=0 なら「close 0件」）
-   - **検証動画**: `videos[]` を `<video controls playsinline>` でインライン再生（src は `{48310}/{href}media/{name}`。動画ファイルは viewer が配信し、cerebellum は複製しない）。0本かつ passed>0 なら warning 行
+   - **検証動画**: `videos[]` を `<video controls playsinline>` でインライン再生（src は `{48310}/{href}media/{name}` に `#t=0.1` を付け、先頭フレームをサムネイル表示する。動画ファイルは viewer が配信し、cerebellum は複製しない）。0本かつ passed>0 なら warning 行
+   - **動画の表示名**: ファイル名は「`<タスクID>-<スペック名>-<検証内容>.mp4`」（機械の紐づけキー）だが、人間にタスクIDは不要——**先頭の ASCII トークン（ID・スペック名）と拡張子を落とし、検証内容だけを表示する**。同じ検証内容の重複は1本に間引く（2026-07-29 ユーザー指示。夜勤ビューアの表示規則と同一）
    - 末尾に「フル確認ページを開く」（受け入れ基準・スクショが要るときだけ踏む控えめリンク）
 4. 読了動線: 画面下部の**「確認した」チェック**。押すと元タスクを消し込んで今日画面へ戻る（digest §3.2 と同じ。過去日 readonly では出さない）
 

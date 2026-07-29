@@ -31,6 +31,17 @@ function Warn({ text }: { text: string }) {
 }
 
 /**
+ * 録画ファイル名「<タスクID>-<スペック名>-<検証内容>.mp4」から表示名を作る。
+ * 先頭の ASCII トークン（機械の紐づけキー）を落とし、検証内容だけを人間に見せる
+ * （docs/specs/13 §3。全部 ASCII のファイル名なら元の名前のまま）
+ */
+function videoLabel(name: string): string {
+  const stem = name.replace(/\.(mp4|webm)$/i, '');
+  const label = stem.replace(/^[A-Za-z0-9.-]+-/, '');
+  return label || stem;
+}
+
+/**
  * 夜勤詳細ビュー本体（docs/specs/13-web-nightshift.md）。
  * その夜に回した1プロジェクトの「PR リンク」と「検証動画」だけを出す。
  * 全 PJ・全実行の一覧は出さない（それは夜勤ビューア :48310 の役割）。
@@ -46,7 +57,13 @@ export function NightShiftView({ date }: NightShiftViewProps) {
   }
 
   const base = viewerBase() + '/' + run.href;
-  const videos = run.videos ?? [];
+  const seen = new Set<string>();
+  const videos = (run.videos ?? []).flatMap((name) => {
+    const label = videoLabel(name);
+    if (seen.has(label)) return [];
+    seen.add(label);
+    return [{ name, label }];
+  });
 
   return (
     <section className="panel dg">
@@ -73,10 +90,11 @@ export function NightShiftView({ date }: NightShiftViewProps) {
 
       {videos.length > 0 ? (
         <div className="ns__videos">
-          {videos.map((name) => (
+          {videos.map(({ name, label }) => (
             <figure className="ns__video" key={name}>
-              <video controls playsInline preload="metadata" src={base + 'media/' + name} />
-              <figcaption className="mono dg__note">{name}</figcaption>
+              {/* #t=0.1: 再生前でも先頭フレームをサムネイル表示させる */}
+              <video controls playsInline preload="metadata" src={base + 'media/' + name + '#t=0.1'} />
+              <figcaption className="mono dg__note">{label}</figcaption>
             </figure>
           ))}
         </div>
