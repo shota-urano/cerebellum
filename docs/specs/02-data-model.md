@@ -1,3 +1,8 @@
+---
+status: confirmed
+confirmed_rev: ef9531d
+---
+
 # 02. データモデル仕様（整合性アンカー）
 
 **親**: [`00-overview.md`](./00-overview.md) ｜ **担当**: Backend ｜ **範囲**: SQLite スキーマ・task_id・スナップショット規約・migration
