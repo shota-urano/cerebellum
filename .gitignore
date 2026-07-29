@@ -6,6 +6,15 @@ node_modules/
 .next/
 out/
 
+# Playwright / E2E（録画・トレース・使い捨てDB）
+web/test-results/
+web/playwright-report/
+# dev-loop が回収した録画・スクショ（夜勤ビューアが読む。リポジトリには入れない）
+docs/loop-artifacts/
+
+# LumenMap（書き戻し時の1世代バックアップ）
+.lumenmap.json.bak
+
 # OS
 .DS_Store
 

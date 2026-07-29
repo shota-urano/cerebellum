@@ -6,7 +6,8 @@ second-brain のルーティンを消し込む自分専用ダッシュボード�
 
 - `server/` Rust（axum / rusqlite bundled / rust-embed / clap）。層は `domain ← usecase ← adapters/infra`
 - `web/` Next.js 15 / React 19 / TS strict / App Router / `output:'export'` / Tailwind v4 / SWR
-- 検証: ルートで `make verify`（web → server の順で全パッケージ）／高速版 `make verify-fast`
+- 検証: ルートで `make verify`（web → server → **E2E** の順）／高速版 `make verify-fast`（E2E 抜き）
+- 起動: ルートで `make run`（プレビュー :48212。本番DBのコピーを使うので常駐本番 :48210 は無傷）
 - 仕様の正本: `docs/specs/00-overview.md`（索引）。スキーマ=`02`、API=`03` がアンカー
 
 ## 用語・前提
@@ -33,6 +34,10 @@ second-brain のルーティンを消し込む自分専用ダッシュボード�
 
 - 完了と言う前に `make verify` を実行し、`VERIFY: PASS` の出力を貼る。
   PASS の証拠が無い報告は未完了として扱う（Default-FAIL）。
+- **E2E は本番形（release バイナリ＋使い捨て空DB）に対して回す**。`next dev` は `/api` を
+  常駐本番の :48210 へ rewrites するため、dev サーバで E2E を書くと本番DBを壊す（禁止）。
+  ユーザー操作を伴うタスクは受け入れ基準を `web/e2e/<task-id>.spec.ts` に足す
+  （ファイル名固定＝録画をタスクへ紐づけるキー。夜勤ビューアが読む）。
 
 ## 実装担当者
 
