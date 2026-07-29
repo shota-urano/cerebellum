@@ -105,8 +105,9 @@ task_id = hex(sha1("{間隔}|{時刻}|{内容}"))[0..12]   # 16進小文字・�
 
 タスク行から「その日の詳細」を開くための結び付け。
 
-- `detail_ref` の語彙は**次の4つのみ**（これ以外は保存時に `bad_request`）:
-  `digest.connection` ／ `digest.derive` ／ `digest.idea` ／ `digest.consolidate`
+- `detail_ref` の語彙は**次の5つのみ**（これ以外は保存時に `bad_request`）:
+  `digest.connection` ／ `digest.derive` ／ `digest.idea` ／ `digest.consolidate` ／ `nightshift.report`
+- `nightshift.report` はダイジェストではなく**夜勤詳細ビュー**（`/nightshift`・[`13-web-nightshift.md`](./13-web-nightshift.md)）への結び付け（2026-07-28 追加）。サーバーは語彙検証のみ行い、データは cerebellum を経由しない（表示側が夜勤ビューアの `runs.json` を直接読む）
 - スナップショット確定時に `routines.detail_ref` を `task_days.detail_ref` へコピーする。以後マスタ側を変えても過去日の結び付きは変わらない（§4 不変性と同じ理由）
 - `digests.body` は**受信原文をそのまま保存**する。セクション分割・整形は表示時のパースで行い、保存時には行わない（[`11-digest.md`](./11-digest.md) §3）。フォーマットが変わっても再パースで救えるようにするため
 - 同じ date への再 POST は**上書き**（`received_at` を更新）。ダイジェストは生成物であり、`task_days` のような不変記録ではない

@@ -21,7 +21,7 @@
 | 領域 | 動作 |
 |---|---|
 | **チェックリング** | チェックのトグル（従来どおり） |
-| **それ以外の面全体**（内容・メタ・右端のシェブロン） | `/digest?date={その日}&section={detailRef の後半}&taskId={task_id}` へ遷移 |
+| **それ以外の面全体**（内容・メタ・右端のシェブロン） | `/digest?date={その日}&section={detailRef の後半}&taskId={task_id}` へ遷移。`detailRef = nightshift.report` のときは `/nightshift?date={その日}&taskId={task_id}`（夜勤詳細ビュー → [`13-web-nightshift.md`](./13-web-nightshift.md)）へ遷移する（2026-07-28 追加） |
 
 1. リングのタップターゲットは 44px 以上を確保する（リング自体は 22px なので、囲む領域で満たす）
 2. 分割後も**通常行と同じ位置**に揃える（リング中心・本文開始位置を変えない）

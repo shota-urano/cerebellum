@@ -38,7 +38,7 @@ export function trimInput(input: RoutineInput): RoutineInput {
 }
 
 /**
- * 詳細リンクの選択肢（docs/specs/02-data-model.md §6 の4語彙）。
+ * 詳細リンクの選択肢（docs/specs/02-data-model.md §6 の語彙）。
  * 空文字は「結び付けなし」——サーバー側で null に正規化される（docs/specs/03-api.md §3）。
  */
 export const DETAIL_REF_OPTIONS: { value: DetailRef | ''; label: string }[] = [
@@ -47,6 +47,7 @@ export const DETAIL_REF_OPTIONS: { value: DetailRef | ''; label: string }[] = [
   { value: 'digest.derive', label: 'ダイジェスト: 導出' },
   { value: 'digest.idea', label: 'ダイジェスト: アイデア' },
   { value: 'digest.consolidate', label: 'ダイジェスト: consolidate' },
+  { value: 'nightshift.report', label: '夜勤レポ（PR・検証動画）' },
 ];
 
 /** trim 済みの入力を検証する。返り値が空オブジェクトなら送信してよい。 */

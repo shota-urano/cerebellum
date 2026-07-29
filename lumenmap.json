@@ -1,0 +1,313 @@
+{
+  "edges": [
+    {
+      "certainty": "confirmed",
+      "from": "app:server",
+      "kind": "depends",
+      "to": "app:web"
+    },
+    {
+      "certainty": "confirmed",
+      "from": "app:server",
+      "kind": "uses",
+      "to": "db:sqlite"
+    },
+    {
+      "certainty": "confirmed",
+      "from": "app:server",
+      "kind": "uses",
+      "to": "service:vault"
+    },
+    {
+      "certainty": "confirmed",
+      "from": "app:server",
+      "kind": "uses",
+      "to": "infra:tailscale"
+    },
+    {
+      "certainty": "confirmed",
+      "from": "service:daily-digest",
+      "kind": "api",
+      "to": "app:server"
+    },
+    {
+      "certainty": "confirmed",
+      "from": "skill:dev-loop",
+      "kind": "uses",
+      "to": "agent:verifier"
+    },
+    {
+      "certainty": "confirmed",
+      "from": "skill:spec-to-linear",
+      "kind": "uses",
+      "to": "mcp:linear"
+    },
+    {
+      "certainty": "confirmed",
+      "from": "skill:linear-to-beads",
+      "kind": "uses",
+      "to": "mcp:linear"
+    }
+  ],
+  "layers": [
+    {
+      "label": "AI構成",
+      "tag": "ai"
+    },
+    {
+      "label": "開発",
+      "tag": "env:dev"
+    },
+    {
+      "label": "本番",
+      "tag": "env:prod"
+    }
+  ],
+  "nodes": [
+    {
+      "detail": {
+        "desc": "単一バイナリ。web/out を rust-embed で同梱配信。本番 :48210 / プレビュー :48212"
+      },
+      "id": "app:server",
+      "label": "server (Rust/axum)",
+      "manual": true,
+      "path": "server",
+      "position": {
+        "x": 22,
+        "y": -12
+      },
+      "tags": [
+        "env:dev",
+        "env:prod"
+      ],
+      "type": "app"
+    },
+    {
+      "detail": {
+        "desc": "React 19 / TS strict / App Router / output:'export' / Tailwind v4 / SWR"
+      },
+      "id": "app:web",
+      "label": "web (Next.js 15 static export)",
+      "manual": true,
+      "path": "web",
+      "position": {
+        "x": 0,
+        "y": -30
+      },
+      "tags": [
+        "env:dev"
+      ],
+      "type": "app"
+    },
+    {
+      "id": "claude-md:root",
+      "label": "CLAUDE.md",
+      "path": "CLAUDE.md",
+      "position": {
+        "x": -55,
+        "y": -18
+      },
+      "tags": [
+        "ai"
+      ],
+      "type": "claude-md"
+    },
+    {
+      "detail": {
+        "desc": "ルーティン表の正本と日次スナップショット。rusqlite bundled"
+      },
+      "id": "db:sqlite",
+      "label": "SQLite (routines / task_days)",
+      "manual": true,
+      "position": {
+        "x": 45,
+        "y": 4
+      },
+      "tags": [
+        "env:prod"
+      ],
+      "type": "db"
+    },
+    {
+      "detail": {
+        "desc": "Tailscale 内でのみ配信（外部公開なし）"
+      },
+      "id": "infra:tailscale",
+      "label": "Tailscale",
+      "logo": "https://cdn.simpleicons.org/tailscale/white",
+      "manual": true,
+      "position": {
+        "x": 24,
+        "y": 28
+      },
+      "tags": [
+        "env:prod"
+      ],
+      "type": "infra"
+    },
+    {
+      "detail": {
+        "desc": "朝ダイジェストの生成元。cerebellum は受け取って表示するだけ (Phase 1.6)"
+      },
+      "id": "service:daily-digest",
+      "label": "daily-digest (second-brain skill)",
+      "manual": true,
+      "position": {
+        "x": 45,
+        "y": -30
+      },
+      "tags": [
+        "env:prod"
+      ],
+      "type": "service"
+    },
+    {
+      "detail": {
+        "desc": "初期 import-routines の移行元。読み取りのみ・serve からは参照しない"
+      },
+      "id": "service:vault",
+      "label": "second-brain Vault (Google Drive)",
+      "manual": true,
+      "position": {
+        "x": 2,
+        "y": 16
+      },
+      "tags": [
+        "env:prod"
+      ],
+      "type": "service"
+    },
+    {
+      "id": "skill:lumenmap-generator",
+      "label": "lumenmap-generator",
+      "path": ".claude/skills/lumenmap-generator/SKILL.md",
+      "position": {
+        "x": -55,
+        "y": 2
+      },
+      "tags": [
+        "ai"
+      ],
+      "type": "skill"
+    },
+    {
+      "detail": {
+        "desc": "PostToolUse: 編集パッケージの typecheck/cargo check ／ Stop: make verify-fast"
+      },
+      "id": "command:hooks",
+      "label": "Hooks (typecheck / verify-fast)",
+      "manual": true,
+      "path": ".claude/hooks/check-edited-package.sh",
+      "position": {
+        "x": -35,
+        "y": -5
+      },
+      "tags": [
+        "ai"
+      ],
+      "type": "command"
+    },
+    {
+      "detail": {
+        "desc": "Beads キュー自走ループ（グローバル ~/.claude/skills）"
+      },
+      "id": "skill:dev-loop",
+      "label": "dev-loop",
+      "manual": true,
+      "position": {
+        "x": -72,
+        "y": -20
+      },
+      "tags": [
+        "ai"
+      ],
+      "type": "skill"
+    },
+    {
+      "detail": {
+        "desc": "docs/specs → Linear issue 登録（グローバル）"
+      },
+      "id": "skill:spec-to-linear",
+      "label": "spec-to-linear",
+      "manual": true,
+      "position": {
+        "x": -72,
+        "y": -2
+      },
+      "tags": [
+        "ai"
+      ],
+      "type": "skill"
+    },
+    {
+      "detail": {
+        "desc": "Linear issue → Beads epic/subtask 取り込み（グローバル）"
+      },
+      "id": "skill:linear-to-beads",
+      "label": "linear-to-beads",
+      "manual": true,
+      "position": {
+        "x": -72,
+        "y": 14
+      },
+      "tags": [
+        "ai"
+      ],
+      "type": "skill"
+    },
+    {
+      "detail": {
+        "desc": "dev-loop が起動する検証エージェント（コードレビュー＋実機UI検証）"
+      },
+      "id": "agent:verifier",
+      "label": "fresh-context 評価者",
+      "manual": true,
+      "position": {
+        "x": -88,
+        "y": -14
+      },
+      "tags": [
+        "ai"
+      ],
+      "type": "agent"
+    },
+    {
+      "detail": {
+        "desc": "Backend 実装と第二診断（codex プラグイン）。Frontend は Claude Code"
+      },
+      "id": "agent:codex",
+      "label": "codex (Backend 実装担当)",
+      "manual": true,
+      "position": {
+        "x": -35,
+        "y": 12
+      },
+      "tags": [
+        "ai"
+      ],
+      "type": "agent"
+    },
+    {
+      "detail": {
+        "desc": "Linear プラグイン経由の issue 操作"
+      },
+      "id": "mcp:linear",
+      "label": "Linear MCP",
+      "manual": true,
+      "position": {
+        "x": -88,
+        "y": 6
+      },
+      "tags": [
+        "ai"
+      ],
+      "type": "mcp"
+    }
+  ],
+  "project": {
+    "generatedAt": "2026-07-27T08:34:17.935Z",
+    "generator": "lumenmap-skill@0.1",
+    "name": "cerebellum"
+  },
+  "version": "1.0"
+}

@@ -15,7 +15,7 @@ export interface TaskDto {
   content: string;
   done: boolean;
   checkedAt: string | null;
-  /** 詳細ビューへの結び付け（02-data-model.md §6 の4語彙）。無ければ null */
+  /** 詳細ビューへの結び付け（02-data-model.md §6 の語彙）。無ければ null */
   detailRef: DetailRef | null;
 }
 
@@ -24,7 +24,8 @@ export type DetailRef =
   | 'digest.connection'
   | 'digest.derive'
   | 'digest.idea'
-  | 'digest.consolidate';
+  | 'digest.consolidate'
+  | 'nightshift.report';
 
 /** 03-api.md §3: `progress` */
 export interface ProgressDto {

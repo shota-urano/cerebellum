@@ -33,15 +33,22 @@ export function TaskRow({ task, onToggle, date }: Props) {
    * 詳細リンクを持つ行（docs/specs/12-web-digest.md §3.1）:
    * **チェックリングだけがトグル、それ以外の面はすべて詳細へ遷移**する。
    * リングは 22px だが、タップ領域は 44px 以上を確保する（同 §3.1）。
+   * `nightshift.report` は夜勤詳細（/nightshift・docs/specs/13-web-nightshift.md）、
+   * `digest.*` はダイジェスト詳細（/digest）へ。どちらもアプリ内ビュー。
    */
   if (task.detailRef) {
     const href =
-      '/digest?date=' +
-      encodeURIComponent(date) +
-      '&section=' +
-      encodeURIComponent(task.detailRef) +
-      '&taskId=' +
-      encodeURIComponent(task.id);
+      task.detailRef === 'nightshift.report'
+        ? '/nightshift?date=' +
+          encodeURIComponent(date) +
+          '&taskId=' +
+          encodeURIComponent(task.id)
+        : '/digest?date=' +
+          encodeURIComponent(date) +
+          '&section=' +
+          encodeURIComponent(task.detailRef) +
+          '&taskId=' +
+          encodeURIComponent(task.id);
 
     return (
       <div className="row row--split" style={{ background }}>
