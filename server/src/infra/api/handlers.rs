@@ -16,8 +16,8 @@ use super::{
     AppState,
     dto::{
         DayDto, DigestDto, DigestInputDto, DigestStoredDto, HealthDto, LearningInputDto,
-        LearningSetDto, LearningStoredDto, RoutineInputDto, RoutineResponseDto, RoutinesDto,
-        SummaryDto,
+        LearningResultDto, LearningResultInputDto, LearningSetDto, LearningStoredDto,
+        RoutineInputDto, RoutineResponseDto, RoutinesDto, SummaryDto,
     },
     error::ApiError,
 };
@@ -195,6 +195,35 @@ pub(super) async fn get_learning_set(
     let Path(date) = path.map_err(|error| ApiError::bad_request(error.to_string()))?;
     let usecase = Arc::clone(&state.manage_learning);
     let view = tokio::task::spawn_blocking(move || usecase.get_learning_set(&date))
+        .await
+        .map_err(ApiError::from_join)??;
+
+    Ok(Json(view.into()))
+}
+
+pub(super) async fn save_learning_result(
+    State(state): State<Arc<AppState>>,
+    path: Result<Path<String>, PathRejection>,
+    body: Result<Json<LearningResultInputDto>, JsonRejection>,
+) -> Result<Json<LearningResultDto>, ApiError> {
+    let Path(date) = path.map_err(|error| ApiError::bad_request(error.to_string()))?;
+    let Json(input) = body.map_err(|error| ApiError::bad_request(error.to_string()))?;
+    let usecase = Arc::clone(&state.manage_learning);
+    let view =
+        tokio::task::spawn_blocking(move || usecase.save_learning_result(&date, input.into()))
+            .await
+            .map_err(ApiError::from_join)??;
+
+    Ok(Json(view.into()))
+}
+
+pub(super) async fn get_learning_result(
+    State(state): State<Arc<AppState>>,
+    path: Result<Path<String>, PathRejection>,
+) -> Result<Json<LearningResultDto>, ApiError> {
+    let Path(date) = path.map_err(|error| ApiError::bad_request(error.to_string()))?;
+    let usecase = Arc::clone(&state.manage_learning);
+    let view = tokio::task::spawn_blocking(move || usecase.get_learning_result(&date))
         .await
         .map_err(ApiError::from_join)??;
 

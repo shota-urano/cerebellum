@@ -26,6 +26,8 @@ Rust（axum）と Next.js（`shared/api/types.ts` に手動同期）が共有す
 | GET | `/api/digests/{date}` | その日のダイジェスト（構造化済み）。`{date}`=`today` 可 | [11](./11-digest.md) |
 | POST | `/api/learning/sets` | 学習セットの取り込み（second-brain の night-study が送る） | [14](./14-learning.md) |
 | GET | `/api/learning/sets/{date}` | その日の学習セット。`{date}`=`today` 可 | [14](./14-learning.md) |
+| POST | `/api/learning/sets/{date}/result` | その日の自己採点・感想を記録。`{date}`=`today` 可 | [14](./14-learning.md) |
+| GET | `/api/learning/sets/{date}/result` | 記録済みの自己採点・感想を取得。`{date}`=`today` 可 | [14](./14-learning.md) |
 | GET | `/api/health` | 自己診断（DB 可否・マスタ件数） | [06](./06-cli-serve.md) |
 | GET | 上記以外 | 静的アセット配信＋SPA フォールバック | [06](./06-cli-serve.md) |
 
@@ -128,6 +130,29 @@ Rust（axum）と Next.js（`shared/api/types.ts` に手動同期）が共有す
   "closingMd": null
 }
 
+// POST /api/learning/sets/2026-07-29/result
+// body（全問分が揃っていない途中採点も可。feeling は空文字可）
+{
+  "grades": [
+    { "no": 1, "grade": "o" },         // o | d | x（○ | △ | ×）
+    { "no": 2, "grade": "x" }
+  ],
+  "feeling": "WAL の checkpoint が曖昧だった"
+}
+// → 200（同じ date への再送は成績全体と completedAt を上書き）
+{
+  "date": "2026-07-29",
+  "grades": [
+    { "no": 1, "grade": "o" },
+    { "no": 2, "grade": "x" }
+  ],
+  "feeling": "WAL の checkpoint が曖昧だった",
+  "completedAt": "2026-07-29T06:45:00+09:00"
+}
+
+// GET /api/learning/sets/2026-07-29/result   （"today" も可）
+// → 200（POST のレスポンスと同形）。未記録なら 404
+
 // GET /api/health
 { "db": "ok", "routines": 13, "version": "0.1.0" }
 // 異常時は db が "ng"（HTTP 200 のまま返す）。routines はマスタの active 件数
@@ -139,8 +164,10 @@ Rust（axum）と Next.js（`shared/api/types.ts` に手動同期）が共有す
 - `routines` の DTO には `detailRef` を含める（省略時 null）。値は [`02-data-model.md`](./02-data-model.md) §6 の4語彙のみ。他の値は 400 `bad_request`
 - `POST /api/digests` の検証（400 `bad_request`）: `date` が `%Y-%m-%d` でも `today` でもない ／ `body` が空 ／ `body` が 64KiB 超
 - `POST /api/learning/sets` の検証（400 `bad_request`）: body が 256KiB 超 ／ `date` が `%Y-%m-%d` でも `today` でもない ／ `theme`・`lessonMd`・`problems` または各問題の `no`・`questionMd`・`answerMd` が欠落・空 ／ `problems` が1〜10件でない ／ `no` が重複 ／ `source`・`kind` が上記語彙外。検証失敗時は保存しない
+- `POST /api/learning/sets/{date}/result` の検証（400 `bad_request`）: `date` が `%Y-%m-%d` でも `today` でもない ／ `grades`・`feeling` が欠落 ／ `grade` が `o`・`d`・`x` 以外 ／ `grades[].no` が対応するセットの `problems[].no` に存在しない ／ `feeling` が2000文字超。`grades` は空配列および全問未満でも可。対応するセットが未取り込みなら 404
 - ダイジェストが未受信の日は **404 にせず** `sections: []` を 200 で返す
 - 学習セットが未取り込みの日は 404 `not_found`
+- 学習成績が未記録の日は 404 `not_found`
 - 過去日でスナップショットが無い日: `tasks: []`・`progress: {done:0,total:0}`・`readonly:true` を 200 で返し、フロントが「記録なし」表示にする
 
 ## 4. エラーレスポンス（確定形）
@@ -155,7 +182,7 @@ Rust（axum）と Next.js（`shared/api/types.ts` に手動同期）が共有す
 |---|---|---|
 | 400 | `bad_request` | date が `%Y-%m-%d` でも `today` でもない／`days` が正整数でない／ルーティン・学習セットの入力検証違反（§3） |
 | 403 | `readonly_day` | 過去日への書き込み |
-| 404 | `not_found` | 未知の taskId／未知の routine id／未取り込みの学習セット date／未知のパス（API 配下） |
+| 404 | `not_found` | 未知の taskId／未知の routine id／未取り込みの学習セット date／未記録の学習成績 date／未知のパス（API 配下） |
 | 409 | `conflict` | 間隔・時刻・内容が既存の有効な行と重複（`routines_identity` 違反。task_id が衝突するため） |
 | 500 | `internal` | DB 障害ほか予期しないエラー |
 

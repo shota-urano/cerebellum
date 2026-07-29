@@ -15,7 +15,7 @@ use crate::domain::{
 use crate::usecase::ports::{
     DigestRepository, LearningRepository, RepositoryError, RoutineImportRepository,
     RoutineImportRepositoryError, RoutineRepository, RoutineRepositoryError, StoredDigest,
-    StoredLearningSet, TaskRepository,
+    StoredLearningResult, StoredLearningSet, TaskRepository,
 };
 
 const MIGRATION_V1: &str = include_str!("migrations/001_init.sql");
@@ -738,6 +738,49 @@ impl LearningRepository for SqliteTaskRepository {
                     Ok(StoredLearningSet {
                         raw: row.get(0)?,
                         received_at: row.get(1)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(|source| RepositoryError::new(SqliteRepositoryError::Query(source)))
+    }
+
+    fn save_learning_result(
+        &self,
+        date: &str,
+        grades: &str,
+        feeling: &str,
+        completed_at: &str,
+    ) -> Result<(), RepositoryError> {
+        self.connection()
+            .map_err(RepositoryError::new)?
+            .execute(
+                "INSERT INTO learning_results (date, grades, feeling, completed_at)
+                 VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT(date) DO UPDATE SET
+                   grades = ?2, feeling = ?3, completed_at = ?4",
+                params![date, grades, feeling, completed_at],
+            )
+            .map_err(|source| RepositoryError::new(SqliteRepositoryError::Query(source)))?;
+        Ok(())
+    }
+
+    fn get_learning_result(
+        &self,
+        date: &str,
+    ) -> Result<Option<StoredLearningResult>, RepositoryError> {
+        self.connection()
+            .map_err(RepositoryError::new)?
+            .query_row(
+                "SELECT grades, feeling, completed_at
+                 FROM learning_results
+                 WHERE date = ?1",
+                [date],
+                |row| {
+                    Ok(StoredLearningResult {
+                        grades: row.get(0)?,
+                        feeling: row.get(1)?,
+                        completed_at: row.get(2)?,
                     })
                 },
             )

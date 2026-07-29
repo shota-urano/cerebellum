@@ -50,6 +50,10 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/learning/sets", post(handlers::save_learning_set))
         .route("/learning/sets/{date}", get(handlers::get_learning_set))
         .route(
+            "/learning/sets/{date}/result",
+            get(handlers::get_learning_result).post(handlers::save_learning_result),
+        )
+        .route(
             "/routines",
             get(handlers::list_routines).post(handlers::create_routine),
         )

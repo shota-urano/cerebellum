@@ -800,6 +800,150 @@ async fn learning_set_returns_not_found_for_dates_without_an_import() {
     assert_eq!(json_body(response).await["error"]["code"], "not_found");
 }
 
+async fn import_learning_set_for_result(app: axum::Router) {
+    let response = call_json(
+        app,
+        "POST",
+        "/api/learning/sets",
+        json!({
+            "date": "today",
+            "theme": "SQLite",
+            "lessonMd": "lesson",
+            "problems": [
+                { "no": 1, "questionMd": "q1", "answerMd": "a1" },
+                { "no": 2, "questionMd": "q2", "answerMd": "a2" },
+                { "no": 3, "questionMd": "q3", "answerMd": "a3" }
+            ]
+        }),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn learning_result_accepts_partial_grading_and_upserts_the_complete_result() {
+    let app = test_app();
+    import_learning_set_for_result(app.clone()).await;
+
+    let partial = call_json(
+        app.clone(),
+        "POST",
+        "/api/learning/sets/today/result",
+        json!({
+            "grades": [{ "no": 1, "grade": "o" }],
+            "feeling": ""
+        }),
+    )
+    .await;
+    assert_eq!(partial.status(), StatusCode::OK);
+    assert_eq!(partial.headers()[CACHE_CONTROL], "no-store");
+    assert_eq!(
+        json_body(partial).await,
+        json!({
+            "date": "2026-07-25",
+            "grades": [{ "no": 1, "grade": "o" }],
+            "feeling": "",
+            "completedAt": "2026-07-25T08:01:00+09:00"
+        })
+    );
+
+    let replacement = call_json(
+        app.clone(),
+        "POST",
+        "/api/learning/sets/2026-07-25/result",
+        json!({
+            "grades": [
+                { "no": 1, "grade": "o" },
+                { "no": 2, "grade": "d" },
+                { "no": 3, "grade": "x" }
+            ],
+            "feeling": "やり直した"
+        }),
+    )
+    .await;
+    assert_eq!(replacement.status(), StatusCode::OK);
+
+    let fetched = call(app, "GET", "/api/learning/sets/2026-07-25/result").await;
+    assert_eq!(fetched.status(), StatusCode::OK);
+    assert_eq!(
+        json_body(fetched).await,
+        json!({
+            "date": "2026-07-25",
+            "grades": [
+                { "no": 1, "grade": "o" },
+                { "no": 2, "grade": "d" },
+                { "no": 3, "grade": "x" }
+            ],
+            "feeling": "やり直した",
+            "completedAt": "2026-07-25T08:01:00+09:00"
+        })
+    );
+}
+
+#[tokio::test]
+async fn learning_result_rejects_unknown_grades_problem_numbers_and_long_feelings() {
+    let app = test_app();
+    import_learning_set_for_result(app.clone()).await;
+
+    for payload in [
+        json!({
+            "grades": [{ "no": 1, "grade": "triangle" }],
+            "feeling": ""
+        }),
+        json!({
+            "grades": [{ "no": 99, "grade": "o" }],
+            "feeling": ""
+        }),
+        json!({
+            "grades": [{ "no": 1, "grade": "o" }],
+            "feeling": "界".repeat(2001)
+        }),
+    ] {
+        let response = call_json(
+            app.clone(),
+            "POST",
+            "/api/learning/sets/today/result",
+            payload,
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(json_body(response).await["error"]["code"], "bad_request");
+    }
+
+    let missing = call(app, "GET", "/api/learning/sets/today/result").await;
+    assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn learning_result_returns_not_found_without_a_set_or_a_recorded_result() {
+    let app = test_app();
+
+    let post_without_set = call_json(
+        app.clone(),
+        "POST",
+        "/api/learning/sets/today/result",
+        json!({
+            "grades": [],
+            "feeling": ""
+        }),
+    )
+    .await;
+    assert_eq!(post_without_set.status(), StatusCode::NOT_FOUND);
+    assert_eq!(
+        json_body(post_without_set).await["error"]["code"],
+        "not_found"
+    );
+
+    import_learning_set_for_result(app.clone()).await;
+    let get_without_result = call(app, "GET", "/api/learning/sets/today/result").await;
+    assert_eq!(get_without_result.status(), StatusCode::NOT_FOUND);
+    assert_eq!(get_without_result.headers()[CACHE_CONTROL], "no-store");
+    assert_eq!(
+        json_body(get_without_result).await["error"]["code"],
+        "not_found"
+    );
+}
+
 /// detail_ref は 02-data-model.md §6 の閉じた語彙のみ。DayResponse まで運ばれることも見る
 #[tokio::test]
 async fn detail_ref_is_validated_and_reaches_the_day_response() {
