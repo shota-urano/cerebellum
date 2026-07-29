@@ -1,6 +1,6 @@
 ---
 status: confirmed
-confirmed_rev: e129318
+confirmed_rev: d905774
 ---
 
 # 13. 夜勤詳細ビュー仕様（画面）
@@ -20,12 +20,13 @@ night-shift は毎晩1プロジェクト（`80_運用ガイド/夜間シフト�
 - **経路**: `/nightshift?date=YYYY-MM-DD&taskId=...`（date 省略時は今日）
 
 cerebellum のサーバーは経由しない。`runs.json` の1件は viewer の `meta.json` と同形:
-`{ pj, run_id, passed, failed, blocked, human, pr_url, videos[], artifact_missing, href }`（新しい順）。
+`{ pj, run_id, source, passed, failed, blocked, human, pr_url, videos[], artifact_missing, href }`（新しい順）。
+`source` は `night-shift` | `manual`（dev-loop / night-shift が公開時に刻む。**無い旧データは `night-shift` 扱い**）。
 
 ## 3. 処理詳細
 
 1. `today` の実日付は day API の返す `date` で解決する（run_id は `YYYY-MM-DD-n` 形式のため）
-2. **その夜の run** ＝ `run_id` が対象日付で始まる最初の1件（一覧は新しい順なので同日複数でも最新が取れる）。無ければ「この夜の夜勤レポはありません（シフトなし、またはレポ未生成）」
+2. **その夜の run** ＝ `run_id` が対象日付で始まり、**かつ `source` が `night-shift`（無記載含む）**の最初の1件（2026-07-29 改訂——手動 dev-loop の run が同日にあっても夜勤ビューには出さない。手動 run は「開発」[`19-web-dev-history.md`](./19-web-dev-history.md) の役割）。無ければ「この夜の夜勤レポはありません（シフトなし、またはレポ未生成）」
 3. 表示（ダイジェスト詳細と同じ `panel dg` 様式）:
    - 見出し: `夜勤レポ — {pj}` ＋ メタ行（run_id・完了/失敗/blocked）
    - **PR**: `pr_url` があれば `btn--primary` のリンク。無ければ warning 行（passed>0 なら「PR が出ていない」、passed=0 なら「close 0件」）
@@ -38,7 +39,7 @@ cerebellum のサーバーは経由しない。`runs.json` の1件は viewer の
 
 - ビューアのポート `48310` 固定。ホスト名は `window.location.hostname` を使う（localhost でも MagicDNS 名でも同じコードで届く。ハードコードしない）
 - **https（Tailscale Serve 経由）のときは同一オリジンの path マウント `/loop-reports` を使う**（`tailscale serve --set-path /loop-reports http://127.0.0.1:48310` を設定済み）。https ページから `http://…:48310` を読むと混在コンテンツでブロックされ Failed to fetch になるため（2026-07-28 実測）。動画 src も同じ base を使うので一緒に解決される
-- 当初はタスクからの導線のみ（タブバーには追加しない・2026-07-28）→ 2026-07-29 のナビ改訂でドロワー項目に追加（[`16-web-navigation.md`](./16-web-navigation.md)）。タスクからの導線は従来どおり残す（digest と同じ）
+- 導線は**タスク行（detailRef）のみ**（2026-07-28 の位置づけに同日夕方回帰。朝ドロワー項目に追加したが、実物確認後のユーザー判断で撤去——常設ナビはタスク起点の詳細ビューを持たない → [`16-web-navigation.md`](./16-web-navigation.md) §3）。過去の run を後から見る入口は「開発」（[`19-web-dev-history.md`](./19-web-dev-history.md)）
 - warning の様式はダイジェストの `dg__warn` を流用（成果物欠落の判定基準は night-shift 側 `build-viewer.py` の `artifact_missing` と同一思想）
 
 ## 5. インターフェース
@@ -57,7 +58,7 @@ cerebellum のサーバーは経由しない。`runs.json` の1件は viewer の
 ## 7. スコープ外
 
 - 夜勤レポの生成・取り込み（生成は night-shift、配信は viewer。cerebellum は読むだけ）
-- 過去 run の一覧・履歴（夜勤ビューア :48310 の役割）
+- 過去 run の一覧・履歴・手動 dev-loop run の表示（「開発」画面 [`19-web-dev-history.md`](./19-web-dev-history.md) の役割。2026-07-29 改訂）
 - 受け入れ基準・スクショの再実装（フル確認ページへのリンクで足りる）
 
 ## 8. 関連仕様
