@@ -523,7 +523,7 @@ async fn digest_rejects_empty_bodies_and_bad_dates() {
     assert_eq!(bad_date.status(), StatusCode::BAD_REQUEST);
 }
 
-/// detail_ref は 02-data-model.md §6 の4語彙のみ。DayResponse まで運ばれることも見る
+/// detail_ref は 02-data-model.md §6 の閉じた語彙のみ。DayResponse まで運ばれることも見る
 #[tokio::test]
 async fn detail_ref_is_validated_and_reaches_the_day_response() {
     let app = test_app();
@@ -534,11 +534,12 @@ async fn detail_ref_is_validated_and_reaches_the_day_response() {
         "/api/routines",
         json!({
             "interval": "毎日", "time": "6:00", "effort": "", "tool": "",
-            "content": "詳細つき", "detailRef": "digest.unknown",
+            "content": "詳細つき", "detailRef": "learning.unknown",
         }),
     )
     .await;
     assert_eq!(invalid.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(json_body(invalid).await["error"]["code"], "bad_request");
 
     let created = call_json(
         app.clone(),
@@ -546,14 +547,14 @@ async fn detail_ref_is_validated_and_reaches_the_day_response() {
         "/api/routines",
         json!({
             "interval": "毎日", "time": "6:00", "effort": "", "tool": "",
-            "content": "詳細つき", "detailRef": "digest.connection",
+            "content": "詳細つき", "detailRef": "learning.session",
         }),
     )
     .await;
     assert_eq!(created.status(), StatusCode::OK);
     assert_eq!(
         json_body(created).await["routine"]["detailRef"],
-        "digest.connection"
+        "learning.session"
     );
 
     let day = json_body(call(app, "GET", "/api/days/today").await).await;
@@ -563,7 +564,7 @@ async fn detail_ref_is_validated_and_reaches_the_day_response() {
         .iter()
         .find(|task| task["content"] == "詳細つき")
         .expect("the created routine should appear in today's snapshot");
-    assert_eq!(with_detail["detailRef"], "digest.connection");
+    assert_eq!(with_detail["detailRef"], "learning.session");
     let without_detail = day["tasks"]
         .as_array()
         .expect("tasks should be an array")
