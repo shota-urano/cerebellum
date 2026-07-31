@@ -5,9 +5,10 @@ import { expect, test } from '@playwright/test';
 //   開閉 / 各項目への遷移 / 現在画面のアクティブ表示 / バックドロップで閉じる /
 //   下部タブバーが存在しないこと
 //
-// 項目リストは 2026-07-29 夕方改訂で 5項目 → 4項目（ダイジェスト・夜勤を撤去し「開発」を追加。
-// docs/specs/16 §3.3 / docs/specs/19-web-dev-history.md §4）。項目そのものの検証
-// （開発があること・ダイジェスト/夜勤が無いこと）は cerebellum-5cl.2.spec.ts が持つ。
+// 項目リストは 2026-07-29 夕方改訂で 5項目 → 4項目（ダイジェスト・夜勤を撤去し「開発」を追加）、
+// その後 docs/specs/18-web-harness.md の実装で「ハーネス」が加わり 5項目（docs/specs/16 §3.3）。
+// 項目そのものの検証（ハーネスがあること・ダイジェスト/夜勤/学習が無いこと）は
+// cerebellum-5cl.2.spec.ts が持つ。
 //
 // 起動しているのは release バイナリ＋使い捨ての空 DB（playwright.config.ts）。
 // ナビゲーションは API に依存しないので、データ0件のままで検証できる。
@@ -16,6 +17,7 @@ const NAV_ITEMS = [
   { href: '/', label: '今日' },
   { href: '/history', label: '履歴' },
   { href: '/routines', label: 'ルーティン' },
+  { href: '/harness', label: 'ハーネス' },
   { href: '/dev', label: '開発' },
 ];
 
@@ -31,7 +33,7 @@ test('ハンバーガーでドロワーが開き、バックドロップタッ�
   await page.getByRole('button', { name: 'メニュー', exact: true }).click();
   await expect(drawer).toBeVisible();
 
-  // 4項目が頻度順に並んでいる（docs/specs/16 §3.3）
+  // 5項目が頻度順に並んでいる（docs/specs/16 §3.3）
   await expect(drawer.getByRole('link')).toHaveText(NAV_ITEMS.map((item) => item.label));
 
   // バックドロップの中心はドロワーパネル（右から min(280px,82vw)）に覆われるため、
@@ -44,7 +46,7 @@ test('ハンバーガーでドロワーが開き、バックドロップタッ�
   expect(pathnameOf(page.url())).toBe('/');
 });
 
-test('ドロワーの4項目それぞれへ遷移し、遷移先でアクティブ表示になる', async ({ page }) => {
+test('ドロワーの5項目それぞれへ遷移し、遷移先でアクティブ表示になる', async ({ page }) => {
   const openDrawer = async () => {
     await page.getByRole('button', { name: 'メニュー', exact: true }).click();
     const drawer = page.getByRole('navigation', { name: 'ナビゲーション' });
