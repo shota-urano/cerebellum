@@ -10,13 +10,18 @@ import { metaOf } from '../lib/meta';
  *
  * - `nightshift.report` → 夜勤詳細（docs/specs/13-web-nightshift.md）
  * - `learning.session`  → 学習セッション（docs/specs/15-web-learning.md §2）
+ * - `harness.proposals` → ハーネス承認（docs/specs/18-web-harness.md §2）
  * - `digest.*`          → ダイジェスト詳細（docs/specs/12-web-digest.md §3.1。section 付き）
+ *
+ * `digest.*` 以外は**必ず明示的に分岐させる**。catch-all に落ちると、有効な語彙が
+ * `/digest?section=...` へ誤遷移する（引数の型が 02 §6 の7語彙と揃っていることが前提）。
  */
 function detailHref(detailRef: DetailRef, date: string, taskId: string) {
   const day = encodeURIComponent(date);
   const task = encodeURIComponent(taskId);
   if (detailRef === 'nightshift.report') return `/nightshift?date=${day}&taskId=${task}`;
   if (detailRef === 'learning.session') return `/learning?date=${day}&taskId=${task}`;
+  if (detailRef === 'harness.proposals') return `/harness?date=${day}&taskId=${task}`;
   return `/digest?date=${day}&section=${encodeURIComponent(detailRef)}&taskId=${task}`;
 }
 

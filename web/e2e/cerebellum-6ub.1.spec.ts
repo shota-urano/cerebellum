@@ -352,6 +352,111 @@ test('failed の提案は「未処理の失敗」として一覧の先頭に固�
   await expect(dayCards(page).first()).toContainText(otherAdopt.summary);
 });
 
+// ---- 今日画面からの導線（docs/specs/18-web-harness.md §2 の2経路のうちタスク行の側） ----
+//
+// `detailRef = harness.proposals` を持つ行はタップ領域が2つに割れる
+// （docs/specs/12-web-digest.md §3.1 の作法。learning.session の先例は cerebellum-c32.1）:
+//   - チェックリング                      → チェックのトグル（遷移しない）
+//   - それ以外の面（内容・メタ・シェブロン） → /harness?date=&taskId= へ遷移
+//
+// なぜ日次 API の応答だけ固定するか（サーバは本物の release バイナリのまま）:
+//   「今日」のスナップショットは最初の GET /api/days/today で確定し、以後は不変
+//   （docs/specs/02-data-model.md §4・AGENTS.md ルール3）。E2E は使い捨て DB を全 spec で
+//   共有し、他の spec も `/` を開く（＝空のスナップショットを確定させる）ため、ルーティン API に
+//   detail_ref 付きの行を足しても今日の確定済みスナップショットには入らない——入るかどうかが
+//   spec の実行順に依存する（flaky）。検証対象は TaskRow の分岐なので日次 API だけ固定する。
+
+/** task_id は sha1 先頭12桁（docs/specs/02-data-model.md §3） */
+const HARNESS_TASK_ID = 'c4e17a90b3d6';
+const HARNESS_CONTENT = 'ハーネス取り込み判定の承認';
+
+const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
+
+/** `GET /api/days/today` / `POST .../checks/{taskId}` の応答（docs/specs/03-api.md §3） */
+function dayBody(doneTaskId: string | null) {
+  const now = new Date();
+  return {
+    date: now.toLocaleDateString('sv-SE'), // ローカルタイムの YYYY-MM-DD
+    weekday: WEEKDAYS[now.getDay()],
+    readonly: false,
+    progress: { done: doneTaskId ? 1 : 0, total: 1 },
+    tasks: [
+      {
+        id: HARNESS_TASK_ID,
+        time: '6:50',
+        effort: '5分',
+        tool: 'cerebellum',
+        content: HARNESS_CONTENT,
+        done: doneTaskId === HARNESS_TASK_ID,
+        checkedAt: doneTaskId === HARNESS_TASK_ID ? now.toISOString() : null,
+        detailRef: 'harness.proposals',
+      },
+    ],
+  };
+}
+
+/**
+ * 今日の日次 API を固定応答にする。チェックの POST は呼ばれた taskId を記録したうえで、
+ * 本物と同じく「トグル後のその日」を返す。
+ */
+async function stubToday(page: Page) {
+  const checkedIds: string[] = [];
+
+  await page.route('**/api/days/today', (route) => route.fulfill({ json: dayBody(null) }));
+  await page.route('**/api/days/today/checks/*', (route) => {
+    const taskId = decodeURIComponent(new URL(route.request().url()).pathname.split('/').pop() ?? '');
+    checkedIds.push(taskId);
+    return route.fulfill({ json: dayBody(taskId) });
+  });
+
+  return checkedIds;
+}
+
+test('harness.proposals の行は面をタップすると /harness へ遷移する', async ({ page }) => {
+  const checkedIds = await stubToday(page);
+
+  // 開始地点は「今日」画面（遷移先の /harness とは別の画面）
+  await page.goto('/');
+  expect(pathnameOf(page.url())).toBe('/');
+
+  const link = page.getByRole('link', { name: HARNESS_CONTENT + ' の詳細を開く' });
+  await expect(link).toBeVisible();
+  await link.click();
+
+  await page.waitForURL((url) => pathnameOf(url.toString()) === '/harness');
+
+  // docs/specs/18-web-harness.md §2: /harness?date=&taskId=
+  const params = new URL(page.url()).searchParams;
+  expect(params.get('date')).toBe('today');
+  expect(params.get('taskId')).toBe(HARNESS_TASK_ID);
+
+  // ダイジェスト詳細（catch-all の遷移先）へ落ちていない
+  expect(params.get('section')).toBeNull();
+  // 実際にハーネス画面が描画されている（URL だけ合っている状態と区別する）
+  await expect(page.getByRole('heading', { name: /^ハーネス取り込み — / })).toBeVisible();
+
+  // 遷移はトグルを兼ねない（面タップで消し込まれると、承認する前に記録が確定してしまう）
+  expect(checkedIds).toEqual([]);
+});
+
+test('harness.proposals の行のリングはトグルだけで、遷移しない', async ({ page }) => {
+  const checkedIds = await stubToday(page);
+
+  await page.goto('/');
+
+  const ring = page.getByRole('button', { name: HARNESS_CONTENT + ' のチェックを切り替える' });
+  await expect(ring).toHaveAttribute('aria-pressed', 'false');
+
+  const checked = page.waitForResponse((res) => res.url().includes('/api/days/today/checks/'));
+  await ring.click();
+  await checked;
+
+  // トグルされ（optimistic → POST 応答）、「今日」画面に留まる
+  await expect(ring).toHaveAttribute('aria-pressed', 'true');
+  expect(pathnameOf(page.url())).toBe('/');
+  expect(checkedIds).toEqual([HARNESS_TASK_ID]);
+});
+
 test('kind=prune の日は見出しが「資産剪定」に差し替わる', async ({ page, request }) => {
   const date = '2026-06-07';
   const adopt = { ...forDate(ADOPT, date), slug: 'furui-skill-archive-' + date };

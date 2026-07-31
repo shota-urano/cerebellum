@@ -19,14 +19,19 @@ export interface TaskDto {
   detailRef: DetailRef | null;
 }
 
-/** 02-data-model.md §6: detail_ref の語彙。増やすときは 02・11・12 を同時に更新する */
+/**
+ * 02-data-model.md §6: detail_ref の語彙（**7つのみ**・確定）。
+ * 増やすときは 02・11・12 を同時に更新する。サーバー側の正本は `domain/digest.rs` の
+ * `DETAIL_REFS` で、ここが足りないと有効な値が catch-all の遷移先へ落ちる
+ */
 export type DetailRef =
   | 'digest.connection'
   | 'digest.derive'
   | 'digest.idea'
   | 'digest.consolidate'
   | 'nightshift.report'
-  | 'learning.session';
+  | 'learning.session'
+  | 'harness.proposals';
 
 /** 03-api.md §3: `progress` */
 export interface ProgressDto {
