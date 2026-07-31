@@ -207,7 +207,8 @@ export interface HarnessProposalDto {
 }
 
 /**
- * 03-api.md §3: `GET /api/harness/proposals?date={date}`。
+ * 03-api.md §3: `GET /api/harness/proposals?date={date}` と
+ * `POST /api/harness/proposals` のレスポンス（同形）。
  * 未着の日も 404 にならず `receivedAt: null`・`proposals: []` が返る（17 §3.5）
  */
 export interface HarnessProposalsResponse {
@@ -224,15 +225,61 @@ export interface HarnessFilteredProposalsResponse {
   proposals: HarnessProposalDto[];
 }
 
-/** 03-api.md §3: `POST /api/harness/proposals/{id}/decision` のレスポンス */
+/**
+ * 03-api.md §3: `POST /api/harness/proposals/{id}/decision` と
+ * `POST /api/harness/proposals/{id}/apply-result` のレスポンス（同形）
+ */
 export interface HarnessProposalResponse {
   proposal: HarnessProposalDto;
+}
+
+/** 03-api.md §3: `POST /api/harness/proposals` の `proposals[]` のうち `verdict` に依らない部分 */
+interface HarnessProposalInputBase {
+  slug: string;
+  insightName: string;
+  category?: string | null;
+  summary: string;
+  challengeNote?: string | null;
+  detailPath?: string | null;
+  detailMd: string;
+}
+
+/**
+ * 03-api.md §3: `POST /api/harness/proposals` の `proposals[]` の要素。
+ * `verdict` を判別子に枝が分かれる（省略可否・検証規則は 17-harness-approval.md §3.1）
+ */
+export type HarnessProposalInput =
+  | (HarnessProposalInputBase & {
+      verdict: Exclude<HarnessVerdict, 'killed'>;
+      challengeVerdict: HarnessChallengeVerdict;
+    })
+  | (HarnessProposalInputBase & {
+      verdict: 'killed';
+      challengeVerdict?: HarnessChallengeVerdict | null;
+    });
+
+/**
+ * 03-api.md §3: `POST /api/harness/proposals` のリクエストボディ。
+ * 送信元は second-brain の night-harness（画面からは送らない。17 §2）
+ */
+export interface HarnessProposalsInput {
+  date: string;
+  kind?: HarnessKind;
+  proposals: HarnessProposalInput[];
 }
 
 /** 03-api.md §3: `POST /api/harness/proposals/{id}/decision` のリクエストボディ */
 export interface HarnessDecisionInput {
   status: 'proposed' | 'approved' | 'rejected';
 }
+
+/**
+ * 03-api.md §3: `POST /api/harness/proposals/{id}/apply-result` のリクエストボディ。
+ * 送信元は翌朝の無人 `--apply`（画面からは送らない）。`state` を判別子に枝が分かれる（17 §3.4）
+ */
+export type HarnessApplyResultInput =
+  | { state: 'applied'; snapshotPath?: string | null; error?: null }
+  | { state: 'failed'; snapshotPath?: string | null; error: string };
 
 /** 03-api.md §3: health の各フィールド */
 export type HealthStatus = 'ok' | 'ng';
