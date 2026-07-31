@@ -42,12 +42,15 @@ export function challengeLabel(verdict: NonNullable<HarnessProposalDto['challeng
 }
 
 /**
- * 承認操作を受け付ける行か（docs/specs/18-web-harness.md §3.1・§4）。
- * `killed` は判定として却下済みで人間の承認対象ではなく、`applyState` が `pending` 以外の
- * 行は適用が終わっているので後から変えられない（サーバーも `bad_request` を返す）。
+ * 承認操作が凍結された行か（docs/specs/18-web-harness.md §4「適用済み行へのタップ →
+ * チェックを無効化」）。適用が動いた行の承認はもう変えられない（サーバーも `bad_request`）。
+ *
+ * **無効化＝非表示ではない**。`apply-result` は `status = "approved"` の行にしか書き戻せない
+ * （docs/specs/17-harness-approval.md §3.4）ので、適用が動いた行は必ず「人間が承認した行」。
+ * チェックを消すと「自分が承認した」記録が画面から消えるため、チェック済みのまま押せなくする。
  */
-export function isOperable(proposal: HarnessProposalDto) {
-  return proposal.verdict !== 'killed' && proposal.applyState === 'pending';
+export function isFrozen(proposal: HarnessProposalDto) {
+  return proposal.applyState !== 'pending';
 }
 
 /**

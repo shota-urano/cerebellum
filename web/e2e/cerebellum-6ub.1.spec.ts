@@ -62,6 +62,22 @@ const failureFrame = (page: Page) => page.getByRole('region', { name: '未処理
 /** 当日一覧（失敗行は上の枠へ移すので、ここには出ない）。 */
 const dayCards = (page: Page) => page.locator('.hn__list .hn__card');
 
+/**
+ * クリップボードの中身を読む。「コピー可能」（§3.1・§3.3）はボタンの有無ではなく
+ * **実際に入ったか**でしか検証できない。呼ぶ前に `clipboard-read` を grant すること。
+ */
+function readClipboard(page: Page) {
+  return page.evaluate(() => navigator.clipboard.readText());
+}
+
+/**
+ * 測る前にクリップボードへ目印を入れる。これをしないと、別テスト（や前の操作）が
+ * 入れた値を読んで「コピーできた」ことになってしまう——クリックが実際に書いたことを見る。
+ */
+function primeClipboard(page: Page) {
+  return page.evaluate(() => navigator.clipboard.writeText('__まだコピーしていない__'));
+}
+
 /** 投入した行を slug で引く（見つからなければテストを落とす）。 */
 function pick(proposals: StoredProposal[], slug: string): StoredProposal {
   const found = proposals.find((item) => item.slug === slug);
@@ -233,10 +249,15 @@ test('decision の POST が失敗したら巻き戻してトーストを出し�
   await expect.poll(() => statusOf(request, date, adopt.slug)).toBe('approved');
 });
 
-test('「全文を読む」でその場に detailMd が展開し、別画面へ遷移しない', async ({ page, request }) => {
+test('「全文を読む」でその場に detailMd が展開し、別画面へ遷移しない', async ({
+  page,
+  context,
+  request,
+}) => {
   const date = '2026-06-03';
   const adopt = forDate(ADOPT, date);
   await seed(request, date, [adopt]);
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await page.goto('/harness?date=' + date);
 
   const card = cardOf(page, adopt.summary);
@@ -245,9 +266,14 @@ test('「全文を読む」でその場に detailMd が展開し、別画面へ�
   await card.getByRole('button', { name: '全文を読む' }).click();
   await expect(card.getByText('本文の1段落目。')).toBeVisible();
   await expect(card.getByText('根拠となる箇条書き')).toBeVisible();
-  // detailPath は全文の末尾にコピーボタン付きで出る（§3.1）
+  // detailPath は全文の末尾にコピーボタン付きで出る（§3.1）。
+  // ターミナルで開くための入口なので、実際にクリップボードへ入ることまで見る
   await expect(card.getByText(ADOPT_PATH)).toBeVisible();
-  await expect(card.getByRole('button', { name: '判定文のパスをコピー' })).toBeVisible();
+  const copyPath = card.getByRole('button', { name: '判定文のパスをコピー' });
+  await primeClipboard(page);
+  await copyPath.click();
+  await expect(copyPath).toHaveText('コピー済');
+  expect(await readClipboard(page)).toBe(ADOPT_PATH);
 
   // 遷移していない（1画面で片付ける導線を割らない・§3.1）
   expect(pathnameOf(page.url())).toBe('/harness');
@@ -329,8 +355,8 @@ test('failed の提案は「未処理の失敗」として一覧の先頭に固�
   await expect(failed).toContainText('適用失敗');
   // error は切らずに全文出す（原因が切れると手で直せない・§3.3）
   await expect(failed).toContainText(ERROR);
-  // 適用が終わった行のチェックは無効（§4「適用済み行へのタップ」）
-  await expect(failed.getByRole('button', { name: '採用する' })).toHaveCount(0);
+  // 適用が動いた行のチェックは「無効化して表示」（§4）。失敗も適用が走った結果なので同じ扱い
+  await expect(failed.getByRole('button', { name: '採用する' })).toBeDisabled();
 
   // 当日一覧には失敗行を出さない（上の枠へ移している）
   await expect(dayCards(page)).toHaveCount(1);
@@ -399,6 +425,7 @@ test('failed 一覧の取得が落ちても当日一覧は出し、取得でき�
 
 test('applied の提案は ✅「適用済み（appliedAt）」帯＋スナップショットのパスが出て、チェックが無効になる', async ({
   page,
+  context,
   request,
 }) => {
   const date = '2026-06-10';
@@ -432,16 +459,59 @@ test('applied の提案は ✅「適用済み（appliedAt）」帯＋スナッ�
   await expect(applied).toContainText('✅');
   await expect(card).toContainText('適用済み（' + proposal.appliedAt + '）');
 
-  // snapshotPath はコピー可能に出す（戻したくなったときの入口・§3.3）
+  // snapshotPath は「コピー可能に」出す（戻したくなったときの入口・§3.3）。
+  // ボタンの存在ではなく**実際にクリップボードへ入ること**を見る
   await expect(card.getByText(SNAPSHOT)).toBeVisible();
-  await expect(
-    card.getByRole('button', { name: 'スナップショットの置き場所をコピー' }),
-  ).toBeVisible();
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  const copy = card.getByRole('button', { name: 'スナップショットの置き場所をコピー' });
+  await primeClipboard(page);
+  await copy.click();
+  await expect(copy).toHaveText('コピー済');
+  expect(await readClipboard(page)).toBe(SNAPSHOT);
 
-  // 適用が終わった行のチェックは無効（§4「適用済み行へのタップ」）。全文は読める
-  await expect(card.getByRole('button', { name: '採用する' })).toHaveCount(0);
-  await expect(card.getByRole('button', { name: '見送る' })).toHaveCount(0);
+  // 適用が終わった行のチェックは「無効化して表示」（§4）。消さない——`apply-result` は
+  // approved の行にしか書き戻せない（17 §3.4）ので、適用済み行は必ず自分が承認した行であり、
+  // チェックを消すと「承認した」という記録が画面から消える
+  const check = card.getByRole('button', { name: '採用する' });
+  await expect(check).toBeVisible();
+  await expect(check).toBeDisabled();
+  await expect(check).toHaveAttribute('aria-pressed', 'true');
+  const reject = card.getByRole('button', { name: '見送る' });
+  await expect(reject).toBeVisible();
+  await expect(reject).toBeDisabled();
+
+  // 押しても decision は飛ばない（disabled なので何も起きない）＝サーバー状態は approved のまま
+  await check.click({ force: true });
+  expect(await statusOf(request, date, adopt.slug)).toBe('approved');
+
+  // 全文は読める（表示の開閉は承認操作ではない・§3.1）
   await expect(card.getByRole('button', { name: '全文を読む' })).toHaveCount(1);
+});
+
+test('コピーできなかったときは黙らず「コピーできませんでした」を出す', async ({ page, request }) => {
+  const date = '2026-06-12';
+  const adopt = forDate(ADOPT, date);
+  await seed(request, date, [adopt]);
+
+  // secure context でない環境（Tailscale 越しの http）を模して clipboard を落とす。
+  // 黙って何もしないと「コピーしたつもり」で終わる——沈黙させない（docs/specs/17 §3.5）
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: () => Promise.reject(new Error('not allowed')),
+      },
+    });
+  });
+
+  await page.goto('/harness?date=' + date);
+  const card = cardOf(page, adopt.summary);
+  await card.getByRole('button', { name: '全文を読む' }).click();
+  await card.getByRole('button', { name: '判定文のパスをコピー' }).click();
+
+  await expect(card.getByText('コピーできませんでした。パスを選択して手でコピーしてください')).toBeVisible();
+  // パス自体は消さない（手で選択してコピーできる状態を残す）
+  await expect(card.getByText(ADOPT_PATH)).toBeVisible();
 });
 
 // ---- 今日画面からの導線（docs/specs/18-web-harness.md §2 の2経路のうちタスク行の側） ----

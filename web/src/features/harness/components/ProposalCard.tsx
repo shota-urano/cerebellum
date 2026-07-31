@@ -2,7 +2,7 @@
 
 import type { HarnessDecisionInput, HarnessProposalDto } from '@/shared/api';
 import { CheckRing, Markdown } from '@/shared/ui';
-import { badgeOf, challengeLabel, isOperable } from '../lib/proposal';
+import { badgeOf, challengeLabel, isFrozen } from '../lib/proposal';
 import { CopyPath } from './CopyPath';
 
 type Props = {
@@ -60,7 +60,8 @@ function ApplyResult({ proposal }: { proposal: HarnessProposalDto }) {
  */
 export function ProposalCard({ proposal, open, showDate, onToggleDetail, onDecide }: Props) {
   const killed = proposal.verdict === 'killed';
-  const operable = isOperable(proposal);
+  // 適用が動いた行は承認操作を**無効化して見せる**（§4）。消さない理由は `isFrozen` を参照
+  const frozen = isFrozen(proposal);
   const approved = proposal.status === 'approved';
   const rejected = proposal.status === 'rejected';
 
@@ -87,12 +88,15 @@ export function ProposalCard({ proposal, open, showDate, onToggleDetail, onDecid
       <p className="mono hn__insight">{proposal.insightName}</p>
 
       <div className="hn__acts">
-        {operable && (
+        {/* 承認操作の軸を持つのは `killed` 以外（§3.1 の表）。適用が動いた行はここを
+            `disabled` にして残す——「無効化」であって非表示ではない（§4・`isFrozen`） */}
+        {!killed && (
           <>
             <button
               type="button"
               className={'hn__check' + (approved ? ' hn__check--on' : '')}
               aria-pressed={approved}
+              disabled={frozen}
               onClick={() => onDecide(proposal.id, approved ? 'proposed' : 'approved')}
             >
               <CheckRing done={approved} />
@@ -102,6 +106,7 @@ export function ProposalCard({ proposal, open, showDate, onToggleDetail, onDecid
               type="button"
               className={'mono btn hn__reject' + (rejected ? ' hn__reject--on' : '')}
               aria-pressed={rejected}
+              disabled={frozen}
               onClick={() => onDecide(proposal.id, rejected ? 'proposed' : 'rejected')}
             >
               {rejected ? '見送りを取り消す' : '見送る'}
