@@ -69,6 +69,14 @@ function pick(proposals: StoredProposal[], slug: string): StoredProposal {
   return found;
 }
 
+/**
+ * 未着の確定文言（docs/specs/18-web-harness.md §4 の原文をそのまま写す）。
+ * ここを仕様と1文字単位で揃えるのがこのテストの主眼——文言は「押した先で何が起きるか」を
+ * 人間に伝える唯一の手段なので、実装側の言い換えを許さない。
+ */
+const NOT_RECEIVED_MESSAGE =
+  '今朝の判定が届いていません（night-harness の停止かPOST失敗。ログ: ~/Library/Logs/second-brain-harness.log）';
+
 const ADOPT_NOTE = '合格ラインを数字で明確にしたうえで崩せなかった';
 const ADOPT_PATH = '40_Projects/harness/判定/2026-06-01-検索状態外置き.md';
 
@@ -276,8 +284,8 @@ test('未着（receivedAt: null）は赤帯で出し、「提案なし」とは�
 
   const banner = page.locator('.banner');
   await expect(banner).toHaveCount(1);
-  await expect(banner).toContainText('今朝の判定が届いていません');
-  await expect(banner).toContainText('~/Library/Logs/second-brain-harness.log');
+  // 文言は docs/specs/18-web-harness.md §4 の確定文（1文字単位で一致させる）
+  await expect(banner).toContainText(NOT_RECEIVED_MESSAGE);
 
   // 空リストを「提案なし」と書かない（沈黙させない・§4）
   await expect(page.getByText('提案なし')).toHaveCount(0);
@@ -350,6 +358,90 @@ test('failed の提案は「未処理の失敗」として一覧の先頭に固�
   // その日の一覧はその日の分だけ
   await expect(dayCards(page)).toHaveCount(1);
   await expect(dayCards(page).first()).toContainText(otherAdopt.summary);
+});
+
+test('failed 一覧の取得が落ちても当日一覧は出し、取得できなかったことを画面に出す', async ({
+  page,
+  request,
+}) => {
+  const date = '2026-06-11';
+  const adopt = forDate(ADOPT, date);
+  await seed(request, date, [adopt]);
+
+  // 「未処理の失敗」の取得だけを落とす（当日一覧 `?date=` は通したままにする）。
+  // この枠は「Slack 廃止後に失敗を見落とさないため」の仕掛けなので、取得が黙って
+  // 落ちること自体が事故になる（§3.3・docs/specs/17 §3.5 の「沈黙させない」原則）
+  await page.route(
+    (url) =>
+      url.pathname === '/api/harness/proposals' && url.searchParams.get('applyState') === 'failed',
+    (route) =>
+      route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: { code: 'internal', message: 'failed 一覧を読めません' } }),
+      }),
+  );
+
+  await page.goto('/harness?date=' + date);
+
+  // ① 取得できなかったことが画面に出る（黙って空にしない）
+  const banner = page.locator('.banner');
+  await expect(banner).toContainText('未処理の失敗を取得できませんでした');
+  await expect(banner).toContainText('failed 一覧を読めません');
+
+  // ② 当日一覧は止まらない。承認作業もそのまま続けられる
+  await expect(dayCards(page)).toHaveCount(1);
+  const card = cardOf(page, adopt.summary);
+  await expect(card).toBeVisible();
+  await card.getByRole('button', { name: '採用する' }).click();
+  await expect.poll(() => statusOf(request, date, adopt.slug)).toBe('approved');
+});
+
+test('applied の提案は ✅「適用済み（appliedAt）」帯＋スナップショットのパスが出て、チェックが無効になる', async ({
+  page,
+  request,
+}) => {
+  const date = '2026-06-10';
+  const SNAPSHOT = '40_Projects/harness/archive/2026-06-10-kensaku-jotai-sotooki/';
+  const adopt = forDate(ADOPT, date);
+  const stored = await seed(request, date, [adopt]);
+  const target = pick(stored, adopt.slug);
+
+  expect(
+    (
+      await request.post(`/api/harness/proposals/${target.id}/decision`, {
+        data: { status: 'approved' },
+      })
+    ).status(),
+  ).toBe(200);
+  const result = await request.post(`/api/harness/proposals/${target.id}/apply-result`, {
+    data: { state: 'applied', snapshotPath: SNAPSHOT },
+  });
+  expect(result.status(), await result.text()).toBe(200);
+  const { proposal } = (await result.json()) as { proposal: { appliedAt: string } };
+
+  await page.goto('/harness?date=' + date);
+
+  // 適用済みは「未処理の失敗」ではないので当日一覧に出る
+  await expect(dayCards(page)).toHaveCount(1);
+  const card = cardOf(page, adopt.summary);
+
+  // ✅ の帯（赤帯ではない）。`appliedAt` は 03-api.md §3 の値をそのまま出す（§3.3）
+  const applied = card.locator('.hn__result:not(.hn__result--bad)');
+  await expect(applied).toHaveCount(1);
+  await expect(applied).toContainText('✅');
+  await expect(card).toContainText('適用済み（' + proposal.appliedAt + '）');
+
+  // snapshotPath はコピー可能に出す（戻したくなったときの入口・§3.3）
+  await expect(card.getByText(SNAPSHOT)).toBeVisible();
+  await expect(
+    card.getByRole('button', { name: 'スナップショットの置き場所をコピー' }),
+  ).toBeVisible();
+
+  // 適用が終わった行のチェックは無効（§4「適用済み行へのタップ」）。全文は読める
+  await expect(card.getByRole('button', { name: '採用する' })).toHaveCount(0);
+  await expect(card.getByRole('button', { name: '見送る' })).toHaveCount(0);
+  await expect(card.getByRole('button', { name: '全文を読む' })).toHaveCount(1);
 });
 
 // ---- 今日画面からの導線（docs/specs/18-web-harness.md §2 の2経路のうちタスク行の側） ----

@@ -22,10 +22,10 @@ function ApplyResult({ proposal }: { proposal: HarnessProposalDto }) {
       <div className="hn__result">
         <span className="hn__result__tag">✅</span>
         <div className="hn__result__body">
-          <p className="dg__text">
-            適用済み
-            {proposal.appliedAt ? '（' + proposal.appliedAt.slice(0, 16).replace('T', ' ') + '）' : ''}
-          </p>
+          {/* 文言は ✅「適用済み（{appliedAt}）」で確定（§3.3）。`appliedAt` は
+              docs/specs/03-api.md §3 の値を**そのまま**出す——秒・タイムゾーンを落とすと
+              適用が走った時刻をログと突き合わせられなくなる */}
+          <p className="dg__text">適用済み{proposal.appliedAt ? '（' + proposal.appliedAt + '）' : ''}</p>
           {proposal.snapshotPath && (
             <CopyPath label="スナップショットの置き場所" path={proposal.snapshotPath} />
           )}

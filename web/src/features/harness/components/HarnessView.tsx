@@ -43,7 +43,7 @@ function NotReceived() {
     <div className="banner hn__missing" role="alert">
       <span className="mono banner__tag">🚨</span>
       <span className="banner__text">
-        今朝の判定が届いていません（night-harness の停止か POST 失敗。ログ:{' '}
+        今朝の判定が届いていません（night-harness の停止かPOST失敗。ログ:{' '}
         <code className="mono dg__code">~/Library/Logs/second-brain-harness.log</code>）
       </span>
     </div>
@@ -53,7 +53,7 @@ function NotReceived() {
 /** ハーネス承認ビュー本体（docs/specs/18-web-harness.md §3）。 */
 export function HarnessView({ date }: HarnessViewProps) {
   const { list, error, isLoading, mutate } = useHarnessProposals(date);
-  const { failed: failedAcrossDates } = useFailedProposals();
+  const { failed: failedAcrossDates, failedError } = useFailedProposals();
   const { decide, failure, retry, dismiss } = useDecision(list, mutate);
   // 全文の開閉。1画面で3件片付ける導線を割らないよう、遷移せずその場で開く（§3.1）
   const [openIds, setOpenIds] = useState<number[]>([]);
@@ -103,6 +103,12 @@ export function HarnessView({ date }: HarnessViewProps) {
       </h1>
 
       {list.receivedAt === null && <NotReceived />}
+
+      {/* 失敗一覧の取得エラーは黙らせない（§3.3 の枠が「気づくため」の仕掛けなので、
+          取得が落ちたこと自体を出す）。当日一覧はそのまま下に出し、承認作業は続けられる */}
+      {failedError && (
+        <ErrorBanner message={'未処理の失敗を取得できませんでした: ' + failedError.message} />
+      )}
 
       {/* 未処理の失敗（§3.3）。取得元は `?applyState=failed` なので過去日の失敗もここに出る
           ——失敗が下に埋もれると Slack 廃止後に気づけない。日付はカードに併記する */}
