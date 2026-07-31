@@ -164,6 +164,71 @@ export interface LearningResultResponse {
   completedAt: string;
 }
 
+/** 03-api.md §3: ハーネス提案の `kind`（毎朝の取り込み／月次の資産剪定／モデル乗り換え） */
+export type HarnessKind = 'daily' | 'prune' | 'model_switch';
+
+/** 03-api.md §3: ハーネス提案の `verdict` */
+export type HarnessVerdict = 'adopt' | 'experiment' | 'killed';
+
+/** 03-api.md §3: 敵対レビューの結論 `challengeVerdict` */
+export type HarnessChallengeVerdict = 'hold' | 'weaken' | 'refute';
+
+/** 03-api.md §3: ハーネス提案の `status`（人間の意思。`killed` は取り込み時に確定） */
+export type HarnessStatus = 'proposed' | 'approved' | 'rejected' | 'killed';
+
+/** 03-api.md §3: ハーネス提案の `applyState`（機械の結果） */
+export type HarnessApplyState = 'pending' | 'applied' | 'failed';
+
+/** 03-api.md §3: `proposals[]` の要素（GET / decision / apply-result で同じ形） */
+export interface HarnessProposalDto {
+  id: number;
+  date: string;
+  kind: HarnessKind;
+  slug: string;
+  insightName: string;
+  verdict: HarnessVerdict;
+  category: string | null;
+  summary: string;
+  challengeVerdict: HarnessChallengeVerdict | null;
+  challengeNote: string | null;
+  detailPath: string | null;
+  detailMd: string;
+  status: HarnessStatus;
+  decidedAt: string | null;
+  applyState: HarnessApplyState;
+  appliedAt: string | null;
+  error: string | null;
+  snapshotPath: string | null;
+}
+
+/**
+ * 03-api.md §3: `GET /api/harness/proposals?date={date}`。
+ * 未着の日も 404 にならず `receivedAt: null`・`proposals: []` が返る（17 §3.5）
+ */
+export interface HarnessProposalsResponse {
+  date: string;
+  receivedAt: string | null;
+  proposals: HarnessProposalDto[];
+}
+
+/**
+ * 03-api.md §3: 日付で絞らない一覧の形（`?status=approved&applyState=pending` と
+ * `?applyState=failed`）。`date`・`receivedAt` を持たない
+ */
+export interface HarnessFilteredProposalsResponse {
+  proposals: HarnessProposalDto[];
+}
+
+/** 03-api.md §3: `POST /api/harness/proposals/{id}/decision` のレスポンス */
+export interface HarnessProposalResponse {
+  proposal: HarnessProposalDto;
+}
+
+/** 03-api.md §3: `POST /api/harness/proposals/{id}/decision` のリクエストボディ */
+export interface HarnessDecisionInput {
+  status: 'proposed' | 'approved' | 'rejected';
+}
+
 /** 03-api.md §3: health の各フィールド */
 export type HealthStatus = 'ok' | 'ng';
 

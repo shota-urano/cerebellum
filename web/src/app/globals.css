@@ -252,3 +252,32 @@ a:hover { color: #8FF2FF; }
 /* 「開発」= run 履歴（docs/specs/19-web-dev-history.md）。row 様式の上に載せる最小限の追加 */
 .dev__badge { margin-left: 8px; font-size: 11px; letter-spacing: .06em; color: var(--muted); }
 .dev__bad { color: var(--error); }
+
+/* ハーネス承認（docs/specs/18-web-harness.md）。panel dg 様式の上に載せる最小限の追加 */
+.hn__head { margin: 2px 0 12px; font-size: 15px; font-weight: 500; letter-spacing: .04em; }
+.hn__group { margin: 0 0 8px; font-size: 10px; letter-spacing: .16em; color: var(--error); }
+.hn__card--killed { opacity: .58; }
+.hn__badge { font-size: 10.5px; letter-spacing: .1em; color: var(--muted); }
+.hn__date { margin-left: 10px; color: var(--error); }
+/* 1行要約はカード内で最も大きい文字（§3.1）。判断はここだけで足りるように書かれている */
+.hn__summary { margin-top: 8px; font-size: 16.5px; font-weight: 500; line-height: 1.55; color: var(--text); word-break: break-word; text-wrap: pretty; }
+.hn__chal { display: flex; flex-wrap: wrap; gap: 6px 10px; margin-top: 10px; font-size: 12px; line-height: 1.6; }
+.hn__chal__tag { flex: none; letter-spacing: .08em; color: var(--accent); }
+.hn__chal__note { color: var(--muted); }
+.hn__insight { margin-top: 10px; font-size: 10.5px; line-height: 1.6; letter-spacing: .04em; color: var(--muted); word-break: break-word; }
+.hn__acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; }
+.hn__check { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); font: inherit; font-size: 12.5px; letter-spacing: .06em; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.hn__check--on { border-color: var(--accent); color: var(--accent); background: rgba(56, 229, 255, .06); }
+.hn__reject--on { border-color: var(--error); color: var(--error); }
+.hn__detail { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.hn__result { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 12px; padding: 10px 12px; border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: var(--radius-sm); background: var(--bg); }
+.hn__result--bad { border-left-color: var(--error); }
+.hn__result__tag { flex: none; font-size: 13px; line-height: 1.7; }
+.hn__result__body { flex: 1; min-width: 0; }
+.hn__err { margin-top: 6px; font-size: 11.5px; line-height: 1.6; color: var(--error); white-space: pre-wrap; word-break: break-word; }
+.hn__missing { margin-bottom: 12px; }
+.hn__path { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
+.hn__pathtext { flex: 1; min-width: 0; font-size: 10.5px; letter-spacing: .04em; color: var(--muted); word-break: break-all; }
+.hn__copy { flex: none; min-height: 32px; padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: transparent; color: var(--muted); font: inherit; font-size: 10.5px; letter-spacing: .08em; cursor: pointer; }
+.hn__copy:hover { border-color: var(--accent); color: var(--accent); }
+.hn__foot { margin: 16px 0 0; padding: 10px 12px; border: 1px dashed var(--border); border-radius: var(--radius-sm); font-size: 11.5px; line-height: 1.6; color: var(--muted); text-align: center; }

@@ -1,8 +1,8 @@
 import Link from 'next/link';
 import type { DetailRef, TaskDto } from '@/shared/api';
 import { GLOW } from '@/shared/lib';
+import { CheckRing } from '@/shared/ui';
 import { metaOf } from '../lib/meta';
-import { CheckRing } from './CheckRing';
 
 /**
  * `detailRef` の語彙（docs/specs/02-data-model.md §6）ごとの遷移先。
