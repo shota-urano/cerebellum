@@ -49,6 +49,9 @@ export const DETAIL_REF_OPTIONS: { value: DetailRef | ''; label: string }[] = [
   { value: 'digest.consolidate', label: 'ダイジェスト: consolidate' },
   { value: 'nightshift.report', label: '夜勤レポ（PR・検証動画）' },
   { value: 'learning.session', label: '学習セッション（レッスン・問題）' },
+  // ハーネス承認の行は人間がこの画面から追加する（docs/specs/17-harness-approval.md §5）。
+  // 選択肢が無いと「今日」→ /harness の導線を作る手段が UI に存在しなくなる
+  { value: 'harness.proposals', label: 'ハーネス承認（取り込み提案）' },
 ];
 
 /** trim 済みの入力を検証する。返り値が空オブジェクトなら送信してよい。 */
