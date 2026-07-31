@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 
 // cerebellum-5cl.2 [Frontend] 「開発」画面（/dev 一覧＋ ?run= 詳細）とドロワー項目変更
 // 受け入れ基準（docs/specs/19-web-dev-history.md §3・docs/specs/16-web-navigation.md §3）:
-//   ドロワーに「開発」があり ダイジェスト・夜勤が無い / 一覧が新しい順（返却順）に出る
+//   ドロワーに「開発」があり ダイジェスト・夜勤・学習が無い / 一覧が新しい順（返却順）に出る
 //   （夜勤🌙・手動🔧 バッジ含む）/ 行タップで詳細（PR ボタン・動画枠）/ ブラウザバックで一覧へ
 //
 // runs.json は夜勤ビューア（:48310）が配信する外部データなので、**page.route でフィクスチャに
@@ -73,15 +73,27 @@ const openDrawer = async (page: Page) => {
   return drawer;
 };
 
-test('ドロワーは 今日・履歴・ルーティン・開発 の4項目で、ダイジェスト・夜勤は無い', async ({ page }) => {
+test('ドロワーは 今日・履歴・ルーティン・ハーネス・開発 の5項目で、ダイジェスト・夜勤・学習は無い', async ({
+  page,
+}) => {
   await mockRuns(page);
   await page.goto('/');
 
   const drawer = await openDrawer(page);
   // 完全一致で並びごと固定する（余計な項目が増えたらここで落ちる）
-  await expect(drawer.getByRole('link')).toHaveText(['今日', '履歴', 'ルーティン', '開発']);
+  // 「ハーネス」は docs/specs/18-web-harness.md の実装で追加（docs/specs/16 §3.3）
+  await expect(drawer.getByRole('link')).toHaveText([
+    '今日',
+    '履歴',
+    'ルーティン',
+    'ハーネス',
+    '開発',
+  ]);
+  // 読む系のタスク起点詳細ビューは常設ナビに置かない（docs/specs/16 §3.6）。
+  // ハーネスだけが例外として常設される——という仕様の主張をここで守る
   await expect(drawer.getByRole('link', { name: 'ダイジェスト', exact: true })).toHaveCount(0);
   await expect(drawer.getByRole('link', { name: '夜勤', exact: true })).toHaveCount(0);
+  await expect(drawer.getByRole('link', { name: '学習', exact: true })).toHaveCount(0);
 });
 
 test('ドロワーの「開発」から /dev へ遷移し、run 一覧が返却順（新しい順）でバッジ付きで出る', async ({ page }) => {
