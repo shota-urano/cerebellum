@@ -233,21 +233,30 @@ export interface HarnessProposalResponse {
   proposal: HarnessProposalDto;
 }
 
-/**
- * 03-api.md §3: `POST /api/harness/proposals` の `proposals[]` の要素。
- * 省略可否・検証規則は 17-harness-approval.md §3.1
- */
-export interface HarnessProposalInput {
+/** 03-api.md §3: `POST /api/harness/proposals` の `proposals[]` のうち `verdict` に依らない部分 */
+interface HarnessProposalInputBase {
   slug: string;
   insightName: string;
-  verdict: HarnessVerdict;
   category?: string | null;
   summary: string;
-  challengeVerdict?: HarnessChallengeVerdict | null;
   challengeNote?: string | null;
   detailPath?: string | null;
   detailMd: string;
 }
+
+/**
+ * 03-api.md §3: `POST /api/harness/proposals` の `proposals[]` の要素。
+ * `verdict` を判別子に枝が分かれる（省略可否・検証規則は 17-harness-approval.md §3.1）
+ */
+export type HarnessProposalInput =
+  | (HarnessProposalInputBase & {
+      verdict: Exclude<HarnessVerdict, 'killed'>;
+      challengeVerdict: HarnessChallengeVerdict;
+    })
+  | (HarnessProposalInputBase & {
+      verdict: 'killed';
+      challengeVerdict?: HarnessChallengeVerdict | null;
+    });
 
 /**
  * 03-api.md §3: `POST /api/harness/proposals` のリクエストボディ。
@@ -266,13 +275,11 @@ export interface HarnessDecisionInput {
 
 /**
  * 03-api.md §3: `POST /api/harness/proposals/{id}/apply-result` のリクエストボディ。
- * 送信元は翌朝の無人 `--apply`（画面からは送らない。17 §3.4）
+ * 送信元は翌朝の無人 `--apply`（画面からは送らない）。`state` を判別子に枝が分かれる（17 §3.4）
  */
-export interface HarnessApplyResultInput {
-  state: 'applied' | 'failed';
-  snapshotPath?: string | null;
-  error?: string | null;
-}
+export type HarnessApplyResultInput =
+  | { state: 'applied'; snapshotPath?: string | null; error?: null }
+  | { state: 'failed'; snapshotPath?: string | null; error: string };
 
 /** 03-api.md §3: health の各フィールド */
 export type HealthStatus = 'ok' | 'ng';
