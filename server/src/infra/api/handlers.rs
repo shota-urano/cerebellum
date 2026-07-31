@@ -271,10 +271,16 @@ pub(super) async fn get_harness_proposals(
             let proposals = tokio::task::spawn_blocking(move || usecase.pending_approved())
                 .await
                 .map_err(ApiError::from_join)??;
-            Ok(Json(HarnessProposalsResponse::Pending(proposals.into())))
+            Ok(Json(HarnessProposalsResponse::Filtered(proposals.into())))
+        }
+        (None, None, Some(apply_state)) if apply_state == "failed" => {
+            let proposals = tokio::task::spawn_blocking(move || usecase.failed())
+                .await
+                .map_err(ApiError::from_join)??;
+            Ok(Json(HarnessProposalsResponse::Filtered(proposals.into())))
         }
         _ => Err(ApiError::bad_request(
-            "query must contain date only, or status=approved&applyState=pending",
+            "query must contain date only, status=approved&applyState=pending, or applyState=failed",
         )),
     }
 }
@@ -342,5 +348,5 @@ pub(super) struct HarnessProposalsQuery {
 #[serde(untagged)]
 pub(super) enum HarnessProposalsResponse {
     ByDate(HarnessProposalListDto),
-    Pending(HarnessProposalsDto),
+    Filtered(HarnessProposalsDto),
 }

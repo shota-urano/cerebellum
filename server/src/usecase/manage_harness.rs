@@ -88,6 +88,10 @@ impl ManageHarness {
             .map_err(repository_error)
     }
 
+    pub fn failed(&self) -> Result<Vec<StoredHarnessProposal>, UsecaseError> {
+        self.repository.list_failed().map_err(repository_error)
+    }
+
     pub fn save_apply_result(
         &self,
         id: i64,
@@ -164,9 +168,9 @@ fn domain_error(error: DomainError) -> UsecaseError {
 
 fn repository_error(error: HarnessRepositoryError) -> UsecaseError {
     match error {
-        HarnessRepositoryError::Conflict => {
-            UsecaseError::Conflict("non-proposed harness proposals cannot be replaced".to_owned())
-        }
+        HarnessRepositoryError::Conflict => UsecaseError::Conflict(
+            "decided or non-pending harness proposals cannot be replaced".to_owned(),
+        ),
         HarnessRepositoryError::StateMismatch => {
             UsecaseError::Conflict("harness proposal state changed concurrently".to_owned())
         }
@@ -232,11 +236,13 @@ mod tests {
             received_at: &str,
         ) -> Result<(), HarnessRepositoryError> {
             let mut state = self.state.lock().expect("repository should lock");
-            if state
-                .rows
-                .iter()
-                .any(|row| row.date == batch.date && row.status != HarnessStatus::Proposed)
-            {
+            if state.rows.iter().any(|row| {
+                row.date == batch.date
+                    && (matches!(
+                        row.status,
+                        HarnessStatus::Approved | HarnessStatus::Rejected
+                    ) || row.apply_state != ApplyState::Pending)
+            }) {
                 return Err(HarnessRepositoryError::Conflict);
             }
 
@@ -350,6 +356,25 @@ mod tests {
             Ok(rows)
         }
 
+        fn list_failed(&self) -> Result<Vec<StoredHarnessProposal>, HarnessRepositoryError> {
+            let mut rows = self
+                .state
+                .lock()
+                .expect("repository should lock")
+                .rows
+                .iter()
+                .filter(|row| row.apply_state == ApplyState::Failed)
+                .cloned()
+                .collect::<Vec<_>>();
+            rows.sort_by(|left, right| {
+                right
+                    .date
+                    .cmp(&left.date)
+                    .then_with(|| right.id.cmp(&left.id))
+            });
+            Ok(rows)
+        }
+
         fn save_harness_apply_result(
             &self,
             id: i64,
@@ -450,22 +475,47 @@ mod tests {
     }
 
     #[test]
-    fn resending_a_date_with_a_recorded_decision_is_a_conflict() {
+    fn resending_killed_only_or_killed_and_proposed_batches_replaces_them() {
         let manage = manage();
-        let stored = manage
-            .save_proposals(batch("2026-07-29", vec![proposal("decided", "adopt")]), 1)
-            .expect("batch should save");
-        manage
-            .save_decision(stored.proposals[0].id, "approved")
-            .expect("decision should save");
 
-        assert!(matches!(
-            manage.save_proposals(
-                batch("2026-07-29", vec![proposal("replacement", "adopt")]),
-                1,
+        for (date, original) in [
+            ("2026-07-28", vec![proposal("killed-only", "killed")]),
+            (
+                "2026-07-29",
+                vec![
+                    proposal("refuted", "killed"),
+                    proposal("candidate", "adopt"),
+                ],
             ),
-            Err(UsecaseError::Conflict(_))
-        ));
+        ] {
+            manage
+                .save_proposals(batch(date, original), 1)
+                .expect("initial batch should save");
+            let replaced = manage
+                .save_proposals(batch(date, vec![proposal("replacement", "experiment")]), 1)
+                .expect("killed and proposed rows should be replaceable");
+            assert_eq!(replaced.proposals.len(), 1);
+            assert_eq!(replaced.proposals[0].slug, "replacement");
+        }
+    }
+
+    #[test]
+    fn resending_a_date_with_an_approved_or_rejected_decision_is_a_conflict() {
+        let manage = manage();
+
+        for (date, status) in [("2026-07-28", "approved"), ("2026-07-29", "rejected")] {
+            let stored = manage
+                .save_proposals(batch(date, vec![proposal("decided", "adopt")]), 1)
+                .expect("batch should save");
+            manage
+                .save_decision(stored.proposals[0].id, status)
+                .expect("decision should save");
+
+            assert!(matches!(
+                manage.save_proposals(batch(date, vec![proposal("replacement", "adopt")]), 1,),
+                Err(UsecaseError::Conflict(_))
+            ));
+        }
     }
 
     #[test]
@@ -518,6 +568,71 @@ mod tests {
                 .map(|proposal| proposal.slug.as_str())
                 .collect::<Vec<_>>(),
             vec!["oldest", "middle", "newest"]
+        );
+    }
+
+    #[test]
+    fn failed_lists_all_dates_newest_first_and_excludes_applied_retries() {
+        let manage = manage();
+        let mut ids = Vec::new();
+        for (date, slug) in [
+            ("2026-07-29", "middle"),
+            ("2026-07-28", "oldest"),
+            ("2026-07-30", "newest"),
+        ] {
+            let stored = manage
+                .save_proposals(batch(date, vec![proposal(slug, "adopt")]), 1)
+                .expect("batch should save");
+            let id = stored.proposals[0].id;
+            manage
+                .save_decision(id, "approved")
+                .expect("proposal should be approved");
+            manage
+                .save_apply_result(
+                    id,
+                    ApplyResultInput {
+                        state: Some("failed".to_owned()),
+                        snapshot_path: None,
+                        error: Some(format!("{slug} failed")),
+                    },
+                )
+                .expect("failure should save");
+            ids.push((slug, id));
+        }
+
+        assert_eq!(
+            manage
+                .failed()
+                .expect("failed proposals should list")
+                .iter()
+                .map(|proposal| proposal.slug.as_str())
+                .collect::<Vec<_>>(),
+            vec!["newest", "middle", "oldest"]
+        );
+
+        let middle_id = ids
+            .iter()
+            .find_map(|(slug, id)| (*slug == "middle").then_some(*id))
+            .expect("middle id should exist");
+        manage
+            .save_apply_result(
+                middle_id,
+                ApplyResultInput {
+                    state: Some("applied".to_owned()),
+                    snapshot_path: Some("archive/middle".to_owned()),
+                    error: None,
+                },
+            )
+            .expect("retry should save");
+
+        assert_eq!(
+            manage
+                .failed()
+                .expect("remaining failures should list")
+                .iter()
+                .map(|proposal| proposal.slug.as_str())
+                .collect::<Vec<_>>(),
+            vec!["newest", "oldest"]
         );
     }
 

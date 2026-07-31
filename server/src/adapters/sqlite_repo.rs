@@ -806,18 +806,22 @@ impl HarnessRepository for SqliteTaskRepository {
         let transaction = connection
             .transaction()
             .map_err(HarnessRepositoryError::internal)?;
-        let has_recorded_decision = transaction
+        let has_protected_state = transaction
             .query_row(
                 "SELECT EXISTS(
                     SELECT 1
                     FROM harness_proposals
-                    WHERE date = ?1 AND status <> 'proposed'
+                    WHERE date = ?1
+                      AND (
+                        status IN ('approved', 'rejected')
+                        OR apply_state <> 'pending'
+                      )
                  )",
                 [&batch.date],
                 |row| row.get::<_, bool>(0),
             )
             .map_err(HarnessRepositoryError::internal)?;
-        if has_recorded_decision {
+        if has_protected_state {
             return Err(HarnessRepositoryError::Conflict);
         }
 
@@ -970,6 +974,29 @@ impl HarnessRepository for SqliteTaskRepository {
                  FROM harness_proposals
                  WHERE status = 'approved' AND apply_state = 'pending'
                  ORDER BY date ASC, id ASC",
+            )
+            .map_err(HarnessRepositoryError::internal)?;
+        statement
+            .query_map([], harness_proposal_from_row)
+            .map_err(HarnessRepositoryError::internal)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(HarnessRepositoryError::internal)
+    }
+
+    fn list_failed(&self) -> Result<Vec<StoredHarnessProposal>, HarnessRepositoryError> {
+        let connection = self
+            .connection()
+            .map_err(HarnessRepositoryError::internal)?;
+        let mut statement = connection
+            .prepare(
+                "SELECT
+                    id, date, kind, slug, insight_name, verdict, category, summary,
+                    challenge_verdict, challenge_note, detail_path, detail_md,
+                    status, decided_at, apply_state, applied_at, apply_error,
+                    snapshot_path, received_at
+                 FROM harness_proposals
+                 WHERE apply_state = 'failed'
+                 ORDER BY date DESC, id DESC",
             )
             .map_err(HarnessRepositoryError::internal)?;
         statement
@@ -1490,6 +1517,91 @@ mod tests {
     }
 
     #[test]
+    fn harness_replacement_allows_killed_but_rejects_decisions_and_non_pending_rows() {
+        let repository = repository();
+        let mut replaceable = harness_batch("2026-07-29", &["killed", "proposed"]);
+        replaceable.proposals[0].verdict = HarnessVerdict::Killed;
+        replaceable.proposals[0].challenge_verdict = None;
+        repository
+            .replace_harness_proposals(&replaceable, "2026-07-29T06:40:00+09:00")
+            .expect("killed and proposed batch should save");
+        repository
+            .replace_harness_proposals(
+                &harness_batch("2026-07-29", &["replacement"]),
+                "2026-07-29T07:00:00+09:00",
+            )
+            .expect("killed and proposed rows should be replaceable");
+
+        let mut killed_only = harness_batch("2026-07-30", &["killed-only"]);
+        killed_only.proposals[0].verdict = HarnessVerdict::Killed;
+        killed_only.proposals[0].challenge_verdict = None;
+        repository
+            .replace_harness_proposals(&killed_only, "2026-07-30T06:40:00+09:00")
+            .expect("killed-only batch should save");
+        repository
+            .replace_harness_proposals(
+                &harness_batch("2026-07-30", &["replacement"]),
+                "2026-07-30T07:00:00+09:00",
+            )
+            .expect("killed-only rows should be replaceable");
+
+        for (date, status) in [
+            ("2026-07-27", HarnessStatus::Approved),
+            ("2026-07-28", HarnessStatus::Rejected),
+        ] {
+            repository
+                .replace_harness_proposals(
+                    &harness_batch(date, &["decided"]),
+                    "2026-07-29T06:40:00+09:00",
+                )
+                .expect("batch should save");
+            let id = repository
+                .list_harness_proposals(date)
+                .expect("batch should list")[0]
+                .id;
+            repository
+                .save_harness_decision(
+                    id,
+                    HarnessStatus::Proposed,
+                    status,
+                    "2026-07-29T08:00:00+09:00",
+                )
+                .expect("decision should save");
+            assert!(matches!(
+                repository.replace_harness_proposals(
+                    &harness_batch(date, &["blocked"]),
+                    "2026-07-29T09:00:00+09:00",
+                ),
+                Err(HarnessRepositoryError::Conflict)
+            ));
+        }
+
+        repository
+            .replace_harness_proposals(
+                &harness_batch("2026-07-26", &["non-pending"]),
+                "2026-07-29T06:40:00+09:00",
+            )
+            .expect("batch should save");
+        repository
+            .connection()
+            .expect("repository connection should lock")
+            .execute(
+                "UPDATE harness_proposals
+                 SET apply_state = 'failed'
+                 WHERE date = '2026-07-26'",
+                [],
+            )
+            .expect("non-pending state should be injected");
+        assert!(matches!(
+            repository.replace_harness_proposals(
+                &harness_batch("2026-07-26", &["blocked"]),
+                "2026-07-29T09:00:00+09:00",
+            ),
+            Err(HarnessRepositoryError::Conflict)
+        ));
+    }
+
+    #[test]
     fn harness_repository_round_trip_preserves_guards_order_and_apply_retries() {
         let repository = repository();
         let mut current_batch = harness_batch("2026-07-29", &["current", "refuted"]);
@@ -1562,6 +1674,15 @@ mod tests {
             .expect("failed result should save");
         assert_eq!(failed.apply_state, ApplyState::Failed);
         assert_eq!(failed.apply_error.as_deref(), Some("destination exists"));
+        assert_eq!(
+            repository
+                .list_failed()
+                .expect("failed proposals should list")
+                .iter()
+                .map(|proposal| proposal.slug.as_str())
+                .collect::<Vec<_>>(),
+            vec!["current"]
+        );
 
         let applied = repository
             .save_harness_apply_result(
@@ -1577,6 +1698,12 @@ mod tests {
         assert_eq!(applied.apply_state, ApplyState::Applied);
         assert_eq!(applied.snapshot_path.as_deref(), Some("archive/current"));
         assert!(applied.apply_error.is_none());
+        assert!(
+            repository
+                .list_failed()
+                .expect("applied retry should leave failed list")
+                .is_empty()
+        );
     }
 
     #[test]

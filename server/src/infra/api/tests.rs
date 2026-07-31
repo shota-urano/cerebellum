@@ -1138,6 +1138,95 @@ async fn harness_round_trip_covers_both_query_modes_and_oldest_first_order() {
     assert_eq!(pending_after_apply["proposals"][0]["id"], current_id);
 }
 
+#[tokio::test]
+async fn harness_failed_query_lists_newest_first_and_drops_applied_retries() {
+    let app = test_app();
+    let mut ids = Vec::new();
+
+    for (date, slug) in [
+        ("2026-07-24", "oldest"),
+        ("2026-07-26", "newest"),
+        ("2026-07-25", "middle"),
+    ] {
+        let saved = call_json(
+            app.clone(),
+            "POST",
+            "/api/harness/proposals",
+            harness_batch(date, slug, "adopt"),
+        )
+        .await;
+        assert_eq!(saved.status(), StatusCode::OK);
+        let id = json_body(saved).await["proposals"][0]["id"]
+            .as_i64()
+            .expect("proposal id should be numeric");
+
+        let decision = call_json(
+            app.clone(),
+            "POST",
+            &format!("/api/harness/proposals/{id}/decision"),
+            json!({ "status": "approved" }),
+        )
+        .await;
+        assert_eq!(decision.status(), StatusCode::OK);
+
+        let failed = call_json(
+            app.clone(),
+            "POST",
+            &format!("/api/harness/proposals/{id}/apply-result"),
+            json!({ "state": "failed", "error": format!("{slug} failed") }),
+        )
+        .await;
+        assert_eq!(failed.status(), StatusCode::OK);
+        ids.push((slug, id));
+    }
+
+    let failed = call(
+        app.clone(),
+        "GET",
+        "/api/harness/proposals?applyState=failed",
+    )
+    .await;
+    assert_eq!(failed.status(), StatusCode::OK);
+    let failed = json_body(failed).await;
+    assert_eq!(
+        failed["proposals"]
+            .as_array()
+            .expect("proposals should be an array")
+            .iter()
+            .map(|proposal| proposal["slug"].as_str().expect("slug should be a string"))
+            .collect::<Vec<_>>(),
+        vec!["newest", "middle", "oldest"]
+    );
+
+    let middle_id = ids
+        .iter()
+        .find_map(|(slug, id)| (*slug == "middle").then_some(*id))
+        .expect("middle id should exist");
+    let applied = call_json(
+        app.clone(),
+        "POST",
+        &format!("/api/harness/proposals/{middle_id}/apply-result"),
+        json!({
+            "state": "applied",
+            "snapshotPath": "40_Projects/harness/archive/2026-07-26-middle/",
+        }),
+    )
+    .await;
+    assert_eq!(applied.status(), StatusCode::OK);
+
+    let remaining =
+        json_body(call(app, "GET", "/api/harness/proposals?applyState=failed").await).await;
+    assert_eq!(
+        remaining["proposals"]
+            .as_array()
+            .expect("proposals should be an array")
+            .iter()
+            .map(|proposal| proposal["slug"].as_str().expect("slug should be a string"))
+            .collect::<Vec<_>>(),
+        vec!["newest", "oldest"]
+    );
+}
+
 /// docs/specs/17-harness-approval.md §3.5・§6 の 200/400/404 契約。
 #[tokio::test]
 async fn harness_missing_day_and_error_table_are_mapped_at_http_boundary() {
@@ -1220,6 +1309,10 @@ async fn harness_list_rejects_unknown_and_mixed_query_parameters() {
         "/api/harness/proposals?date=today&foo=bar",
         "/api/harness/proposals?status=approved&aplyState=pending",
         "/api/harness/proposals?date=today&status=approved&applyState=pending",
+        "/api/harness/proposals?date=today&applyState=failed",
+        "/api/harness/proposals?status=approved&applyState=failed",
+        "/api/harness/proposals?applyState=pending",
+        "/api/harness/proposals?applyState=applied",
     ] {
         let response = call(app.clone(), "GET", path).await;
         assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{path}");
