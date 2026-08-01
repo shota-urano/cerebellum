@@ -170,7 +170,8 @@ export function LearningSession({ date, onRecorded }: LearningSessionProps) {
 
   return (
     <>
-      <Stepper current={step} />
+      {/* 通過済みの段はタップで戻れる（同 §3）。回答入力・採点はここの state なので戻っても残る */}
+      <Stepper current={step} onBack={setStep} />
 
       {step === 'lesson' && (
         <>
