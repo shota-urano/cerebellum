@@ -17,7 +17,11 @@ export function RoutineRow({ routine, onSelect }: Props) {
       <span className="mono rt__chip">{routine.interval}</span>
       <span className="row__body">
         <span className="row__text" style={{ display: 'block' }}>{routine.content}</span>
-        {meta && <span className="mono row__meta" style={{ display: 'block' }}>{meta}</span>}
+        <span className="mono row__meta" style={{ display: 'block' }}>
+          {/* 表示専用の参照番号（§3.1-3）。ソート・検索・リンク等の機能は持たせない（§4） */}
+          <span className="rt__id">#{routine.id}</span>
+          {meta}
+        </span>
       </span>
     </button>
   );

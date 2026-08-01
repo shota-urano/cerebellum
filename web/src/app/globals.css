@@ -152,6 +152,11 @@ a:hover { color: #8FF2FF; }
 .notice__text { font-size: 12.5px; line-height: 1.6; color: var(--muted); }
 .rt__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .rt__chip { flex: none; min-width: 44px; padding: 4px 8px; text-align: center; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 10.5px; letter-spacing: .08em; color: var(--muted); }
+/* 表示専用の参照番号（docs/specs/10-web-routines.md §3.1-3・§3.2-2）。等幅・補助色は
+   置かれた側（.row__meta / .label）から継承し、間隔だけここで足す。 */
+.rt__id { color: var(--muted); }
+.row__meta .rt__id { margin-right: 10px; }
+.label .rt__id { margin-left: 8px; }
 .btn { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 11px 16px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); font: inherit; font-size: 12px; letter-spacing: .1em; cursor: pointer; }
 .btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .btn:disabled { color: #2C4470; opacity: .55; cursor: default; }
