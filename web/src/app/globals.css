@@ -229,6 +229,15 @@ a:hover { color: #8FF2FF; }
 .lx__step { flex: 1; padding: 6px 4px; text-align: center; border: 1px solid var(--border); border-radius: var(--radius-sm); }
 .lx__step--on { border-color: var(--accent); color: var(--accent); background: rgba(56, 229, 255, .06); }
 .lx__step--past { color: var(--text); }
+/* 通過済みの段は戻り導線（docs/specs/15-web-learning.md §3）。見た目は段のまま＝素の button */
+.lx__step--back { padding: 0; }
+.lx__stepback { position: relative; width: 100%; padding: 6px 4px; border: 0; background: transparent; color: inherit; font: inherit; letter-spacing: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.lx__stepback:hover { color: var(--accent); }
+.lx__stepback__mark { margin-right: 4px; font-size: 8px; color: var(--muted); }
+.lx__stepback:hover .lx__stepback__mark { color: var(--accent); }
+/* タップターゲット最小 44px（docs/design/system/01-tokens.md）。段の高さは変えず、
+   上下の margin（12px）の内側へ当たり判定だけを広げる */
+.lx__stepback::after { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 44px; transform: translateY(-50%); }
 .lx__card { margin-bottom: 12px; }
 .lx__kind { margin-left: 8px; padding: 2px 6px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 9.5px; letter-spacing: .14em; color: var(--muted); }
 .lx__workdir { margin-top: 12px; padding: 10px 12px; border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: var(--radius-sm); }
