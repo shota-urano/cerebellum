@@ -5,6 +5,7 @@ use thiserror::Error;
 
 pub const MAX_LEARNING_SET_BYTES: usize = 256 * 1024;
 pub const MAX_LEARNING_FEELING_CHARS: usize = 2000;
+pub const MAX_LEARNING_ANSWER_CHARS: usize = 500;
 
 const DEFAULT_SOURCE: &str = "theme";
 const DEFAULT_KIND: &str = "quiz";
@@ -24,6 +25,9 @@ pub struct LearningProblem {
     pub kind: String,
     pub question_md: String,
     pub answer_md: String,
+    pub answer_type: Option<String>,
+    pub expected: Option<String>,
+    pub choices: Option<Vec<String>>,
     pub workdir: Option<String>,
 }
 
@@ -42,6 +46,9 @@ pub struct LearningProblemInput {
     pub kind: Option<String>,
     pub question_md: Option<String>,
     pub answer_md: Option<String>,
+    pub answer_type: Option<String>,
+    pub expected: Option<String>,
+    pub choices: Option<Vec<String>>,
     pub workdir: Option<String>,
 }
 
@@ -55,6 +62,8 @@ pub struct LearningResult {
 pub struct LearningGrade {
     pub no: u32,
     pub grade: LearningGradeValue,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub answer: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -75,6 +84,7 @@ pub struct LearningResultInput {
 pub struct LearningGradeInput {
     pub no: Option<u32>,
     pub grade: Option<String>,
+    pub answer: Option<String>,
 }
 
 #[derive(Debug, Error, Eq, PartialEq)]
@@ -89,6 +99,18 @@ pub enum LearningValidationError {
     InvalidSource,
     #[error("problem kind must be one of: quiz, code")]
     InvalidKind,
+    #[error("answerType must be one of: choice, number, text")]
+    InvalidAnswerType,
+    #[error("choices must contain between 2 and 6 items for choice problems")]
+    InvalidChoiceCount,
+    #[error("choices must not contain duplicates")]
+    DuplicateChoice,
+    #[error("expected must exactly match one of choices")]
+    ExpectedNotInChoices,
+    #[error("choices must be omitted unless answerType is choice")]
+    UnexpectedChoices,
+    #[error("expected must be numeric when answerType is number")]
+    InvalidNumberExpected,
     #[error("grades is required")]
     GradesRequired,
     #[error("grades[].no is required")]
@@ -103,6 +125,8 @@ pub enum LearningValidationError {
     FeelingRequired,
     #[error("feeling must not exceed {MAX_LEARNING_FEELING_CHARS} characters")]
     FeelingTooLong,
+    #[error("grades[].answer must not exceed {MAX_LEARNING_ANSWER_CHARS} characters")]
+    AnswerTooLong,
 }
 
 impl LearningSetInput {
@@ -137,11 +161,60 @@ impl LearningSetInput {
                     return Err(LearningValidationError::InvalidKind);
                 }
 
+                match problem.answer_type.as_deref() {
+                    Some("choice") => {
+                        let expected =
+                            required_ref(problem.expected.as_ref(), "problems[].expected")?;
+                        let choices = problem
+                            .choices
+                            .as_ref()
+                            .ok_or(LearningValidationError::InvalidChoiceCount)?;
+                        if !(2..=6).contains(&choices.len()) {
+                            return Err(LearningValidationError::InvalidChoiceCount);
+                        }
+                        if choices.iter().collect::<HashSet<_>>().len() != choices.len() {
+                            return Err(LearningValidationError::DuplicateChoice);
+                        }
+                        if !choices.iter().any(|choice| choice == expected) {
+                            return Err(LearningValidationError::ExpectedNotInChoices);
+                        }
+                    }
+                    Some("number") => {
+                        let expected =
+                            required_ref(problem.expected.as_ref(), "problems[].expected")?;
+                        if problem.choices.is_some() {
+                            return Err(LearningValidationError::UnexpectedChoices);
+                        }
+                        if expected
+                            .trim()
+                            .parse::<f64>()
+                            .map_or(true, |number| !number.is_finite())
+                        {
+                            return Err(LearningValidationError::InvalidNumberExpected);
+                        }
+                    }
+                    Some("text") => {
+                        required_ref(problem.expected.as_ref(), "problems[].expected")?;
+                        if problem.choices.is_some() {
+                            return Err(LearningValidationError::UnexpectedChoices);
+                        }
+                    }
+                    Some(_) => return Err(LearningValidationError::InvalidAnswerType),
+                    None => {
+                        if problem.choices.is_some() {
+                            return Err(LearningValidationError::UnexpectedChoices);
+                        }
+                    }
+                }
+
                 Ok(LearningProblem {
                     no,
                     kind,
                     question_md: required(problem.question_md, "problems[].questionMd")?,
                     answer_md: required(problem.answer_md, "problems[].answerMd")?,
+                    answer_type: problem.answer_type,
+                    expected: problem.expected,
+                    choices: problem.choices,
                     workdir: problem.workdir,
                 })
             })
@@ -166,12 +239,12 @@ impl LearningResultInput {
             .grades
             .ok_or(LearningValidationError::GradesRequired)?
             .into_iter()
-            .map(|grade| {
-                let no = grade.no.ok_or(LearningValidationError::GradeNoRequired)?;
+            .map(|input| {
+                let no = input.no.ok_or(LearningValidationError::GradeNoRequired)?;
                 if !problem_numbers.contains(&no) {
                     return Err(LearningValidationError::UnknownProblemNo(no));
                 }
-                let grade = match grade
+                let grade = match input
                     .grade
                     .ok_or(LearningValidationError::GradeRequired)?
                     .as_str()
@@ -181,8 +254,19 @@ impl LearningResultInput {
                     "x" => LearningGradeValue::X,
                     _ => return Err(LearningValidationError::InvalidGrade),
                 };
+                if input
+                    .answer
+                    .as_ref()
+                    .is_some_and(|answer| answer.chars().count() > MAX_LEARNING_ANSWER_CHARS)
+                {
+                    return Err(LearningValidationError::AnswerTooLong);
+                }
 
-                Ok(LearningGrade { no, grade })
+                Ok(LearningGrade {
+                    no,
+                    grade,
+                    answer: input.answer,
+                })
             })
             .collect::<Result<Vec<_>, _>>()?;
         let feeling = self
@@ -202,13 +286,24 @@ fn required(value: Option<String>, field: &'static str) -> Result<String, Learni
         .ok_or(LearningValidationError::Required(field))
 }
 
+fn required_ref<'a>(
+    value: Option<&'a String>,
+    field: &'static str,
+) -> Result<&'a str, LearningValidationError> {
+    value
+        .map(String::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .ok_or(LearningValidationError::Required(field))
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
 
     use super::{
         LearningGradeInput, LearningGradeValue, LearningProblemInput, LearningResultInput,
-        LearningSetInput, LearningValidationError, MAX_LEARNING_FEELING_CHARS,
+        LearningSetInput, LearningValidationError, MAX_LEARNING_ANSWER_CHARS,
+        MAX_LEARNING_FEELING_CHARS,
     };
 
     fn valid_input() -> LearningSetInput {
@@ -221,6 +316,9 @@ mod tests {
                 kind: None,
                 question_md: Some("question".to_owned()),
                 answer_md: Some("answer".to_owned()),
+                answer_type: None,
+                expected: None,
+                choices: None,
                 workdir: None,
             }]),
             closing_md: None,
@@ -316,6 +414,100 @@ mod tests {
         );
     }
 
+    #[test]
+    fn validates_automatic_grading_fields() {
+        let base_problem = valid_input().problems.expect("fixture has problems")[0].clone();
+        let choice = LearningProblemInput {
+            answer_type: Some("choice".to_owned()),
+            expected: Some("B".to_owned()),
+            choices: Some(vec!["A".to_owned(), "B".to_owned()]),
+            ..base_problem.clone()
+        };
+        let learning_set = LearningSetInput {
+            problems: Some(vec![choice]),
+            ..valid_input()
+        }
+        .validate()
+        .expect("valid choice problem should pass");
+        assert_eq!(
+            learning_set.problems[0].answer_type.as_deref(),
+            Some("choice")
+        );
+        assert_eq!(learning_set.problems[0].expected.as_deref(), Some("B"));
+
+        let invalid_cases = [
+            (
+                LearningProblemInput {
+                    answer_type: Some("boolean".to_owned()),
+                    ..base_problem.clone()
+                },
+                LearningValidationError::InvalidAnswerType,
+            ),
+            (
+                LearningProblemInput {
+                    answer_type: Some("choice".to_owned()),
+                    choices: Some(vec!["A".to_owned(), "B".to_owned()]),
+                    ..base_problem.clone()
+                },
+                LearningValidationError::Required("problems[].expected"),
+            ),
+            (
+                LearningProblemInput {
+                    answer_type: Some("choice".to_owned()),
+                    expected: Some("A".to_owned()),
+                    choices: Some(vec!["A".to_owned()]),
+                    ..base_problem.clone()
+                },
+                LearningValidationError::InvalidChoiceCount,
+            ),
+            (
+                LearningProblemInput {
+                    answer_type: Some("choice".to_owned()),
+                    expected: Some("A".to_owned()),
+                    choices: Some(vec!["A".to_owned(), "A".to_owned()]),
+                    ..base_problem.clone()
+                },
+                LearningValidationError::DuplicateChoice,
+            ),
+            (
+                LearningProblemInput {
+                    answer_type: Some("choice".to_owned()),
+                    expected: Some("C".to_owned()),
+                    choices: Some(vec!["A".to_owned(), "B".to_owned()]),
+                    ..base_problem.clone()
+                },
+                LearningValidationError::ExpectedNotInChoices,
+            ),
+            (
+                LearningProblemInput {
+                    answer_type: Some("text".to_owned()),
+                    expected: Some("A".to_owned()),
+                    choices: Some(Vec::new()),
+                    ..base_problem.clone()
+                },
+                LearningValidationError::UnexpectedChoices,
+            ),
+            (
+                LearningProblemInput {
+                    answer_type: Some("number".to_owned()),
+                    expected: Some("twelve".to_owned()),
+                    ..base_problem
+                },
+                LearningValidationError::InvalidNumberExpected,
+            ),
+        ];
+
+        for (problem, expected_error) in invalid_cases {
+            let error = LearningSetInput {
+                problems: Some(vec![problem]),
+                ..valid_input()
+            }
+            .validate()
+            .expect_err("invalid automatic grading fields should fail");
+            assert_eq!(error, expected_error);
+        }
+    }
+
     fn result_input(grades: Vec<(u32, &str)>, feeling: &str) -> LearningResultInput {
         LearningResultInput {
             grades: Some(
@@ -324,6 +516,7 @@ mod tests {
                     .map(|(no, grade)| LearningGradeInput {
                         no: Some(no),
                         grade: Some(grade.to_owned()),
+                        answer: None,
                     })
                     .collect(),
             ),
@@ -392,6 +585,19 @@ mod tests {
             result_input(Vec::new(), &"界".repeat(MAX_LEARNING_FEELING_CHARS + 1))
                 .validate(&problem_numbers),
             Err(LearningValidationError::FeelingTooLong)
+        );
+
+        let mut at_limit = result_input(vec![(1, "o")], "");
+        at_limit.grades.as_mut().expect("fixture has grades")[0].answer =
+            Some("界".repeat(MAX_LEARNING_ANSWER_CHARS));
+        assert!(at_limit.validate(&problem_numbers).is_ok());
+
+        let mut over_limit = result_input(vec![(1, "o")], "");
+        over_limit.grades.as_mut().expect("fixture has grades")[0].answer =
+            Some("界".repeat(MAX_LEARNING_ANSWER_CHARS + 1));
+        assert_eq!(
+            over_limit.validate(&problem_numbers),
+            Err(LearningValidationError::AnswerTooLong)
         );
     }
 }
