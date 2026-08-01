@@ -3,7 +3,7 @@ import { expect, test, type APIRequestContext, type Page } from '@playwright/tes
 // cerebellum-c32.2 [Frontend] 学習セッションビュー本体（docs/specs/15-web-learning.md）
 //
 // 受け入れ基準:
-//   - 一本道の完走: レッスン → 問題 → 回答 → 感想。採点が全問揃うまで「感想へ」は無効。
+//   - 一本道の完走: レッスン → 問題 → 採点 → 感想。採点が全問揃うまで「感想へ」は無効。
 //     完了で ①result 記録 → ②消し込み → ③完了画面 →「今日へ戻る」（§3.4）
 //   - result POST 失敗時はタスクが消し込まれない（§4。記録なしに消し込まれるのが最悪ケース）
 //   - セット未取り込みの日は「今日の学習セットはありません…」だけを出す（§4）
@@ -139,9 +139,9 @@ test('一本道を完走すると、記録 → 消し込み → 完了画面 →
   await expect(page.getByRole('button', { name: '作業ディレクトリのパスをコピー' })).toBeVisible();
   await expect(page.getByText('ターミナルで解いてから戻ってきてください')).toBeVisible();
 
-  await page.getByRole('button', { name: '答え合わせへ' }).click();
+  await page.getByRole('button', { name: '採点へ' }).click();
 
-  // --- 回答（§3.3）。全問タップするまで「感想へ」は無効
+  // --- 採点（§3.3）。全問タップするまで「感想へ」は無効
   await expect(page.getByText(A1_TEXT)).toBeVisible();
   await expect(page.getByText(A2_TEXT)).toBeVisible();
 
@@ -202,7 +202,7 @@ test('result の記録に失敗したらタスクは消し込まれない（ト�
   await page.goto(learningUrl(date));
 
   await page.getByRole('button', { name: '問題へ' }).click();
-  await page.getByRole('button', { name: '答え合わせへ' }).click();
+  await page.getByRole('button', { name: '採点へ' }).click();
   await page.getByRole('button', { name: '問題1 の自己採点 ○（できた）' }).click();
   await page.getByRole('button', { name: '問題2 の自己採点 △（曖昧）' }).click();
   await page.getByRole('button', { name: '感想へ' }).click();

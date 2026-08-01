@@ -152,6 +152,11 @@ a:hover { color: #8FF2FF; }
 .notice__text { font-size: 12.5px; line-height: 1.6; color: var(--muted); }
 .rt__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .rt__chip { flex: none; min-width: 44px; padding: 4px 8px; text-align: center; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 10.5px; letter-spacing: .08em; color: var(--muted); }
+/* 表示専用の参照番号（docs/specs/10-web-routines.md §3.1-3・§3.2-2）。等幅・補助色は
+   置かれた側（.row__meta / .label）から継承し、間隔だけここで足す。 */
+.rt__id { color: var(--muted); }
+.row__meta .rt__id { margin-right: 10px; }
+.label .rt__id { margin-left: 8px; }
 .btn { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 11px 16px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); font: inherit; font-size: 12px; letter-spacing: .1em; cursor: pointer; }
 .btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .btn:disabled { color: #2C4470; opacity: .55; cursor: default; }
@@ -229,12 +234,32 @@ a:hover { color: #8FF2FF; }
 .lx__step { flex: 1; padding: 6px 4px; text-align: center; border: 1px solid var(--border); border-radius: var(--radius-sm); }
 .lx__step--on { border-color: var(--accent); color: var(--accent); background: rgba(56, 229, 255, .06); }
 .lx__step--past { color: var(--text); }
+/* 通過済みの段は戻り導線（docs/specs/15-web-learning.md §3）。見た目は段のまま＝素の button */
+.lx__step--back { padding: 0; }
+.lx__stepback { position: relative; width: 100%; padding: 6px 4px; border: 0; background: transparent; color: inherit; font: inherit; letter-spacing: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.lx__stepback:hover { color: var(--accent); }
+.lx__stepback__mark { margin-right: 4px; font-size: 8px; color: var(--muted); }
+.lx__stepback:hover .lx__stepback__mark { color: var(--accent); }
+/* タップターゲット最小 44px（docs/design/system/01-tokens.md）。段の高さは変えず、
+   上下の margin（12px）の内側へ当たり判定だけを広げる */
+.lx__stepback::after { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 44px; transform: translateY(-50%); }
 .lx__card { margin-bottom: 12px; }
 .lx__kind { margin-left: 8px; padding: 2px 6px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 9.5px; letter-spacing: .14em; color: var(--muted); }
 .lx__workdir { margin-top: 12px; padding: 10px 12px; border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: var(--radius-sm); }
 .lx__wdrow { display: flex; align-items: center; gap: 10px; }
 .lx__path { flex: 1; min-width: 0; font-size: 11.5px; color: var(--text); word-break: break-all; }
 .lx__copy { flex: none; min-height: 36px; padding: 8px 12px; }
+.lx__form { margin-top: 14px; }
+.lx__choices { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+.lx__choice { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); font-size: 13.5px; line-height: 1.5; cursor: pointer; }
+.lx__choice:has(.lx__radio:checked) { border-color: var(--accent); color: var(--accent); background: rgba(56, 229, 255, .06); }
+.lx__radio { flex: none; width: 15px; height: 15px; margin: 0; accent-color: var(--accent); }
+.lx__yours { display: flex; align-items: baseline; gap: 10px; margin-top: 14px; }
+.lx__yourval { flex: 1; min-width: 0; font-size: 13px; color: var(--text); word-break: break-word; }
+.lx__auto { margin-top: 14px; font-size: 10px; letter-spacing: .16em; color: var(--muted); }
+.lx__automark { font-size: 15px; letter-spacing: normal; color: var(--accent); }
+.lx__auto--x .lx__automark { color: var(--error); }
+.lx__unanswered { margin-left: 4px; color: var(--error); }
 .lx__answer { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
 .lx__grades { display: flex; gap: 8px; margin-top: 14px; }
 .lx__grade { flex: 1; flex-direction: column; gap: 2px; padding: 8px 6px; }
@@ -248,6 +273,7 @@ a:hover { color: #8FF2FF; }
 .lx__recrow { display: flex; align-items: center; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--border); }
 .lx__recno { font-size: 11.5px; letter-spacing: .08em; color: var(--muted); }
 .lx__recmark { font-size: 15px; color: var(--accent); }
+.lx__recanswer { flex: 1; min-width: 0; font-size: 12.5px; color: var(--muted); word-break: break-word; }
 .lx__feeling { white-space: pre-wrap; }
 /* 「開発」= run 履歴（docs/specs/19-web-dev-history.md）。row 様式の上に載せる最小限の追加 */
 .dev__badge { margin-left: 8px; font-size: 11px; letter-spacing: .06em; color: var(--muted); }

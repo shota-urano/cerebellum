@@ -24,6 +24,7 @@ export type {
   HarnessVerdict,
   HealthResponse,
   HealthStatus,
+  LearningAnswerType,
   LearningGrade,
   LearningGradeDto,
   LearningProblemDto,

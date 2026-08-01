@@ -122,12 +122,21 @@ export interface DigestResponse {
   sections: DigestSectionDto[];
 }
 
+/** 03-api.md §3: 自動採点の回答形式。null は自己採点（従来動作） */
+export type LearningAnswerType = 'choice' | 'number' | 'text';
+
 /** 03-api.md §3: `problems[]` の要素（14-learning.md §3.1） */
 export interface LearningProblemDto {
   no: number;
   kind: 'quiz' | 'code';
   questionMd: string;
   answerMd: string;
+  /** 省略時（null）は自己採点 */
+  answerType: LearningAnswerType | null;
+  /** 機械比較用の正解。answerType 指定時は非 null */
+  expected: string | null;
+  /** answerType=choice のとき 2〜6件。それ以外は null */
+  choices: string[] | null;
   /** code 問題の作業ディレクトリ。quiz は null */
   workdir: string | null;
 }
@@ -150,6 +159,8 @@ export type LearningGrade = 'o' | 'd' | 'x';
 export interface LearningGradeDto {
   no: number;
   grade: LearningGrade;
+  /** ユーザーの回答入力（任意・≤500文字。自己採点問題は省略） */
+  answer?: string;
 }
 
 /** 03-api.md §3: `POST /api/learning/sets/{date}/result` のリクエストボディ */

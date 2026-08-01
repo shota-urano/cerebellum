@@ -29,17 +29,18 @@ second-brain の `night-study` が平日朝に生成する学習3点セット（
 HTTP DTO の具体形は [`03-api.md`](./03-api.md) §3 を正とする。
 
 - `theme` は学習テーマ、`lessonMd` は完全初学者向けのレッスン本文
-- `problems` は1〜10件。各問題の `no` は問題番号、`questionMd` は問題文、`answerMd` は解答
+- `problems` は1〜10件。各問題の `no` は問題番号、`questionMd` は問題文、`answerMd` は解答（正解＋解説。採点画面で表示する）
 - 必須: `theme`・`lessonMd`・`problems[]`（各 `no`・`questionMd`・`answerMd`）
 - `source` は `theme`（学習テーマ契約由来）| `memo`（メモキュー由来。将来拡張）。省略時 `theme`
 - `kind` は `quiz`（画面内で答える）| `code`（ターミナルで解く）。省略時 `quiz`
 - `workdir` は code 問題の作業ディレクトリ（Vault 外のローカルパス）。**サーバはパスにアクセスしない**——画面がコピー用に表示するだけ
 - `closingMd` は学習セット末尾のまとめ。任意
+- **自動採点フィールド（2026-07-31 追加・USL-282）**: `answerType` は `choice`（選択式）| `number`（数値比較）| `text`（正規化して文字列比較）。**省略時は従来どおり自己採点**（後方互換——`answerType` の無い問題・code 問題は画面が自己採点にフォールバックする）。`expected` は機械比較用の正解（`answerType` 指定時は必須）。`choices` は選択肢（`choice` のとき必須・2〜6件・重複不可・`expected` はそのいずれかと完全一致）。**比較の実行は画面側**（[`15`](./15-web-learning.md) §3.3）——サーバは形式検証と保存のみ
 
 ### 3.2 取り込み（save_learning_set）
 
 1. `date` は `%Y-%m-%d` または `today`（`Clock` で解決）。それ以外は `bad_request`
-2. body はサイズ上限 256KiB。必須フィールド欠落・`problems` 空・`no` 重複は `bad_request`——**digest と違い崩れた入力は保存しない**。学習セットは構造が本体であり、壊れたまま画面に出すと「今日の学習」が壊れた体験になる。失敗は送信側（night-study）が🚨通知する契約（沈黙しない）
+2. body はサイズ上限 256KiB。必須フィールド欠落・`problems` 空・`no` 重複・自動採点フィールドの不整合（`answerType` 語彙外／`expected` 欠落／`choices` の件数・重複・`expected` 不一致／`number` なのに数値でない——具体則は [`03-api.md`](./03-api.md) §3 を正とする）は `bad_request`——**digest と違い崩れた入力は保存しない**。学習セットは構造が本体であり、壊れたまま画面に出すと「今日の学習」が壊れた体験になる。失敗は送信側（night-study）が🚨通知する契約（沈黙しない）
 3. 同じ date は UPSERT（再生成・再送で上書き）。`received_at` は `Clock`
 
 ### 3.3 成績記録（save_learning_result）
@@ -48,8 +49,9 @@ HTTP DTO の具体形は [`03-api.md`](./03-api.md) §3 を正とする。
 
 1. `grade` は `o` | `d` | `x`（○△×）。`grades` の `no` はセットの `problems` と突き合わせ、不明な `no` は `bad_request`。全問分なくてもよい（途中まで採点も受ける）
 2. `feeling` は ≤2000 文字・空可
-3. UPSERT（やり直し・上書き可）。`completed_at` は `Clock`
-4. **タスクの消し込みはここではやらない**（画面が既存 `POST /api/days/today/checks/{taskId}` を別途叩く。責務を混ぜない）
+3. `grades[].answer` は任意・≤500 文字——自動採点時のユーザー回答入力。night-study が翌晩の適応で「何をどう間違えたか」まで読めるようにするための素材（自己採点問題では省略される）
+4. UPSERT（やり直し・上書き可）。`completed_at` は `Clock`
+5. **タスクの消し込みはここではやらない**（画面が既存 `POST /api/days/today/checks/{taskId}` を別途叩く。責務を混ぜない）
 
 ### 3.4 適応の読み出し
 
@@ -62,6 +64,8 @@ HTTP DTO の具体形は [`03-api.md`](./03-api.md) §3 を正とする。
 
 - DTO は [`03-api.md`](./03-api.md) §3 の `camelCase` を正とする
 - 生成後 `POST /api/learning/sets` で送る。失敗時は🚨通知（成功時の Slack 📚通知は廃止）
+- **全問題に `answerType`・`expected`（choice は `choices` も）を付けて生成する（2026-07-31 決定・USL-282）**。問題文は自己完結（未提示のコード・外部ファイルを前提にしない）
+- **新規生成で `kind: "code"` は使わない（同決定）**。cerebellum 側は後方互換のため code と `answerType` 省略の受理・表示を続ける
 - code 問題の workdir は Vault 外（例 `~/workspace/learning/YYYY-MM-DD/`）に生成する
 - 旧 `40_Projects/learning/exercises/` は移行後アーカイブし、新規生成では使わない
 - 契約はこれまでどおり `85_定義/学習テーマ.md` を読む
@@ -96,9 +100,11 @@ HTTP DTO の具体形は [`03-api.md`](./03-api.md) §3 を正とする。
 
 ## 実装単位
 
-- [ ] [Backend] スキーマ追加: `learning_sets` / `learning_results`（migration v4）＋ `detail_ref` 語彙に `learning.session` を追加。[`02-data-model.md`](./02-data-model.md) §2・§5・§6 への追記とセット
+- [x] [Backend] スキーマ追加: `learning_sets` / `learning_results`（migration v4）＋ `detail_ref` 語彙に `learning.session` を追加。[`02-data-model.md`](./02-data-model.md) §2・§5・§6 への追記とセット
   - 受け入れ基準: 既存 DB（user_version=3）に migration が適用できるテストが通り、`learning.session` 以外の未知語彙が `bad_request` になる。`make verify` PASS
-- [ ] [Backend] 学習セットの取り込み・取得 API（`POST /api/learning/sets`・`GET /api/learning/sets/{date}`）。[`03-api.md`](./03-api.md) への追記とセット
+- [x] [Backend] 学習セットの取り込み・取得 API（`POST /api/learning/sets`・`GET /api/learning/sets/{date}`）。[`03-api.md`](./03-api.md) への追記とセット
   - 受け入れ基準: 正常系（today 解決含む）／検証エラー（必須欠落・`problems` 空・`no` 重複・256KiB 超 → `bad_request`）／同一 date への再送 UPSERT／未取り込み date の 404 のテストが通る。`make verify` PASS
-- [ ] [Backend] 成績記録 API（`POST /api/learning/sets/{date}/result`・`GET .../result`）
+- [x] [Backend] 成績記録 API（`POST /api/learning/sets/{date}/result`・`GET .../result`）
   - 受け入れ基準: `o|d|x` 検証・未知 `no` の `bad_request`・途中採点の受理・UPSERT（やり直し上書き）・未記録 date の 404 のテストが通る。`make verify` PASS
+- [ ] [Backend] 自動採点フィールドの受理（2026-07-31・USL-282）: セット取り込みに `answerType` / `expected` / `choices` の検証を追加（§3.1・[`03-api.md`](./03-api.md) §3 の具体則）、成績記録に `grades[].answer`（任意・≤500文字）を追加。保存は raw JSON のまま（migration 不要）
+  - 受け入れ基準: `answerType` 語彙外／`expected` 欠落／`choices` の件数・重複・`expected` 不一致／`number` 非数値 → `bad_request`、省略時（従来形）の受理継続、`answer` 付き result の UPSERT と GET での往復のテストが通る。`make verify` PASS

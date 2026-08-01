@@ -56,8 +56,16 @@ export function RoutineForm({ routine, serverError, pending, onSubmit, onDelete,
 
   return (
     <section className="panel form">
+      {/* 編集時だけ対象の `#{id}` を添える（§3.2-2。新規追加では出さない） */}
       <div className="mono label" style={{ marginBottom: 12 }}>
-        {routine ? 'EDIT ROUTINE' : 'NEW ROUTINE'}
+        {routine ? (
+          <>
+            EDIT ROUTINE
+            <span className="rt__id">#{routine.id}</span>
+          </>
+        ) : (
+          'NEW ROUTINE'
+        )}
       </div>
 
       {serverError && <div className="form__error" style={{ marginBottom: 12 }}>{serverError}</div>}
