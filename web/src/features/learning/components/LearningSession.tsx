@@ -2,10 +2,11 @@
 
 import Link from 'next/link';
 import { useCallback, useState } from 'react';
-import type { LearningGrade, LearningResultResponse } from '@/shared/api';
+import type { LearningGrade, LearningProblemDto, LearningResultResponse } from '@/shared/api';
 import { ErrorBanner, Markdown, Toast } from '@/shared/ui';
 import { useLearningResult, useSaveLearningResult } from '../hooks/useLearningResult';
 import { useLearningSet } from '../hooks/useLearningSet';
+import { autoGrade, isAutoGraded } from '../lib/grade';
 import { ProblemCard } from './ProblemCard';
 import { RecordedResult } from './RecordedResult';
 import { Stepper, type Step } from './Stepper';
@@ -54,7 +55,7 @@ function Next({
 
 /**
  * 学習セッション本体（docs/specs/15-web-learning.md §3）。
- * レッスン → 問題 → 回答 → 感想 の4段ステッパー。見えるのは今日の1セットだけで、
+ * レッスン → 問題 → 採点 → 感想 の4段ステッパー。見えるのは今日の1セットだけで、
  * 途中離脱の復元はしない（同 §4。1セット10分想定）。
  */
 export function LearningSession({ date, onRecorded }: LearningSessionProps) {
@@ -70,14 +71,30 @@ export function LearningSession({ date, onRecorded }: LearningSessionProps) {
   const { save, saving, saveError, clearSaveError } = useSaveLearningResult(date, onSaved);
 
   const [step, setStep] = useState<Step>('lesson');
+  const [answers, setAnswers] = useState<Record<number, string>>({});
+  // 手でタップした採点。自動採点の結果を上書きする（同 §3.3）
   const [grades, setGrades] = useState<Record<number, LearningGrade>>({});
   const [feeling, setFeeling] = useState('');
   // 「やり直す」を押した後は、記録済み表示ではなく一本道を出す
   const [restarted, setRestarted] = useState(false);
   const [done, setDone] = useState(false);
 
+  const setAnswer = (no: number, answer: string) => {
+    setAnswers((current) => ({ ...current, [no]: answer }));
+  };
+
   const setGrade = (no: number, grade: LearningGrade) => {
     setGrades((current) => ({ ...current, [no]: grade }));
+  };
+
+  /**
+   * その問題の最終的な採点（同 §3.3）。タップした値が最優先で、無ければ自動採点、
+   * 自動採点できない問題（`answerType` 無し・code）は undefined ＝タップ待ち。
+   */
+  const gradeOf = (problem: LearningProblemDto): LearningGrade | undefined => {
+    const tapped = grades[problem.no];
+    if (tapped) return tapped;
+    return isAutoGraded(problem) ? autoGrade(problem, answers[problem.no] ?? '').grade : undefined;
   };
 
   const complete = async () => {
@@ -86,8 +103,11 @@ export function LearningSession({ date, onRecorded }: LearningSessionProps) {
     //    失敗したらここで止める＝ checks は呼ばない（記録なしに消し込まれるのが最悪ケース）
     const ok = await save({
       grades: set.problems.flatMap((problem) => {
-        const grade = grades[problem.no];
-        return grade ? [{ no: problem.no, grade }] : [];
+        const grade = gradeOf(problem);
+        if (!grade) return [];
+        // answer はフォーム入力があった問題のみ送る（同 §3.4）。上書きしても入力のまま
+        const answer = answers[problem.no];
+        return [answer ? { no: problem.no, grade, answer } : { no: problem.no, grade }];
       }),
       feeling,
     });
@@ -135,6 +155,7 @@ export function LearningSession({ date, onRecorded }: LearningSessionProps) {
           onRestart={() => {
             setRestarted(true);
             setStep('lesson');
+            setAnswers({});
             setGrades({});
             setFeeling('');
           }}
@@ -143,7 +164,8 @@ export function LearningSession({ date, onRecorded }: LearningSessionProps) {
     }
   }
 
-  const allGraded = set.problems.every((problem) => grades[problem.no] !== undefined);
+  // 自動採点分は最初から揃っている（同 §3.3）
+  const allGraded = set.problems.every((problem) => gradeOf(problem) !== undefined);
   const advance = (next: Step) => () => setStep(next);
 
   return (
@@ -160,19 +182,22 @@ export function LearningSession({ date, onRecorded }: LearningSessionProps) {
         </>
       )}
 
-      {(step === 'problems' || step === 'answers') && (
+      {(step === 'problems' || step === 'grading') && (
         <>
           {set.problems.map((problem) => (
             <ProblemCard
               problem={problem}
-              revealed={step === 'answers'}
-              grade={grades[problem.no]}
+              revealed={step === 'grading'}
+              answer={answers[problem.no]}
+              onAnswer={setAnswer}
+              grade={gradeOf(problem)}
               onGrade={setGrade}
               key={problem.no}
             />
           ))}
           {step === 'problems' ? (
-            <Next label="答え合わせへ" onClick={advance('answers')} />
+            // 未回答の問題があっても進める（同 §3.2。未回答は採点段で×になる）
+            <Next label="採点へ" onClick={advance('grading')} />
           ) : (
             <>
               {!allGraded && (

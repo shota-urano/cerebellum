@@ -26,6 +26,8 @@ export function RecordedResult({
           <li className="lx__recrow" key={grade.no}>
             <span className="mono lx__recno">問題{grade.no}</span>
             <span className="mono lx__recmark">{gradeMark(grade.grade)}</span>
+            {/* 回答入力があった問題だけ添える（docs/specs/03-api.md §3 の `grades[].answer`） */}
+            {grade.answer && <span className="lx__recanswer">{grade.answer}</span>}
           </li>
         ))}
       </ul>
