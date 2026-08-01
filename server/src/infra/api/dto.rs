@@ -344,6 +344,9 @@ struct LearningProblemInputDto {
     kind: Option<String>,
     question_md: Option<String>,
     answer_md: Option<String>,
+    answer_type: Option<String>,
+    expected: Option<String>,
+    choices: Option<Vec<String>>,
     workdir: Option<String>,
 }
 
@@ -354,6 +357,9 @@ impl From<LearningProblemInputDto> for LearningProblemInput {
             kind: input.kind,
             question_md: input.question_md,
             answer_md: input.answer_md,
+            answer_type: input.answer_type,
+            expected: input.expected,
+            choices: input.choices,
             workdir: input.workdir,
         }
     }
@@ -537,6 +543,9 @@ struct LearningProblemDto {
     kind: String,
     question_md: String,
     answer_md: String,
+    answer_type: Option<String>,
+    expected: Option<String>,
+    choices: Option<Vec<String>>,
     workdir: Option<String>,
 }
 
@@ -547,6 +556,9 @@ impl From<LearningProblem> for LearningProblemDto {
             kind: problem.kind,
             question_md: problem.question_md,
             answer_md: problem.answer_md,
+            answer_type: problem.answer_type,
+            expected: problem.expected,
+            choices: problem.choices,
             workdir: problem.workdir,
         }
     }
@@ -575,6 +587,7 @@ impl From<LearningResultInputDto> for LearningResultInput {
 struct LearningGradeInputDto {
     no: Option<u32>,
     grade: Option<String>,
+    answer: Option<String>,
 }
 
 impl From<LearningGradeInputDto> for LearningGradeInput {
@@ -582,6 +595,7 @@ impl From<LearningGradeInputDto> for LearningGradeInput {
         Self {
             no: input.no,
             grade: input.grade,
+            answer: input.answer,
         }
     }
 }
@@ -611,6 +625,8 @@ impl From<LearningResultView> for LearningResultDto {
 struct LearningGradeDto {
     no: u32,
     grade: LearningGradeValue,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    answer: Option<String>,
 }
 
 impl From<LearningGrade> for LearningGradeDto {
@@ -618,6 +634,7 @@ impl From<LearningGrade> for LearningGradeDto {
         Self {
             no: grade.no,
             grade: grade.grade,
+            answer: grade.answer,
         }
     }
 }

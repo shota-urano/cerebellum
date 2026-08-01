@@ -599,6 +599,9 @@ async fn learning_set_round_trip_resolves_today_applies_defaults_and_upserts() {
                 "kind": "quiz",
                 "questionMd": "WAL とは？",
                 "answerMd": "write-ahead log",
+                "answerType": null,
+                "expected": null,
+                "choices": null,
                 "workdir": null
             }],
             "closingMd": null
@@ -635,6 +638,131 @@ async fn learning_set_round_trip_resolves_today_applies_defaults_and_upserts() {
     assert_eq!(replaced["problems"][0]["kind"], "code");
     assert_eq!(replaced["problems"][0]["workdir"], "/tmp/learning/p2");
     assert_eq!(replaced["closingMd"], "まとめ");
+}
+
+#[tokio::test]
+async fn learning_set_accepts_and_returns_automatic_grading_fields() {
+    let app = test_app();
+    let response = call_json(
+        app.clone(),
+        "POST",
+        "/api/learning/sets",
+        json!({
+            "date": "today",
+            "theme": "automatic grading",
+            "lessonMd": "lesson",
+            "problems": [
+                {
+                    "no": 1,
+                    "questionMd": "choose",
+                    "answerMd": "B",
+                    "answerType": "choice",
+                    "expected": "B",
+                    "choices": ["A", "B"]
+                },
+                {
+                    "no": 2,
+                    "questionMd": "calculate",
+                    "answerMd": "-12.5",
+                    "answerType": "number",
+                    "expected": " -12.50 ",
+                    "choices": null
+                },
+                {
+                    "no": 3,
+                    "questionMd": "name",
+                    "answerMd": "WAL",
+                    "answerType": "text",
+                    "expected": "WAL"
+                }
+            ]
+        }),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let fetched = json_body(call(app, "GET", "/api/learning/sets/today").await).await;
+    assert_eq!(fetched["problems"][0]["answerType"], "choice");
+    assert_eq!(fetched["problems"][0]["expected"], "B");
+    assert_eq!(fetched["problems"][0]["choices"], json!(["A", "B"]));
+    assert_eq!(fetched["problems"][1]["answerType"], "number");
+    assert_eq!(fetched["problems"][1]["expected"], " -12.50 ");
+    assert_eq!(fetched["problems"][1]["choices"], Value::Null);
+    assert_eq!(fetched["problems"][2]["answerType"], "text");
+    assert_eq!(fetched["problems"][2]["expected"], "WAL");
+    assert_eq!(fetched["problems"][2]["choices"], Value::Null);
+}
+
+#[tokio::test]
+async fn learning_set_rejects_invalid_automatic_grading_fields_without_saving() {
+    let app = test_app();
+    let invalid_problems = [
+        json!({
+            "no": 1, "questionMd": "q", "answerMd": "a",
+            "answerType": "boolean", "expected": "true"
+        }),
+        json!({
+            "no": 1, "questionMd": "q", "answerMd": "a",
+            "answerType": "choice", "choices": ["A", "B"]
+        }),
+        json!({
+            "no": 1, "questionMd": "q", "answerMd": "a",
+            "answerType": "text", "expected": ""
+        }),
+        json!({
+            "no": 1, "questionMd": "q", "answerMd": "a",
+            "answerType": "text", "expected": "   "
+        }),
+        json!({
+            "no": 1, "questionMd": "q", "answerMd": "a",
+            "answerType": "choice", "expected": "A"
+        }),
+        json!({
+            "no": 1, "questionMd": "q", "answerMd": "a",
+            "answerType": "choice", "expected": "A", "choices": ["A"]
+        }),
+        json!({
+            "no": 1, "questionMd": "q", "answerMd": "a",
+            "answerType": "choice", "expected": "A",
+            "choices": ["A", "B", "C", "D", "E", "F", "G"]
+        }),
+        json!({
+            "no": 1, "questionMd": "q", "answerMd": "a",
+            "answerType": "choice", "expected": "A", "choices": ["A", "A"]
+        }),
+        json!({
+            "no": 1, "questionMd": "q", "answerMd": "a",
+            "answerType": "choice", "expected": "C", "choices": ["A", "B"]
+        }),
+        json!({
+            "no": 1, "questionMd": "q", "answerMd": "a",
+            "answerType": "text", "expected": "A", "choices": []
+        }),
+        json!({
+            "no": 1, "questionMd": "q", "answerMd": "a",
+            "answerType": "number", "expected": "not-a-number"
+        }),
+    ];
+
+    for problem in invalid_problems {
+        let response = call_json(
+            app.clone(),
+            "POST",
+            "/api/learning/sets",
+            json!({
+                "date": "today",
+                "theme": "theme",
+                "lessonMd": "lesson",
+                "problems": [problem]
+            }),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(json_body(response).await["error"]["code"], "bad_request");
+    }
+
+    let missing = call(app, "GET", "/api/learning/sets/today").await;
+    assert_eq!(missing.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
@@ -837,7 +965,7 @@ async fn learning_result_accepts_partial_grading_and_upserts_the_complete_result
         "POST",
         "/api/learning/sets/today/result",
         json!({
-            "grades": [{ "no": 1, "grade": "o" }],
+            "grades": [{ "no": 1, "grade": "o", "answer": "first answer" }],
             "feeling": ""
         }),
     )
@@ -848,7 +976,7 @@ async fn learning_result_accepts_partial_grading_and_upserts_the_complete_result
         json_body(partial).await,
         json!({
             "date": "2026-07-25",
-            "grades": [{ "no": 1, "grade": "o" }],
+            "grades": [{ "no": 1, "grade": "o", "answer": "first answer" }],
             "feeling": "",
             "completedAt": "2026-07-25T08:01:00+09:00"
         })
@@ -860,8 +988,8 @@ async fn learning_result_accepts_partial_grading_and_upserts_the_complete_result
         "/api/learning/sets/2026-07-25/result",
         json!({
             "grades": [
-                { "no": 1, "grade": "o" },
-                { "no": 2, "grade": "d" },
+                { "no": 1, "grade": "o", "answer": "replaced answer" },
+                { "no": 2, "grade": "d", "answer": "" },
                 { "no": 3, "grade": "x" }
             ],
             "feeling": "やり直した"
@@ -877,8 +1005,8 @@ async fn learning_result_accepts_partial_grading_and_upserts_the_complete_result
         json!({
             "date": "2026-07-25",
             "grades": [
-                { "no": 1, "grade": "o" },
-                { "no": 2, "grade": "d" },
+                { "no": 1, "grade": "o", "answer": "replaced answer" },
+                { "no": 2, "grade": "d", "answer": "" },
                 { "no": 3, "grade": "x" }
             ],
             "feeling": "やり直した",
@@ -904,6 +1032,10 @@ async fn learning_result_rejects_unknown_grades_problem_numbers_and_long_feeling
         json!({
             "grades": [{ "no": 1, "grade": "o" }],
             "feeling": "界".repeat(2001)
+        }),
+        json!({
+            "grades": [{ "no": 1, "grade": "o", "answer": "界".repeat(501) }],
+            "feeling": ""
         }),
     ] {
         let response = call_json(
