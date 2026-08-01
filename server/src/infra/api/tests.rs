@@ -707,6 +707,18 @@ async fn learning_set_rejects_invalid_automatic_grading_fields_without_saving() 
         }),
         json!({
             "no": 1, "questionMd": "q", "answerMd": "a",
+            "answerType": "text", "expected": ""
+        }),
+        json!({
+            "no": 1, "questionMd": "q", "answerMd": "a",
+            "answerType": "text", "expected": "   "
+        }),
+        json!({
+            "no": 1, "questionMd": "q", "answerMd": "a",
+            "answerType": "choice", "expected": "A"
+        }),
+        json!({
+            "no": 1, "questionMd": "q", "answerMd": "a",
             "answerType": "choice", "expected": "A", "choices": ["A"]
         }),
         json!({
