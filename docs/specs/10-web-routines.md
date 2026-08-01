@@ -23,13 +23,14 @@ confirmed_rev: b7d2f1e
 
 1. `useRoutines`（SWR・`GET /api/routines`）で `active=1` の行を `id` 昇順に表示
 2. 1行に `interval` / `time` / `content` を出す。`effort`・`tool` は補助情報として控えめに（「今日」画面の `metaOf` 規則を踏襲 → [`08-web-today.md`](./08-web-today.md)）
-3. 0件のときは空状態「ルーティンがありません」＋追加導線
-4. 並び替え UI は**持たない**（表示順は API 返却順＝`id` 昇順のまま。時刻順ソートはその日のスナップショット側の規則であり、この画面には適用しない → [`04-routine-parse.md`](./04-routine-parse.md) §3.3）
+3. 行に `#{id}` を補助情報として控えめに表示する（等幅・補助色）。会話・DB 参照で行を一意に指すための**表示専用の参照番号**（`routines.id`。編集しても変わらない → [`02-data-model.md`](./02-data-model.md) §2。2026-07-31 追記）
+4. 0件のときは空状態「ルーティンがありません」＋追加導線
+5. 並び替え UI は**持たない**（表示順は API 返却順＝`id` 昇順のまま。時刻順ソートはその日のスナップショット側の規則であり、この画面には適用しない → [`04-routine-parse.md`](./04-routine-parse.md) §3.3）
 
 ### 3.2 追加・編集
 
 1. 追加ボタン → フォーム（`interval` / `time` / `effort` / `tool` / `content` の5項目）
-2. 行タップ → 同じフォームに現在値を入れて編集。保存は `PUT`（全項目送信・部分更新なし）
+2. 行タップ → 同じフォームに現在値を入れて編集。保存は `PUT`（全項目送信・部分更新なし）。フォームのヘッダに編集対象の `#{id}` を表示する（新規追加フォームには出さない。2026-07-31 追記）
 3. クライアント側検証は API と同一規則（[`03-api.md`](./03-api.md) §3）: `interval` 空不可・`content` 空不可・`time` は空または `H:MM`/`HH:MM`
 4. `interval` は自由入力だが、`毎日` / `平日` / `週末` / `月`〜`日` を候補として提示する（判定は部分一致 → [`04-routine-parse.md`](./04-routine-parse.md) §3.2）
 5. 保存成功で一覧を再検証（`mutate`）
@@ -48,6 +49,7 @@ confirmed_rev: b7d2f1e
 - 経路 `/routines`・タブ表記「ルーティン」（タブは3つになる → [`01-shell.md`](../design/01-shell.md) の更新が必要）
 - 表示順は API 返却順（`id` 昇順）。クライアントで再ソートしない
 - 削除は論理削除のみ（物理削除の UI を作らない）
+- `#{id}` は表示専用の参照番号。ソート・検索・リンク等の機能を持たせない（2026-07-31 追記）
 
 ## 5. インターフェース
 
@@ -76,3 +78,8 @@ confirmed_rev: b7d2f1e
 - データ: [`02-data-model.md`](./02-data-model.md) §2 ／ API: [`03-api.md`](./03-api.md) ／ usecase: [`05-day-usecase.md`](./05-day-usecase.md) §3.4
 - 基盤: [`07-web-foundation.md`](./07-web-foundation.md)
 - 見た目: 専用のデザイン仕様・プロトタイプは**作らない**（2026-07-27 判断）。トークンは `docs/design/system/01-tokens.md`、様式は既存2画面（`docs/design/02-today.md`・`docs/design/03-history.md` と実装済みの `web/src/features/day/` ・ `web/src/features/history/`）から流用する。実装後に `docs/design/00-design-overview.md` の画面一覧と `docs/design/01-shell.md` のタブ記述（2→3）を追従更新する
+
+## 実装単位
+
+- [ ] [Frontend] ルーティン一覧行と編集フォームヘッダへの `#{id}` 表示（§3.1-3・§3.2-2。表示専用・機能なし）
+  - 受け入れ基準: E2E（`web/e2e/<task-id>.spec.ts`）で検証が通る——一覧の各行に `#{id}` が控えめに表示される・行タップで開く編集フォームのヘッダに同じ `#{id}` が出る・新規追加フォームには出ない。`make verify` PASS

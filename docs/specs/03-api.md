@@ -111,10 +111,16 @@ Rust（axum）と Next.js（`shared/api/types.ts` に手動同期）が共有す
   "lessonMd": "...",
   "problems": [
     { "no": 1, "kind": "quiz",         // quiz | code。省略時 quiz
-      "questionMd": "...", "answerMd": "...", "workdir": null },
-    { "no": 2, "kind": "code",
       "questionMd": "...", "answerMd": "...",
-      "workdir": "/Users/orion/workspace/learning/2026-07-29/p2" }
+      "answerType": "choice",          // choice | number | text。省略時は自己採点（従来動作）
+      "expected": "WAL ファイルに追記される",   // answerType 指定時は必須。choice は choices のいずれかと完全一致
+      "choices": ["元のDBに直接書く", "WAL ファイルに追記される", "メモリに保持される"],
+                                       // answerType=choice のとき必須（2〜6件・重複不可）。それ以外は null
+      "workdir": null },
+    { "no": 2, "kind": "quiz",
+      "questionMd": "...", "answerMd": "...",
+      "answerType": "number",          // 数値として比較（"12.5" と "12.50" は一致）
+      "expected": "12.5", "choices": null, "workdir": null }
   ],
   "closingMd": null                    // 任意
 }
@@ -131,7 +137,10 @@ Rust（axum）と Next.js（`shared/api/types.ts` に手動同期）が共有す
   "lessonMd": "...",
   "problems": [
     { "no": 1, "kind": "quiz",
-      "questionMd": "...", "answerMd": "...", "workdir": null }
+      "questionMd": "...", "answerMd": "...",
+      "answerType": "choice", "expected": "WAL ファイルに追記される",
+      "choices": ["元のDBに直接書く", "WAL ファイルに追記される", "メモリに保持される"],
+      "workdir": null }
   ],
   "closingMd": null
 }
@@ -140,8 +149,10 @@ Rust（axum）と Next.js（`shared/api/types.ts` に手動同期）が共有す
 // body（全問分が揃っていない途中採点も可。feeling は空文字可）
 {
   "grades": [
-    { "no": 1, "grade": "o" },         // o | d | x（○ | △ | ×）
-    { "no": 2, "grade": "x" }
+    { "no": 1, "grade": "o", "answer": "WAL ファイルに追記される" },
+                                       // grade: o | d | x（○ | △ | ×）
+                                       // answer: ユーザーの回答入力（任意・≤500文字。自己採点問題は省略）
+    { "no": 2, "grade": "x", "answer": "13" }
   ],
   "feeling": "WAL の checkpoint が曖昧だった"
 }
@@ -149,8 +160,8 @@ Rust（axum）と Next.js（`shared/api/types.ts` に手動同期）が共有す
 {
   "date": "2026-07-29",
   "grades": [
-    { "no": 1, "grade": "o" },
-    { "no": 2, "grade": "x" }
+    { "no": 1, "grade": "o", "answer": "WAL ファイルに追記される" },
+    { "no": 2, "grade": "x", "answer": "13" }
   ],
   "feeling": "WAL の checkpoint が曖昧だった",
   "completedAt": "2026-07-29T06:45:00+09:00"
@@ -231,8 +242,8 @@ Rust（axum）と Next.js（`shared/api/types.ts` に手動同期）が共有す
 - リクエストボディの検証（400 `bad_request`）: `interval` 空不可 ／ `content` 空不可 ／ `time` は空文字または `^\d{1,2}:\d{2}$` ／ 各値は trim して保存（`content` の `<br>` 変換は import 時のみ・API では行わない）
 - `routines` の DTO には `detailRef` を含める（省略時 null）。値は [`02-data-model.md`](./02-data-model.md) §6 の4語彙のみ。他の値は 400 `bad_request`
 - `POST /api/digests` の検証（400 `bad_request`）: `date` が `%Y-%m-%d` でも `today` でもない ／ `body` が空 ／ `body` が 64KiB 超
-- `POST /api/learning/sets` の検証（400 `bad_request`）: body が 256KiB 超 ／ `date` が `%Y-%m-%d` でも `today` でもない ／ `theme`・`lessonMd`・`problems` または各問題の `no`・`questionMd`・`answerMd` が欠落・空 ／ `problems` が1〜10件でない ／ `no` が重複 ／ `source`・`kind` が上記語彙外。検証失敗時は保存しない
-- `POST /api/learning/sets/{date}/result` の検証（400 `bad_request`）: `date` が `%Y-%m-%d` でも `today` でもない ／ `grades`・`feeling` が欠落 ／ `grade` が `o`・`d`・`x` 以外 ／ `grades[].no` が対応するセットの `problems[].no` に存在しない ／ `feeling` が2000文字超。`grades` は空配列および全問未満でも可。対応するセットが未取り込みなら 404
+- `POST /api/learning/sets` の検証（400 `bad_request`）: body が 256KiB 超 ／ `date` が `%Y-%m-%d` でも `today` でもない ／ `theme`・`lessonMd`・`problems` または各問題の `no`・`questionMd`・`answerMd` が欠落・空 ／ `problems` が1〜10件でない ／ `no` が重複 ／ `source`・`kind`・`answerType` が上記語彙外 ／ `answerType` 指定時に `expected` が欠落・空 ／ `answerType` が `choice` なのに `choices` が2〜6件でない・重複あり・`expected` が `choices` に含まれない ／ `answerType` が `choice` 以外なのに `choices` あり ／ `answerType` が `number` なのに `expected` が数値（整数・小数）として解釈できない。検証失敗時は保存しない
+- `POST /api/learning/sets/{date}/result` の検証（400 `bad_request`）: `date` が `%Y-%m-%d` でも `today` でもない ／ `grades`・`feeling` が欠落 ／ `grade` が `o`・`d`・`x` 以外 ／ `grades[].no` が対応するセットの `problems[].no` に存在しない ／ `grades[].answer` が500文字超 ／ `feeling` が2000文字超。`grades` は空配列および全問未満でも可・`answer` は任意。対応するセットが未取り込みなら 404
 - ダイジェストが未受信の日は **404 にせず** `sections: []` を 200 で返す
 - 学習セットが未取り込みの日は 404 `not_found`
 - 学習成績が未記録の日は 404 `not_found`
