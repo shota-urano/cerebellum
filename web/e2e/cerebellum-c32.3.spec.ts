@@ -8,6 +8,9 @@ import { expect, test, type APIRequestContext, type Page } from '@playwright/tes
 //   - 完了で grades（上書き後の grade）＋ answer が送られる（§3.4）
 //   - 未回答のまま採点段へ進めて、未回答は「×（未回答）」になる（§3.2・§3.3）
 //   - `answerType` の無いセットは従来動作（フォームなし・全問手動タップまで「感想へ」無効）
+//   - `kind = "code"` は `answerType` が付いていても自己採点へフォールバックする
+//     （14-learning.md §3.1・15-web-learning.md §3.2。解く場所はターミナルで、画面は workdir を見せるだけ）
+//   - `number` は整数・小数だけを解釈する（03-api.md §3 の語彙。`0x10` 等の JS 数値リテラルは×）
 //
 // データ投入は実 API（`POST /api/learning/sets`）。**日付はテストごとに専有**する
 // （fullyParallel なので同じ date を複数テストが UPSERT すると期待値が壊れる。c32.2 と同じ流儀）。
@@ -96,6 +99,66 @@ function legacySetBody(date: string) {
       { no: 1, kind: 'quiz', questionMd: Q1_TEXT, answerMd: A1_TEXT, workdir: null },
       { no: 2, kind: 'quiz', questionMd: Q2_TEXT, answerMd: A2_TEXT, workdir: null },
     ],
+    closingMd: null,
+  };
+}
+
+const WORKDIR = '/Users/orion/workspace/learning/wal/p1';
+
+/**
+ * `answerType` 付きの code 問題を混ぜたセット。サーバは kind と answerType の併存を拒否しない
+ * ので、画面側がフォールバックしなければならない（14-learning.md §3.1）。
+ */
+function codeSetBody(date: string) {
+  return {
+    date,
+    theme: THEME,
+    source: 'theme',
+    lessonMd: LESSON_MD,
+    problems: [
+      {
+        no: 1,
+        kind: 'code',
+        questionMd: 'journal_mode を切り替えるスクリプトを書け。',
+        answerMd: 'PRAGMA を実行して戻り値を確認する。',
+        answerType: 'choice',
+        expected: Q1_EXPECTED,
+        choices: Q1_CHOICES,
+        workdir: WORKDIR,
+      },
+      {
+        no: 2,
+        kind: 'quiz',
+        questionMd: Q3_TEXT,
+        answerMd: A3_TEXT,
+        answerType: 'text',
+        expected: Q3_EXPECTED,
+        choices: null,
+        workdir: null,
+      },
+    ],
+    closingMd: null,
+  };
+}
+
+/** `number` の語彙（整数・小数）を外れた入力を並べたセット（03-api.md §3） */
+function numberSetBody(date: string) {
+  const problem = (no: number, expected: string) => ({
+    no,
+    kind: 'quiz',
+    questionMd: '問' + no + ': 数値で答えよ',
+    answerMd: '正解は ' + expected + '。',
+    answerType: 'number',
+    expected,
+    choices: null,
+    workdir: null,
+  });
+  return {
+    date,
+    theme: THEME,
+    source: 'theme',
+    lessonMd: LESSON_MD,
+    problems: [problem(1, '16'), problem(2, '2'), problem(3, '12.5'), problem(4, '16')],
     closingMd: null,
   };
 }
@@ -291,4 +354,92 @@ test('answerType の無いセットは従来どおり、全問タップするま
 
   await page.getByRole('button', { name: '問題2 の自己採点 △（曖昧）' }).click();
   await expect(toFeeling).toBeEnabled();
+});
+
+test('kind = code は answerType 付きでもフォームも自動採点も出さず、手動タップを要求する', async ({
+  page,
+  request,
+}) => {
+  const date = '2026-03-18';
+  await seedSet(request, codeSetBody(date));
+  await stubDay(page, date);
+
+  await page.goto(learningUrl(date));
+
+  await page.getByRole('button', { name: '問題へ' }).click();
+
+  // code 問題は workdir をコピーボタン付きで出すだけ（§3.2）。フォームは付かない
+  await expect(page.getByText(WORKDIR)).toBeVisible();
+  await expect(page.getByRole('button', { name: '作業ディレクトリのパスをコピー' })).toBeVisible();
+  await expect(page.getByText('ターミナルで解いてから戻ってきてください')).toBeVisible();
+  await expect(page.getByRole('radiogroup', { name: '問題1 の回答' })).toHaveCount(0);
+  await expect(page.getByLabel('問題1 の回答')).toHaveCount(0);
+
+  // 同じセットの quiz 問題（text）にはフォームが出る＝フォールバックは code だけ
+  await page.getByLabel('問題2 の回答').fill(Q3_EXPECTED);
+
+  await page.getByRole('button', { name: '採点へ' }).click();
+
+  // code は自動採点されず（14-learning.md §3.1 のフォールバック）、quiz 側は自動○
+  await expect(card(page, 0)).not.toContainText('自動採点');
+  await expect(card(page, 1)).toContainText('自動採点 ○');
+
+  // タップ待ちの問題が残っているので「感想へ」は無効（§3.3）
+  const toFeeling = page.getByRole('button', { name: '感想へ' });
+  await expect(toFeeling).toBeDisabled();
+
+  await page.getByRole('button', { name: '問題1 の自己採点 △（曖昧）' }).click();
+  await expect(toFeeling).toBeEnabled();
+
+  await toFeeling.click();
+  await page.getByRole('button', { name: '完了' }).click();
+  await expect(page.getByText('記録しました。明日のセットに反映されます')).toBeVisible();
+
+  // code は answer を持たず（フォームが無い）、quiz は入力が同送される（§3.4）
+  const saved = await request.get('/api/learning/sets/' + date + '/result');
+  expect(saved.status()).toBe(200);
+  expect((await saved.json()).grades).toEqual([
+    { no: 1, grade: 'd' },
+    { no: 2, grade: 'o', answer: Q3_EXPECTED },
+  ]);
+});
+
+test('number は整数・小数だけを解釈し、0x10 などの表記や非数値は × になる', async ({
+  page,
+  request,
+}) => {
+  const date = '2026-03-19';
+  await seedSet(request, numberSetBody(date));
+  await stubDay(page, date);
+
+  await page.goto(learningUrl(date));
+
+  await page.getByRole('button', { name: '問題へ' }).click();
+
+  await page.getByLabel('問題1 の回答').fill('0x10'); // 16 の16進表記＝語彙外
+  await page.getByLabel('問題2 の回答').fill('0b10'); // 2 の2進表記＝語彙外
+  await page.getByLabel('問題3 の回答').fill('じゅうに'); // 解釈不能
+  await page.getByLabel('問題4 の回答').fill('16.0'); // 対照: 小数表記は 16 と一致する
+
+  await page.getByRole('button', { name: '採点へ' }).click();
+
+  await expect(card(page, 0)).toContainText('自動採点 ×');
+  await expect(card(page, 1)).toContainText('自動採点 ×');
+  await expect(card(page, 2)).toContainText('自動採点 ×');
+  await expect(card(page, 3)).toContainText('自動採点 ○');
+  // 入力はあるので「未回答」は付かない（×の理由が別であることを分ける）
+  await expect(card(page, 0)).not.toContainText('未回答');
+
+  await page.getByRole('button', { name: '感想へ' }).click();
+  await page.getByRole('button', { name: '完了' }).click();
+  await expect(page.getByText('記録しました。明日のセットに反映されます')).toBeVisible();
+
+  const saved = await request.get('/api/learning/sets/' + date + '/result');
+  expect(saved.status()).toBe(200);
+  expect((await saved.json()).grades).toEqual([
+    { no: 1, grade: 'x', answer: '0x10' },
+    { no: 2, grade: 'x', answer: '0b10' },
+    { no: 3, grade: 'x', answer: 'じゅうに' },
+    { no: 4, grade: 'o', answer: '16.0' },
+  ]);
 });

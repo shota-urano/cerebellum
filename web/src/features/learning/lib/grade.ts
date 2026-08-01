@@ -35,21 +35,29 @@ function normalize(value: string): string {
   return value.normalize('NFKC').trim().toLowerCase();
 }
 
-/** `number` 用。数値として解釈できなければ null（同 §3.3 の「解釈不能は×」） */
+/**
+ * `number` の語彙は「整数・小数」だけ（docs/specs/03-api.md §3）。
+ * `Number()` に素で渡すと `0x10`・`0b10`・`1e5`・`Infinity` といった JavaScript の
+ * 数値リテラルまで通ってしまうので、受理範囲を先にこの形で絞る。
+ */
+const DECIMAL = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/;
+
+/** `number` 用。整数・小数として解釈できなければ null（同 §3.3 の「解釈不能は×」） */
 function asNumber(value: string): number | null {
   const text = normalize(value);
-  // Number('') は 0 になるので、空文字はここで弾く
-  if (text === '') return null;
+  if (!DECIMAL.test(text)) return null;
   const parsed = Number(text);
   return Number.isFinite(parsed) ? parsed : null;
 }
 
 /**
  * 自動採点の対象か（同 §3.3）。`answerType` と `expected` が揃っている問題だけが対象で、
- * 無い問題（旧形式・code 問題）は自己採点にフォールバックする。
+ * 無い問題（旧形式）は自己採点にフォールバックする。
+ * `kind = "code"` も同じくフォールバックする——解く場所がターミナルで、画面は workdir を
+ * 見せるだけなので回答フォームを持たない（docs/specs/14-learning.md §3.1・同 §3.2）。
  */
 export function isAutoGraded(problem: LearningProblemDto): boolean {
-  return problem.answerType !== null && problem.expected !== null;
+  return problem.kind !== 'code' && problem.answerType !== null && problem.expected !== null;
 }
 
 /**
