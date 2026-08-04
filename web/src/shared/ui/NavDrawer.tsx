@@ -18,13 +18,27 @@ import { glowShadow } from '@/shared/lib';
  * 後から見る入口は「開発」（docs/specs/19-web-dev-history.md）。
  * ハーネス（`/harness`・docs/specs/18-web-harness.md）だけは例外として常設する——毎朝の
  * 承認**操作**であり、読むだけの詳細ビューとは性質が違う（docs/specs/16 §3.6）。
+ *
+ * brain（脳ビュー）は cerebellum の画面ではなく、Tailscale Serve の path マウント
+ * （`/brain`→:48320・second-brain の build_brain.py が生成）で配信される外部ページ。
+ * Next のルートが無いので Link でなく <a> で遷移する。URL 解決は shared/api/runs.ts の
+ * viewerBase() と同じ規約（https=path マウント / http=同ホストの直ポート）。
  */
-const NAV_ITEMS = [
+const BRAIN_PORT = '48320';
+const BRAIN_HTTPS_PATH = '/brain';
+
+function brainHref(): string {
+  if (typeof window === 'undefined') return BRAIN_HTTPS_PATH;
+  if (window.location.protocol === 'https:') return BRAIN_HTTPS_PATH;
+  return 'http://' + window.location.hostname + ':' + BRAIN_PORT;
+}
+const NAV_ITEMS: { href: string; label: string; external?: boolean }[] = [
   { href: '/', label: '今日' },
   { href: '/history', label: '履歴' },
   { href: '/routines', label: 'ルーティン' },
   { href: '/harness', label: 'ハーネス' },
   { href: '/dev', label: '開発' },
+  { href: BRAIN_HTTPS_PATH, label: 'brain', external: true },
 ];
 
 export function NavDrawer() {
@@ -66,6 +80,19 @@ export function NavDrawer() {
           <nav className="drawer__panel" aria-label="ナビゲーション">
             <span className="mono label drawer__title">NAVIGATION</span>
             {NAV_ITEMS.map((item) => {
+              if (item.external) {
+                // 外部ページ（SPA外）への遷移。active になることは無い
+                return (
+                  <a
+                    key={item.href}
+                    href={brainHref()}
+                    className="mono drawer__item"
+                    onClick={() => setOpen(false)}
+                  >
+                    {item.label}
+                  </a>
+                );
+              }
               // 判定は旧 TabBar と同じ前方一致（`/` のみ完全一致・docs/specs/16 §3.5）
               const active = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
               return (
