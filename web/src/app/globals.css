@@ -250,6 +250,25 @@ a:hover { color: #8FF2FF; }
 .lx__path { flex: 1; min-width: 0; font-size: 11.5px; color: var(--text); word-break: break-all; }
 .lx__copy { flex: none; min-height: 36px; padding: 8px 12px; }
 .lx__form { margin-top: 14px; }
+.lx__calc { margin-top: 8px; }
+.lx__calc-toggle { width: 100%; justify-content: space-between; padding: 9px 12px; color: var(--muted); }
+.lx__calc-count { font-size: 10px; color: var(--accent); }
+.lx__calc-body { margin-top: 8px; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); }
+.lx__calc-history { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; padding: 0; list-style: none; }
+.lx__calc-entry { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 34px; padding: 5px 7px; border-bottom: 1px solid var(--border); }
+.lx__calc-expression { min-width: 0; overflow-wrap: anywhere; font-size: 11.5px; color: var(--muted); }
+.lx__calc-result { min-height: 44px; padding: 4px 2px; border: 0; background: transparent; color: var(--accent); font: inherit; font-size: 12px; cursor: pointer; }
+.lx__calc-result:hover { color: var(--text); }
+.lx__calc-input { font-size: 14px; font-variant-numeric: tabular-nums; }
+.lx__calc-tools { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-top: 6px; }
+.lx__calc-tool { min-height: 44px; padding: 7px 5px; font-size: 10px; }
+.lx__calc-keys { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 8px; }
+.lx__calc-key { min-width: 0; min-height: 44px; padding: 8px 4px; font-size: 14px; }
+.lx__calc-equals { grid-column: span 2; }
+.lx__calc-apply { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+.lx__calc-rounding { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-top: 6px; }
+.lx__calc-rounding .btn { min-width: 0; padding: 8px 4px; font-size: 10px; }
+.lx__calc-applied { margin-top: 8px; font-size: 10.5px; color: var(--accent); }
 .lx__choices { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
 .lx__choice { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); font-size: 13.5px; line-height: 1.5; cursor: pointer; }
 .lx__choice:has(.lx__radio:checked) { border-color: var(--accent); color: var(--accent); background: rgba(56, 229, 255, .06); }

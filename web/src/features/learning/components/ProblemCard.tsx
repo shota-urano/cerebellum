@@ -3,7 +3,9 @@
 import { useState } from 'react';
 import type { LearningGrade, LearningProblemDto } from '@/shared/api';
 import { Markdown } from '@/shared/ui';
+import type { CalculationScratch } from '../lib/calculator';
 import { GRADE_CHOICES, answerLabel, autoGrade, gradeLabel, gradeMark, isAutoGraded } from '../lib/grade';
+import { CalculationMemo } from './CalculationMemo';
 
 /**
  * `kind = "code"` の作業ディレクトリ（docs/specs/15-web-learning.md §3.2）。
@@ -103,12 +105,23 @@ export type ProblemCardProps = {
   /** 回答フォームの入力（同 §3.2。ローカル state を親が持つ） */
   answer?: string;
   onAnswer?: (no: number, answer: string) => void;
+  calculation?: CalculationScratch;
+  onCalculation?: (no: number, calculation: CalculationScratch) => void;
   grade?: LearningGrade;
   onGrade?: (no: number, grade: LearningGrade) => void;
 };
 
 /** 問題1件のカード。問題ステップと採点ステップで同じカードを使い、解答だけを開く。 */
-export function ProblemCard({ problem, revealed, answer, onAnswer, grade, onGrade }: ProblemCardProps) {
+export function ProblemCard({
+  problem,
+  revealed,
+  answer,
+  onAnswer,
+  calculation,
+  onCalculation,
+  grade,
+  onGrade,
+}: ProblemCardProps) {
   const input = answer ?? '';
   const auto = isAutoGraded(problem) ? autoGrade(problem, input) : null;
 
@@ -125,7 +138,17 @@ export function ProblemCard({ problem, revealed, answer, onAnswer, grade, onGrad
 
       {/* 問題ステップだけフォームを出す。採点ステップでは入った回答を読み取り専用で見せる */}
       {!revealed && isAutoGraded(problem) && onAnswer && (
-        <AnswerForm problem={problem} answer={input} onAnswer={onAnswer} />
+        <>
+          <AnswerForm problem={problem} answer={input} onAnswer={onAnswer} />
+          {problem.answerType === 'number' && calculation && onCalculation && (
+            <CalculationMemo
+              problemNo={problem.no}
+              scratch={calculation}
+              onChange={(next) => onCalculation(problem.no, next)}
+              onAnswer={onAnswer}
+            />
+          )}
+        </>
       )}
 
       {revealed && (

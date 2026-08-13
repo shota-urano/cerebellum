@@ -6,6 +6,7 @@ import type { LearningGrade, LearningProblemDto, LearningResultResponse } from '
 import { ErrorBanner, Markdown, Toast } from '@/shared/ui';
 import { useLearningResult, useSaveLearningResult } from '../hooks/useLearningResult';
 import { useLearningSet } from '../hooks/useLearningSet';
+import { EMPTY_CALCULATION, type CalculationScratch } from '../lib/calculator';
 import { autoGrade, isAutoGraded } from '../lib/grade';
 import { ProblemCard } from './ProblemCard';
 import { RecordedResult } from './RecordedResult';
@@ -72,6 +73,8 @@ export function LearningSession({ date, onRecorded }: LearningSessionProps) {
 
   const [step, setStep] = useState<Step>('lesson');
   const [answers, setAnswers] = useState<Record<number, string>>({});
+  // 数値問題ごとの計算式・履歴。ステッパーで戻っても保持し、APIには送らない（同 §3.2）
+  const [calculations, setCalculations] = useState<Record<number, CalculationScratch>>({});
   // 手でタップした採点。自動採点の結果を上書きする（同 §3.3）
   const [grades, setGrades] = useState<Record<number, LearningGrade>>({});
   const [feeling, setFeeling] = useState('');
@@ -85,6 +88,10 @@ export function LearningSession({ date, onRecorded }: LearningSessionProps) {
 
   const setGrade = (no: number, grade: LearningGrade) => {
     setGrades((current) => ({ ...current, [no]: grade }));
+  };
+
+  const setCalculation = (no: number, calculation: CalculationScratch) => {
+    setCalculations((current) => ({ ...current, [no]: calculation }));
   };
 
   /**
@@ -156,6 +163,7 @@ export function LearningSession({ date, onRecorded }: LearningSessionProps) {
             setRestarted(true);
             setStep('lesson');
             setAnswers({});
+            setCalculations({});
             setGrades({});
             setFeeling('');
           }}
@@ -191,6 +199,8 @@ export function LearningSession({ date, onRecorded }: LearningSessionProps) {
               revealed={step === 'grading'}
               answer={answers[problem.no]}
               onAnswer={setAnswer}
+              calculation={calculations[problem.no] ?? EMPTY_CALCULATION}
+              onCalculation={setCalculation}
               grade={gradeOf(problem)}
               onGrade={setGrade}
               key={problem.no}
