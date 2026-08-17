@@ -221,6 +221,23 @@ a:hover { color: #8FF2FF; }
 .md__li::marker { color: var(--accent); }
 .md__quote { padding-left: 12px; border-left: 1px solid var(--border); color: var(--muted); }
 .md__link { display: inline; margin-top: 0; color: var(--accent); }
+/* テーブル（docs/specs/07-web-foundation.md §4）。はみ出す表は本文幅を広げず横スクロール */
+.md__tablewrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.md__table { width: 100%; border-collapse: collapse; font-size: 12px; line-height: 1.6; }
+.md__th, .md__td { padding: 6px 10px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+.md__th { color: var(--accent); font-size: 10.5px; font-weight: 500; letter-spacing: .08em; white-space: nowrap; }
+.md__table tr:last-child .md__td { border-bottom: 0; }
+/* 2列だけ狭幅で「ラベル: 値」の縦積みへ。display の変更で role が落ちないよう
+   JSX 側で role を明示している */
+@media (max-width: 520px) {
+  .md__table--stack, .md__table--stack thead, .md__table--stack tbody,
+  .md__table--stack tr, .md__table--stack .md__th, .md__table--stack .md__td { display: block; }
+  .md__table--stack thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .md__table--stack tr { padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .md__table--stack tr:last-child { border-bottom: 0; }
+  .md__table--stack .md__td { padding: 2px 0; border-bottom: 0; }
+  .md__table--stack .md__td::before { content: attr(data-label) ' '; color: var(--accent); font-size: 10.5px; letter-spacing: .08em; }
+}
 
 /* トースト（shared/ui/Toast）。自動では消えない＝再試行の機会を残す */
 .toast { position: fixed; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 30; display: flex; align-items: center; gap: 10px; width: min(560px, calc(100vw - 32px)); transform: translateX(-50%); padding: 10px 12px; border: 1px solid var(--border); border-left: 3px solid var(--error); border-radius: var(--radius-sm); background: var(--surface); box-shadow: 0 8px 24px rgba(5, 11, 26, .6); }

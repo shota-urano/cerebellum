@@ -1,6 +1,7 @@
 /**
- * 最小の Markdown 描画（見出し・箇条書き・コードブロック・段落／インラインは
- * `` `code` ``・`**強調**`・`[text](url)` のみ）。
+ * 最小の Markdown 描画（見出し・箇条書き・引用・コードブロック・テーブル・段落／
+ * インラインは `` `code` ``・`**強調**`・`[text](url)` のみ）。対応記法の正本は
+ * docs/specs/07-web-foundation.md §4。
  *
  * 学習セットの `lessonMd` / `questionMd` / `answerMd`（docs/specs/14-learning.md §3.1）を
  * 出すためのもの。外部ライブラリは入れない（依存を増やさない・確定済み技術選定は
@@ -15,6 +16,7 @@ type Block =
   | { kind: 'code'; text: string }
   | { kind: 'list'; ordered: boolean; items: string[] }
   | { kind: 'quote'; text: string }
+  | { kind: 'table'; header: string[]; rows: string[][] }
   | { kind: 'para'; text: string };
 
 const FENCE = /^\s*```/;
@@ -22,6 +24,44 @@ const HEADING = /^(#{1,6})\s+(.*)$/;
 const BULLET = /^\s*[-*+]\s+(.*)$/;
 const ORDERED = /^\s*\d+[.)]\s+(.*)$/;
 const QUOTE = /^\s*>\s?(.*)$/;
+const TABLE_ROW = /^\s*\|.*\|\s*$/;
+/** 区切り行 `|---|:--:|`。`:` の整列指定は読み飛ばす（整列は付けない） */
+const TABLE_RULE = /^\s*\|(?:\s*:?-+:?\s*\|)+\s*$/;
+
+/**
+ * `| a | b |` の1行をセルへ割る。`\|` はセル内のパイプとして扱うため、
+ * 正規表現 split ではなく1文字ずつ走査する（lookbehind を避ける＝古い WebView でも動く）。
+ */
+function splitCells(line: string): string[] {
+  const cells: string[] = [];
+  let cell = '';
+  let escaped = false;
+
+  for (const char of line.trim()) {
+    if (escaped) {
+      cell += char === '|' ? '|' : '\\' + char;
+      escaped = false;
+      continue;
+    }
+    if (char === '\\') {
+      escaped = true;
+      continue;
+    }
+    if (char === '|') {
+      cells.push(cell.trim());
+      cell = '';
+      continue;
+    }
+    cell += char;
+  }
+  if (escaped) cell += '\\';
+  cells.push(cell.trim());
+
+  // 先頭・末尾の `|` が生む空セルだけを落とす（内側の空セルは列として残す）
+  cells.pop();
+  cells.shift();
+  return cells;
+}
 
 /** 行の配列をブロックへ畳む。閉じていないコードフェンスは最後まで取り込む。 */
 export function parseMarkdown(md: string): Block[] {
@@ -70,6 +110,21 @@ export function parseMarkdown(md: string): Block[] {
       continue;
     }
 
+    // ヘッダ行の直後に区切り行がある形だけをテーブルとして扱う（GFM）
+    if (TABLE_ROW.test(line) && i + 1 < lines.length && TABLE_RULE.test(lines[i + 1])) {
+      const header = splitCells(line);
+      const rows: string[][] = [];
+      i += 2; // ヘッダ行＋区切り行
+      while (i < lines.length && TABLE_ROW.test(lines[i])) {
+        const cells = splitCells(lines[i]);
+        // 不足は空セルで埋め、超過は捨てる（列の対応を崩さない）
+        rows.push(header.map((_, column) => cells[column] ?? ''));
+        i += 1;
+      }
+      blocks.push({ kind: 'table', header, rows });
+      continue;
+    }
+
     if (QUOTE.test(line)) {
       const body: string[] = [];
       while (i < lines.length) {
@@ -90,7 +145,8 @@ export function parseMarkdown(md: string): Block[] {
       !HEADING.test(lines[i]) &&
       !BULLET.test(lines[i]) &&
       !ORDERED.test(lines[i]) &&
-      !QUOTE.test(lines[i])
+      !QUOTE.test(lines[i]) &&
+      !(TABLE_ROW.test(lines[i]) && i + 1 < lines.length && TABLE_RULE.test(lines[i + 1]))
     ) {
       body.push(lines[i]);
       i += 1;
@@ -154,6 +210,39 @@ function BlockView({ block }: { block: Block }) {
     }
     case 'quote':
       return <blockquote className="md__quote"><p className="dg__text"><Inline text={block.text} /></p></blockquote>;
+    case 'table': {
+      // 2列だけ狭幅で縦積みへ落とす（3列以上は畳むと対応関係が壊れる →
+      // 横スクロールのまま。docs/specs/07-web-foundation.md §4）
+      const stack = block.header.length === 2;
+      return (
+        <div className="md__tablewrap">
+          {/* 縦積みは display:block なので、明示 role が無いと表の構造が支援技術から消える */}
+          <table className={'md__table' + (stack ? ' md__table--stack' : '')} role="table">
+            <thead>
+              <tr role="row">
+                {block.header.map((cell, index) => (
+                  <th className="md__th" key={index} role="columnheader" scope="col">
+                    <Inline text={cell} />
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {block.rows.map((row, rowIndex) => (
+                <tr key={rowIndex} role="row">
+                  {row.map((cell, index) => (
+                    // 縦積み時に列名を出すための控え（CSS の ::before が読む）
+                    <td className="md__td" data-label={block.header[index]} key={index} role="cell">
+                      <Inline text={cell} />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    }
     default:
       return <p className="dg__text md__p"><Inline text={block.text} /></p>;
   }
