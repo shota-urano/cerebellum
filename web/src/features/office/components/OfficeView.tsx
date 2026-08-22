@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { ErrorBanner } from '@/shared/ui';
 import { useOffice } from '../hooks/useOffice';
 import { localDate, splitByEnabled, staleHours } from '../lib/office';
@@ -7,7 +8,7 @@ import { ShiftBand } from './ShiftBand';
 
 function Skeleton() {
   return (
-    <div className="panel stack" aria-busy="true" aria-live="polite" style={{ overflow: 'hidden' }}>
+    <div className="panel stack of__band" aria-busy="true" aria-live="polite">
       {Array.from({ length: 4 }, (_, i) => (
         <div className="row of__row" key={i}>
           <span className="mono of__shift">
@@ -33,10 +34,21 @@ function Skeleton() {
  * データ源は :48310 の office.json（cerebellum のサーバーは経由しない・§2）。
  *
  * run 詳細（`/office?run=`）は別の実装単位（§実装単位の2件目）。ここでは帯までを持つ。
+ *
+ * **マウント後に描画を確定させる**（`mounted`）。この画面は
+ * (1) 取得先の解決に `window.location` が必要（:48310 の base・§4）で、
+ * (2) 当日判定と鮮度判定に端末時計を使う（サーバー由来の日付が無い画面）。
+ * `output: 'export'` はビルド時に HTML を焼くので、そのまま描くとビルド時の描画と
+ * 閲覧時の描画が食い違い hydration error #418 になる（ビルド日の日付が焼かれる）。
+ * `suppressHydrationWarning` で黙らせると初回描画がビルド日のままになるので使わない。
  */
 export function OfficeView() {
-  const { office, ready, error, isLoading } = useOffice();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  // マウント前は取得もしない（ビルド時の描画＝スケルトンで固定する）
+  const { office, ready, error, isLoading } = useOffice(mounted);
 
+  if (!mounted) return <Skeleton />;
   if (error) return <ErrorBanner message={error.message} />;
   if (!ready || !office) return isLoading ? <Skeleton /> : null;
 

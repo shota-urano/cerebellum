@@ -470,6 +470,28 @@ test('勤務帯が返却順（01:00→22:00）で並び、勤務ラベル・名�
   });
 });
 
+test('/office にコンソールエラーが出ない（hydration mismatch の再発検知）', async ({ page }) => {
+  // 静的 export はビルド時に HTML を焼くので、時計や `window` に依存した描画をそのまま
+  // 出すと「ビルド時の描画」と「閲覧時の描画」が食い違い hydration error #418 になる
+  // （2026-08-23 実機検証で実際に出た）。再発したらここで落ちる。
+  // 手法は e2e/smoke.spec.ts と同じ（console error / pageerror の収集）。
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(m.text());
+  });
+
+  await mockOffice(page);
+  await page.goto('/office');
+
+  // hydration は最初の描画で起きるので、帯が出るまで待ってから判定する
+  await expect(page.locator('.of__row').first()).toContainText('夜勤（night-shift）');
+  // 鮮度警告（時計依存の表示）が絡む経路でも出ないことを見る
+  await expect(page.locator('.dg__warn')).toHaveCount(0);
+
+  expect(errors).toEqual([]);
+});
+
 test('当日 run が無い社員（週次）には直近実行日が出る', async ({ page }) => {
   await mockOffice(page);
   await page.goto('/office');

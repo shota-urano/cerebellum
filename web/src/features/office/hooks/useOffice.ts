@@ -26,9 +26,13 @@ const fetchOffice = async (url: string): Promise<OfficeData> => {
   return (await res.json()) as OfficeData;
 };
 
-export function useOffice() {
+/**
+ * `enabled=false` のあいだは取得しない（マウント前）。呼び出し側が
+ * 「ビルド時の描画＝クライアント初回描画」を保つために使う（`OfficeView` のコメント参照）。
+ */
+export function useOffice(enabled = true) {
   // 静的 export のプリレンダリング時は取得しない（base の解決に window が必要）
-  const key = typeof window === 'undefined' ? null : viewerBase() + '/office.json';
+  const key = !enabled || typeof window === 'undefined' ? null : viewerBase() + '/office.json';
   const { data, error, isLoading } = useSWR<OfficeData, Error>(key, fetchOffice, SWR_OPTIONS);
   return { office: data, ready: data !== undefined, error, isLoading };
 }
