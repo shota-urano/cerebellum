@@ -11,6 +11,7 @@ Phase 1 = 今日のタスク表示・消し込み・履歴閲覧・スナップ�
 Phase 1.5（進行中）= ルーティン表マスタの SQLite 移管とブラウザからの編集。
 Phase 1.6 = 朝ダイジェストの取り込みと詳細ビュー（Slack 停止に伴い、Phase 2 の digest を一部前倒し）。
 Phase 1.7 = 学習セッション（[14](./14-learning.md)・[15](./15-web-learning.md)）とハーネス承認（[17](./17-harness-approval.md)・[18](./18-web-harness.md)）。いずれも second-brain の夜間ハーネスが push し、画面での入力を翌日の自動処理が読み戻す双方向ループ。
+Phase 1.8 = 「オフィス」画面（[20](./20-web-office.md)）。Orca automation の勤務帯と直近報告の表示。Frontend のみで、cerebellum のスキーマ・API は無変更。
 
 ## 2. システム全体像
 
@@ -52,6 +53,7 @@ Phase 1.7 = 学習セッション（[14](./14-learning.md)・[15](./15-web-learn
 | 17 | [`17-harness-approval.md`](./17-harness-approval.md) | ハーネス取り込み提案の受け入れ・承認記録（domain/usecase/API） | Backend |
 | 18 | [`18-web-harness.md`](./18-web-harness.md) | ハーネス承認ビュー（1行要約で判断・チェックが翌朝の適用入力になる） | Frontend |
 | 19 | [`19-web-dev-history.md`](./19-web-dev-history.md) | 「開発」画面（夜勤・手動 run の履歴一覧と詳細） | Frontend |
+| 20 | [`20-web-office.md`](./20-web-office.md) | 「オフィス」画面（automation の勤務帯と直近報告） | Frontend |
 
 ## 4. 確定済みの初期値（横断・変更禁止）
 
@@ -79,6 +81,7 @@ Phase 1.7 = 学習セッション（[14](./14-learning.md)・[15](./15-web-learn
 
 - 下書き一覧・通知の自前実装・メトリクス可視化（Phase 2 以降）
   ※**承認フローはハーネス取り込みに限り Phase 1.7 として前倒し**（[17](./17-harness-approval.md)・[18](./18-web-harness.md)）。X ポスト等の下書き承認は対象外のまま
+  ※**automation の勤務帯と直近報告の表示に限り Phase 1.8 として前倒し**（[20](./20-web-office.md)）。集計・コスト可視化は対象外のまま
 - digest の**生成**（second-brain の `daily-digest` skill が持つ。cerebellum は受け取って表示するだけ → [11](./11-digest.md)）
 - **時計駆動の仕組み全般**（日次 ensure・リマインド・launchd の定期実行）。Phase 2 の通知と一体で設計する（[05](./05-day-usecase.md) §7 にトレードオフを記載）
 - 単発 TODO の追加（対象は繰り返しのルーティンのみ）
