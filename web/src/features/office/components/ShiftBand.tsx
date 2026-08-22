@@ -76,7 +76,11 @@ function ShiftRow({
             </span>
           )}
         </span>
-        {!stopped && run?.headline && <span className="row__meta of__line">{run.headline}</span>}
+        {/* `of__headline` は様式を持たない識別用のクラス（headline と note を取り違えずに
+            全行まとめて検証できるようにする固定フック）。様式は `of__line` 側が持つ */}
+        {!stopped && run?.headline && (
+          <span className="row__meta of__line of__headline">{run.headline}</span>
+        )}
         {state?.note && <span className="mono row__meta of__line of__note">{state.note}</span>}
       </span>
     </div>
