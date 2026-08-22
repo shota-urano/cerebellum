@@ -131,7 +131,7 @@ second-brain の `night-harness` が毎朝出す「ハーネス取り込み判�
 
 ## 実装単位
 
-- [ ] [Backend] 2026-07-29 改訂の追従: 再送 409 条件の変更（killed・proposed のみの日は置換可）＋ `GET ?applyState=failed`（日付問わず・新しい順）の追加
+- [x] [Backend] 2026-07-29 改訂の追従: 再送 409 条件の変更（killed・proposed のみの日は置換可）＋ `GET ?applyState=failed`（日付問わず・新しい順）の追加（2026-07-31 完了・PR #21）
   - 受け入れ基準: テストが通る——killed のみ／killed+proposed の日への再送が置換成功・approved / rejected / apply_state≠pending を含む日は 409・`?applyState=failed` が日付をまたいで新しい順に返る・failed→applied 書き戻し後は failed 一覧から消える・クエリ許可形（date／approved&pending／applyState=failed の3形・他は400）のテスト更新。`make verify` PASS
 - [x] [Backend] migration `005_harness.sql`（`harness_proposals`・`user_version=5`。v4 は学習 [`14`](./14-learning.md)）＋ `02-data-model.md` への追記（2026-07-29 完了・PR #18）
   - 受け入れ基準: 学習 migration 適用済みの DB（user_version=4）に migration が適用できるテストと、`UNIQUE(date, slug)` 違反が検知されるテストが通る。`make verify` PASS

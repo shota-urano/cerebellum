@@ -75,7 +75,7 @@ run 詳細カード（PR＋動画）は夜勤ビュー（13）と本画面の2�
 
 ## 実装単位
 
-- [ ] [Frontend] RunCard・runs.json 取得の共通化（nightshift feature から `shared/` へ降ろし、夜勤ビューを置き換え）＋夜勤ビューの当日 run 選択を `source=night-shift`（無記載含む）限定へ
+- [x] [Frontend] RunCard・runs.json 取得の共通化（nightshift feature から `shared/` へ降ろし、夜勤ビューを置き換え）＋夜勤ビューの当日 run 選択を `source=night-shift`（無記載含む）限定へ（2026-07-29 完了・PR #19）
   - 受け入れ基準: 夜勤ビューの表示・「確認した」動線が従来どおり動き（既存 E2E・smoke を含む）、run 選択が source で絞られていることをコードレビューで確認できる。`make verify` PASS
-- [ ] [Frontend] 「開発」画面（`/dev` 一覧＋ `?run=` 詳細）とドロワー項目変更（開発を追加・ダイジェスト/夜勤を撤去。ハーネス項目は [`18`](./18-web-harness.md) の実装単位が担当）
+- [x] [Frontend] 「開発」画面（`/dev` 一覧＋ `?run=` 詳細）とドロワー項目変更（開発を追加・ダイジェスト/夜勤を撤去。ハーネス項目は [`18`](./18-web-harness.md) の実装単位が担当）（2026-07-29 完了・PR #19）
   - 受け入れ基準: E2E（`web/e2e/<task-id>.spec.ts`）で検証が通る——ドロワーに「開発」があり、ダイジェスト・夜勤が無い・`/dev` で一覧が新しい順に出る（夜勤/手動バッジ含む）・行タップで詳細（PR ボタン・動画枠）が出る・ブラウザバックで一覧へ戻る。runs.json は E2E 用のフィクスチャを配信して検証する（:48310 実サーバに依存しない）。`make verify` PASS

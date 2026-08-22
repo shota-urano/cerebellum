@@ -106,5 +106,5 @@ HTTP DTO の具体形は [`03-api.md`](./03-api.md) §3 を正とする。
   - 受け入れ基準: 正常系（today 解決含む）／検証エラー（必須欠落・`problems` 空・`no` 重複・256KiB 超 → `bad_request`）／同一 date への再送 UPSERT／未取り込み date の 404 のテストが通る。`make verify` PASS
 - [x] [Backend] 成績記録 API（`POST /api/learning/sets/{date}/result`・`GET .../result`）
   - 受け入れ基準: `o|d|x` 検証・未知 `no` の `bad_request`・途中採点の受理・UPSERT（やり直し上書き）・未記録 date の 404 のテストが通る。`make verify` PASS
-- [ ] [Backend] 自動採点フィールドの受理（2026-07-31・USL-282）: セット取り込みに `answerType` / `expected` / `choices` の検証を追加（§3.1・[`03-api.md`](./03-api.md) §3 の具体則）、成績記録に `grades[].answer`（任意・≤500文字）を追加。保存は raw JSON のまま（migration 不要）
+- [x] [Backend] 自動採点フィールドの受理（2026-07-31・USL-282）: セット取り込みに `answerType` / `expected` / `choices` の検証を追加（§3.1・[`03-api.md`](./03-api.md) §3 の具体則）、成績記録に `grades[].answer`（任意・≤500文字）を追加。保存は raw JSON のまま（migration 不要）（2026-08-01 完了・PR #22）
   - 受け入れ基準: `answerType` 語彙外／`expected` 欠落／`choices` の件数・重複・`expected` 不一致／`number` 非数値 → `bad_request`、省略時（従来形）の受理継続、`answer` 付き result の UPSERT と GET での往復のテストが通る。`make verify` PASS

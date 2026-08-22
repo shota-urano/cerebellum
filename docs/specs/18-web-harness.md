@@ -83,9 +83,9 @@ confirmed_rev: 9db4adc
 
 ## 実装単位
 
-- [ ] [Frontend] `/harness` 画面（提案カード・全文展開・承認トグル・適用結果帯・未着表示）
+- [x] [Frontend] `/harness` 画面（提案カード・全文展開・承認トグル・適用結果帯・未着表示）（2026-07-31 完了・PR #21）
   - 受け入れ基準: E2E（`web/e2e/<task-id>.spec.ts`）で検証が通る——承認チェックのトグル（`proposed ⇄ approved`）・「見送る」・「全文を読む」のその場展開・`killed` カードに操作が無いこと・未着（`receivedAt: null`）の赤帯表示・`failed` カードの先頭固定と赤帯。`make verify` PASS
-- [ ] [Frontend] ドロワーに「ハーネス」項目を追加（[`16`](./16-web-navigation.md) の項目リスト1箇所）
+- [x] [Frontend] ドロワーに「ハーネス」項目を追加（[`16`](./16-web-navigation.md) の項目リスト1箇所）（2026-07-31 完了・PR #21）
   - 受け入れ基準: E2E でドロワーの「ハーネス」タップ→ `/harness` 遷移とアクティブ表示が通る。`make verify` PASS
-- [ ] [Frontend] `shared/api/types.ts` を [`03-api.md`](./03-api.md) の追加 DTO と手動同期
+- [x] [Frontend] `shared/api/types.ts` を [`03-api.md`](./03-api.md) の追加 DTO と手動同期（2026-07-31 完了・PR #21）
   - 受け入れ基準: 追加 DTO（proposals 一覧・decision・apply-result）が [`03-api.md`](./03-api.md) の定義と一致し、TS strict の型チェック込みで `make verify` PASS
