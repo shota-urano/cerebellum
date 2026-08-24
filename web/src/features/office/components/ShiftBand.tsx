@@ -23,11 +23,10 @@ export type ShiftBandProps = {
  * **1本の縦の帯**として一直線に並び、これがそのままシフト表になる。
  * 様式は履歴・開発画面と同じ**リスト**（`.panel` + `.row`。19 の `RunList.tsx` と同じ）。
  *
- * 仕様 20 §5 は「パネルは `panel dg`」と書いているが、`dg` は詳細カード用の様式
- * （padding 14/16px）で、当てると区切り線がパネル端に届かず 390px で名前と headline の
- * 折り返しが増える（実測。docs/design/screenshots/cerebellum-004.1-office-dg.png）。
- * 19 §8 が「一覧はリスト様式・詳細は `panel dg` 様式」と書き分けているのと同じ構図なので、
- * §5 をその書き分けに合わせる提案を出している（AGENTS.md ルール9。実装は黙って変えない）。
+ * `dg` は詳細カード用の様式（padding 14/16px）で、勤務帯に当てると区切り線がパネル端に
+ * 届かず 390px で名前と headline の折り返しが増える
+ * （実測。docs/design/screenshots/cerebellum-004.1-office-dg.png）。そのため仕様 20 §5 は
+ * 19 §8 と同じく「一覧はリスト様式・詳細は `panel dg` 様式」と書き分けている。
  * 警告様式は §5 どおり `dg__warn` を流用（`OfficeView` の鮮度警告）。
  */
 export function ShiftBand({ title, employees, runs, today, stopped = false }: ShiftBandProps) {

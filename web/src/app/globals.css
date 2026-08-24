@@ -320,7 +320,7 @@ a:hover { color: #8FF2FF; }
 /* 帯は「1本の縦の帯」（§3.1-1）なので、行の区切り線をパネル端まで通す＝リスト様式
    （`panel` + `row`。19 の一覧 RunList.tsx と同じ）。`dg`（padding 14/16px）を足すと
    390px で区切り線が端に届かず名前と headline の折り返しが増えるため使わない。
-   仕様 20 §5 の「パネルは panel dg」との差分は報告して 19 §8 の書き分けに合わせる提案中 */
+   仕様 20 §5 も 19 §8 と同じ書き分け（一覧はリスト、詳細は panel dg）で承認済み */
 .of__band { overflow: hidden; margin-bottom: 12px; }
 .of__row { align-items: flex-start; }
 /* 失敗様式は dg__warn の流用（左 3px の赤ボーダー）。padding で本文位置を通常行に揃える */

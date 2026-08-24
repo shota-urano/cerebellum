@@ -1,6 +1,6 @@
 ---
 status: confirmed
-confirmed_rev: 4bef59e
+confirmed_rev: 033fac1
 ---
 
 # 20. 「オフィス」画面仕様（自動化の勤務帯と直近の報告）
@@ -91,7 +91,7 @@ cerebellum のサーバーは経由しない（Rust・SQLite・API の変更な�
 
 - 構成規約（`app → features → shared`・feature 間 import 禁止・barrel 経由）: [`07-web-foundation.md`](./07-web-foundation.md) §3
 - `shared/ui/RunCard`（夜勤・開発の共通部品）は**流用しない**。dev-loop の run（PR・動画）と automation の run（勤務帯・報告文）は形が違う。共通化は3例目が出てから判断する
-- 警告様式は `dg__warn`、パネルは `panel dg` を流用（13・19 と同じ）
+- 警告様式は `dg__warn` を流用する。パネルは 19 §8 と同じ書き分け——勤務帯（一覧）は `panel stack` のリスト様式、run 詳細は `panel dg` 様式を流用する（2026-08-24 承認。勤務帯に `dg` の左右 padding を加えると、390px 幅で区切り線の連続性と本文幅が損なわれるため）
 
 ## 6. エラー処理
 
