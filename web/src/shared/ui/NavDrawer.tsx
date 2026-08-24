@@ -38,6 +38,7 @@ const NAV_ITEMS: { href: string; label: string; external?: boolean }[] = [
   { href: '/routines', label: 'ルーティン' },
   { href: '/harness', label: 'ハーネス' },
   { href: '/dev', label: '開発' },
+  { href: '/office', label: 'オフィス' },
   { href: BRAIN_HTTPS_PATH, label: 'brain', external: true },
 ];
 

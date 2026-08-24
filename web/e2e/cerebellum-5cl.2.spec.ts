@@ -73,7 +73,7 @@ const openDrawer = async (page: Page) => {
   return drawer;
 };
 
-test('ドロワーは内部5項目＋brainで、ダイジェスト・夜勤・学習は無い', async ({
+test('ドロワーは内部6項目＋brainで、ダイジェスト・夜勤・学習は無い', async ({
   page,
 }) => {
   await mockRuns(page);
@@ -88,6 +88,7 @@ test('ドロワーは内部5項目＋brainで、ダイジェスト・夜勤・�
     'ルーティン',
     'ハーネス',
     '開発',
+    'オフィス',
     'brain',
   ]);
   // 読む系のタスク起点詳細ビューは常設ナビに置かない（docs/specs/16 §3.6）。

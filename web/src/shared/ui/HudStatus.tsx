@@ -10,13 +10,18 @@ function tagOf(pathname: string) {
   return 'TODAY';
 }
 
+function scopeOf(pathname: string) {
+  return pathname.startsWith('/office') ? 'OFFICE' : 'DAILY';
+}
+
 export function HudStatus() {
-  const tag = tagOf(usePathname());
+  const pathname = usePathname();
+  const tag = tagOf(pathname);
   return (
     <div className="hud">
       <div className="hud__live">
         <span className="hud__dot" />
-        <span className="mono label" style={{ letterSpacing: '.18em', fontSize: 11 }}>ROUTINE / DAILY</span>
+        <span className="mono label" style={{ letterSpacing: '.18em', fontSize: 11 }}>ROUTINE / {scopeOf(pathname)}</span>
       </div>
       {/* ハンバーガーは HUD 行に同居させる（行を増やさない・docs/specs/16-web-navigation.md §3.2） */}
       <div className="hud__right">

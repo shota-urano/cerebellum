@@ -40,15 +40,15 @@
 | 要素 | 文言 | 状態・様式 |
 |---|---|---|
 | HudStatus（`.hud`） | — | flex・space-between・padding 18px 2px 12px |
-| HudStatus 左（`.hud__live`） | `ROUTINE / DAILY` | 発光ドット（7px・accent・`pulse` 2.4s 点滅）＋等幅マイクロラベル（11px・letter-spacing .18em） |
+| HudStatus 左（`.hud__live`） | 通常 `ROUTINE / DAILY`、`/office` は `ROUTINE / OFFICE` | 発光ドット（7px・accent・`pulse` 2.4s 点滅）＋等幅マイクロラベル（11px・letter-spacing .18em） |
 | HudStatus 右（`.hud__right`） | `TODAY` / `HISTORY` / `ROUTINES` | 画面タグ（11px・letter-spacing .14em）＋ハンバーガー。gap 12px |
 | ハンバーガー（`.navbtn`） | アイコンのみ（`aria-label="メニュー"`） | 44×44px・横棒3本（高さ 1.5px・gap 4px・`--muted`）。padding 0 11px／margin-right -10px で HUD 右端に光学的に揃える。hover で棒が accent |
 | バックドロップ（`.drawer__backdrop`） | — （`aria-label="メニューを閉じる"`） | 全面 `rgba(5,11,26,.72)`。タップで閉じる |
-| ドロワー項目（`.drawer__item`） | `今日` / `履歴` / `ルーティン` / `開発` | min-height 46px・padding 13px 14px・12.5px・letter-spacing .14em・border 1px `--border`・radius-sm・背景 `--bg`・文字 `--muted` |
+| ドロワー項目（`.drawer__item`） | `今日` / `履歴` / `ルーティン` / `ハーネス` / `開発` / `オフィス` / `brain` | min-height 46px・padding 13px 14px・12.5px・letter-spacing .14em・border 1px `--border`・radius-sm・背景 `--bg`・文字 `--muted` |
 | 　同 active（`--active`） | 現在画面の1件 | accent 枠＋accent 文字＋`rgba(56,229,255,.06)` 背景＋グロー `glowShadow(9,.2)`（インライン）。`aria-current="page"` |
 | 　同 hover | — | 枠・文字が accent |
 
-- 遷移先: `今日`=`/`・`履歴`=`/history`・`ルーティン`=`/routines`・`開発`=`/dev`。並びは使用頻度順（specs 16 §3.3）。追加は `NavDrawer.tsx` の `NAV_ITEMS` 1箇所で完結させる
+- 遷移先と順序は specs 16 §3.3 の7項目。追加は `NavDrawer.tsx` の `NAV_ITEMS` 1箇所で完結させる
 - ダイジェスト（`/digest`）・夜勤（`/nightshift`）はドロワーに置かない（2026-07-29 夕方改訂・specs 16 §3.6）。入口は今日画面のタスク行（detailRef）で、過去の run は「開発」（specs 19）から辿る
 - アクティブ判定はパス前方一致（`/` のみ完全一致）＝旧タブと同じ
 - `prefers-reduced-motion: reduce` では HUD ドットの点滅とドロワー active のグローを止める

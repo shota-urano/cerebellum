@@ -4,36 +4,33 @@ import { useEffect, useState } from 'react';
 import { ErrorBanner } from '@/shared/ui';
 import { useOffice } from '../hooks/useOffice';
 import { localDate, splitByEnabled, staleHours } from '../lib/office';
-import { ShiftBand } from './ShiftBand';
+import { OfficeFloor } from './OfficeFloor';
+import { OfficeReportSheet } from './OfficeReportSheet';
 
 function Skeleton() {
   return (
-    <div className="panel stack of__band" aria-busy="true" aria-live="polite">
-      {Array.from({ length: 4 }, (_, i) => (
-        <div className="row of__row" key={i}>
-          <span className="mono of__shift">
-            <span className="skel" style={{ width: 62 }}>&nbsp;</span>
-          </span>
-          <span className="of__main">
-            <span className="row__text of__name">
-              <span className="skel" style={{ width: '58%' }}>&nbsp;</span>
-            </span>
-            <span className="row__meta of__line">
-              <span className="skel" style={{ width: '80%' }}>&nbsp;</span>
-            </span>
-          </span>
+    <div className="of2__skeleton" aria-busy="true" aria-live="polite">
+      <div className="of2__summary">
+        {Array.from({ length: 3 }, (_, i) => <span className="skel" key={i}>&nbsp;</span>)}
+      </div>
+      <div className="of2__floor">
+        <div className="of2__grid">
+          {Array.from({ length: 4 }, (_, i) => (
+            <div className="of2__station of2__station--idle" key={i}>
+              <span className="skel of2__skeleton-name">&nbsp;</span>
+              <span className="skel of2__skeleton-desk">&nbsp;</span>
+            </div>
+          ))}
         </div>
-      ))}
+      </div>
     </div>
   );
 }
 
 /**
  * 「オフィス」画面本体（docs/specs/20-web-office.md §3）。
- * 無人稼働している automation が「いつ動く役なのか」「直近で何を出したのか」を勤務帯で出す。
+ * 無人稼働している automation を社員として2Dフロアへ配置し、勤務時間・状態・報告を出す。
  * データ源は :48310 の office.json（cerebellum のサーバーは経由しない・§2）。
- *
- * run 詳細（`/office?run=`）は別の実装単位（§実装単位の2件目）。ここでは帯までを持つ。
  *
  * **マウント後に描画を確定させる**（`mounted`）。この画面は
  * (1) 取得先の解決に `window.location` が必要（:48310 の base・§4）で、
@@ -42,7 +39,7 @@ function Skeleton() {
  * 閲覧時の描画が食い違い hydration error #418 になる（ビルド日の日付が焼かれる）。
  * `suppressHydrationWarning` で黙らせると初回描画がビルド日のままになるので使わない。
  */
-export function OfficeView() {
+export function OfficeView({ runId }: { runId: string | null }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   // マウント前は取得もしない（ビルド時の描画＝スケルトンで固定する）
@@ -58,6 +55,10 @@ export function OfficeView() {
   const now = new Date();
   const stale = staleHours(office.generated_at, now.getTime());
   const { onDuty, stopped } = splitByEnabled(employees);
+  const selectedRun = runId === null ? undefined : runs.find((run) => run.run_id === runId);
+  const selectedEmployee = selectedRun
+    ? employees.find((employee) => employee.automation_id === selectedRun.automation_id)
+    : undefined;
 
   return (
     <>
@@ -72,18 +73,22 @@ export function OfficeView() {
       {employees.length === 0 ? (
         <div className="empty">登録されている automation がありません</div>
       ) : (
-        <>
-          <ShiftBand title="勤務帯" employees={onDuty} runs={runs} today={localDate(now)} />
-          {stopped.length > 0 && (
-            <ShiftBand
-              title="停止中"
-              employees={stopped}
-              runs={runs}
-              today={localDate(now)}
-              stopped
-            />
-          )}
-        </>
+        <OfficeFloor
+          employees={onDuty}
+          runs={runs}
+          stopped={stopped}
+          today={localDate(now)}
+          selectedRunId={runId}
+        />
+      )}
+
+      {runId !== null && (
+        <OfficeReportSheet
+          key={runId}
+          employee={selectedEmployee}
+          run={selectedRun}
+          requestedRunId={runId}
+        />
       )}
     </>
   );

@@ -1,9 +1,10 @@
 import { expect, test, type Page } from '@playwright/test';
 
-// cerebellum-004.1 [Frontend] office.json 取得フックと「オフィス」画面の勤務帯（/office）
+// cerebellum-004.1 [Frontend] office.json 取得フックと2D「オフィス」画面（/office）
 // 受け入れ基準（docs/specs/20-web-office.md §3.1・§3.2・§6）:
-//   勤務帯が生成側の返却順（01:00→22:00）で並ぶ / 各行に勤務ラベルと直近 run の headline が出る
-//   / enabled:false が末尾の「停止中」に入る / 当日 run が無い社員に直近実行日が出る
+//   社員が2Dフロアへ返却順で配置される / 各席に勤務ラベルと直近 run の状態が出る /
+//   席タップで headline と報告全文が出る / enabled:false が末尾の「停止中」に入る /
+//   当日 run が無い社員に直近実行日が出る
 //   / generated_at が24時間以上前のとき鮮度警告が出る
 //
 // office.json は :48310 の静的サーバ（夜勤ビューアと同居）が配信する外部データなので、
@@ -364,7 +365,7 @@ const EXPECTED = [
   { name: '情報収集（collect）', headline: '収集を実行しています。' },
   { name: 'つながり発見：daily-digest', headline: '新しいつながりは見つかりませんでした。' },
   { name: 'X週次PDCA（x-pdca）', headline: '週次の振り返りを追記しました。' },
-  // 直近 run 無し＝headline を持たない行（`.of__headline` の並びから抜ける）
+  // 直近 run 無し＝報告シートへのリンクを持たない席
   { name: 'セルフRT見張り（x-auto-plug）', headline: null },
 ];
 
@@ -400,20 +401,22 @@ async function mockOffice(page: Page, body: unknown = office()) {
   );
 }
 
-test('勤務帯が返却順（01:00→22:00）で並び、勤務ラベル・名前・直近 run の状態と headline が出る', async ({
+test('社員が2Dフロアへ返却順で配置され、勤務ラベル・名前・直近 run の状態が出る', async ({
   page,
 }) => {
   await mockOffice(page);
   await page.goto('/office');
 
-  const bands = page.locator('.panel');
-  await expect(bands).toHaveCount(2); // 勤務帯＋停止中
-  const duty = bands.nth(0);
-  const rows = duty.locator('.of__row');
+  await expect(page.getByText('ROUTINE / OFFICE')).toBeVisible();
+  const floor = page.getByRole('region', { name: '勤務中の社員フロア' });
+  const stations = floor.locator('.of2__station');
+  await expect(stations).toHaveCount(7);
+  await expect(page.getByLabel('オフィスの稼働状況')).toContainText('勤務中 2');
+  await expect(page.getByLabel('オフィスの稼働状況')).toContainText('待機 4');
+  await expect(page.getByLabel('オフィスの稼働状況')).toContainText('失敗 1');
 
-  // 勤務開始時刻の昇順（生成側の返却順）そのまま。クライアントで再ソートしない（§3.1-1）。
-  // enabled:false の「毎日 07:00」がここから抜けている＝停止中へ移っている（§3.1-4）
-  await expect(duty.locator('.of__shift')).toHaveText([
+  // 生成側の返却順そのままをCSS Gridへ流す。enabled:false はフロアから抜ける（§3.1）。
+  await expect(floor.locator('.of2__shift')).toHaveText([
     '毎日 01:00',
     '毎日 02:00',
     '平日 02:40',
@@ -423,21 +426,9 @@ test('勤務帯が返却順（01:00→22:00）で並び、勤務ラベル・名�
     '毎日 22:00',
   ]);
 
-  // 1行 = 1社員（左に勤務ラベル・中央に name・右に状態、下に headline。§3.1-2/3）。
-  // **headline を持つ全行**を検証する（一部の行だけ見ると failed・running・週次の
-  // 経路が未検証のまま通ってしまう）
-  await expect(duty.locator('.of__headline')).toHaveText(
-    EXPECTED.flatMap((row) => (row.headline === null ? [] : [row.headline])),
-  );
-  // 行と headline の対応も1行ずつ固定する（並びの一致だけでは取り違えを検出できない）
+  // 席と社員の対応を全件固定する。headline は席タップ後の報告シートにだけ出す。
   for (const [index, expected] of EXPECTED.entries()) {
-    await expect(rows.nth(index)).toContainText(expected.name);
-    if (expected.headline === null) {
-      // 直近 run が無い社員は headline を持たない（`次回` の併記だけ）
-      await expect(rows.nth(index).locator('.of__headline')).toHaveCount(0);
-    } else {
-      await expect(rows.nth(index).locator('.of__headline')).toHaveText(expected.headline);
-    }
+    await expect(stations.nth(index)).toContainText(expected.name);
   }
 
   // 直近＝`automation_id` 一致の**先頭**（§3.2）。同じ automation の古い run（前日・前々週）の
@@ -448,16 +439,15 @@ test('勤務帯が返却順（01:00→22:00）で並び、勤務ラベル・名�
 
   // 直近 run の状態表示（§3.2 の表）。前日分は当日分と別の outcome を持たせてあるので、
   // 古い run を引いていればここも同時に落ちる
-  await expect(rows.nth(1).locator('.of__state--good')).toContainText('成果あり 2件');
-  await expect(rows.nth(1)).toContainText('承認待ち'); // note の併記
-  await expect(rows.nth(2).locator('.of__state--bad')).toContainText('失敗');
-  await expect(rows.nth(2)).toHaveClass(/of__row--bad/); // 失敗様式（dg__warn 流用）
-  await expect(rows.nth(3).locator('.of__state--live')).toContainText('実行中');
-  await expect(rows.nth(4).locator('.of__state--neutral')).toContainText('今日は無し');
-  await expect(rows.nth(6).locator('.of__state--neutral')).toContainText('まだ実行なし');
-  await expect(rows.nth(6)).toContainText('次回'); // next_run_at を併記
-  // 夜勤の前日 run は failed。直近（当日・unknown）を引けていれば失敗様式にはならない
-  await expect(rows.nth(0)).not.toHaveClass(/of__row--bad/);
+  await expect(stations.nth(1).locator('.of2__state--good')).toContainText('成果あり 2件');
+  await expect(stations.nth(1)).toContainText('承認待ち');
+  await expect(stations.nth(2).locator('.of2__state--bad')).toContainText('失敗');
+  await expect(stations.nth(2)).toHaveClass(/of2__station--bad/);
+  await expect(stations.nth(3).locator('.of2__state--live')).toContainText('実行中');
+  await expect(stations.nth(4).locator('.of2__state--neutral')).toContainText('今日は無し');
+  await expect(stations.nth(6).locator('.of2__state--neutral')).toContainText('まだ実行なし');
+  await expect(stations.nth(6)).toContainText('次回');
+  await expect(stations.nth(0)).not.toHaveClass(/of2__station--bad/);
 
   // 生成が新しいときは鮮度警告を出さない（§6）
   await expect(page.locator('.dg__warn')).toHaveCount(0);
@@ -468,6 +458,50 @@ test('勤務帯が返却順（01:00→22:00）で並び、勤務ラベル・名�
     path: 'test-results/screens/cerebellum-004.1-office.png',
     fullPage: true,
   });
+});
+
+test('席タップでURL付き報告シートが開き、headline・メタ・報告全文を読んで閉じられる', async ({
+  page,
+}) => {
+  await mockOffice(page);
+  await page.goto('/office');
+
+  await page.getByRole('link', { name: /候補仕入れ.*直近報告を開く/ }).click();
+  await expect(page).toHaveURL(/\/office\?run=r-market-intake-today/);
+  const sheet = page.getByRole('dialog', { name: '候補仕入れ（market-intake）' });
+  await expect(sheet).toBeVisible();
+  await expect(sheet.locator('.of2__headline')).toHaveText('仕入れに失敗しました（レート制限）。');
+  await expect(sheet).toContainText('RUN');
+  await expect(sheet).toContainText('12');
+  await expect(sheet).toContainText('予定');
+  await expect(sheet).toContainText('開始');
+  await expect(sheet).toContainText('状態');
+  await expect(sheet).toContainText('起動');
+
+  await sheet.getByRole('button', { name: '報告を見る' }).click();
+  await expect(sheet).toContainText('仕入れに失敗しました（レート制限）。');
+  await expect(sheet.getByRole('button', { name: '報告を閉じる' })).toHaveAttribute('aria-expanded', 'true');
+
+  await sheet.getByRole('link', { name: '閉じる' }).click();
+  await expect(page).toHaveURL(/\/office\/?$/);
+  await expect(sheet).toBeHidden();
+});
+
+test('保持期間外と未知のrunを報告シート内で明示し、ブラウザバックでフロアへ戻る', async ({ page }) => {
+  await mockOffice(page);
+  await page.goto('/office');
+
+  await page.getByRole('link', { name: /X週次PDCA.*直近報告を開く/ }).click();
+  const sheet = page.getByRole('dialog', { name: 'X週次PDCA（x-pdca）' });
+  await sheet.getByRole('button', { name: '報告を見る' }).click();
+  await expect(sheet).toContainText('報告全文は保持期間外です');
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/office\/?$/);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+
+  await page.goto('/office?run=missing-run');
+  await expect(page.getByRole('dialog', { name: 'その run は見つかりません' })).toBeVisible();
 });
 
 test('/office にコンソールエラーが出ない（hydration mismatch の再発検知）', async ({ page }) => {
@@ -484,8 +518,8 @@ test('/office にコンソールエラーが出ない（hydration mismatch の�
   await mockOffice(page);
   await page.goto('/office');
 
-  // hydration は最初の描画で起きるので、帯が出るまで待ってから判定する
-  await expect(page.locator('.of__row').first()).toContainText('夜勤（night-shift）');
+  // hydration は最初の描画で起きるので、フロアが出るまで待ってから判定する
+  await expect(page.locator('.of2__station').first()).toContainText('夜勤（night-shift）');
   // 鮮度警告（時計依存の表示）が絡む経路でも出ないことを見る
   await expect(page.locator('.dg__warn')).toHaveCount(0);
 
@@ -497,33 +531,30 @@ test('当日 run が無い社員（週次）には直近実行日が出る', asy
   await page.goto('/office');
 
   // 週次・平日限定の社員が毎日「未実行」に見えるのを防ぐ補助表示（§3.2 末尾）
-  const weekly = page.locator('.of__row', { hasText: 'X週次PDCA（x-pdca）' });
+  const weekly = page.locator('.of2__station', { hasText: 'X週次PDCA（x-pdca）' });
   await expect(weekly).toContainText('直近 ' + LAST_WEEK_DATE);
   expect(LAST_WEEK_DATE).not.toBe(TODAY);
 
   // 当日 run がある社員には出ない（毎日出ると意味が消えるため）
-  const daily = page.locator('.of__row', { hasText: '夜勤（night-shift）' });
-  await expect(daily.locator('.of__last')).toHaveCount(0);
+  const daily = page.locator('.of2__station', { hasText: '夜勤（night-shift）' });
+  await expect(daily.locator('.of2__last')).toHaveCount(0);
 });
 
 test('enabled:false の社員は末尾の「停止中」に入り、headline は出さない', async ({ page }) => {
   await mockOffice(page);
   await page.goto('/office');
 
-  const bands = page.locator('.panel');
-  // 停止中は最後のパネル（休職者を勤務帯に混ぜない・§3.1-4）
-  const stopped = bands.last();
-  await expect(stopped.locator('.list__head')).toContainText('停止中');
-  await expect(stopped.locator('.of__row')).toHaveCount(1);
-  await expect(stopped.locator('.of__row')).toContainText('旧ダッシュボード生成（retired）');
-  await expect(stopped.locator('.of__shift')).toHaveText(['毎日 07:00']);
+  const stopped = page.getByRole('region', { name: '停止中' });
+  await expect(stopped.locator('.of2__station')).toHaveCount(1);
+  await expect(stopped.locator('.of2__station')).toContainText('旧ダッシュボード生成（retired）');
+  await expect(stopped.locator('.of2__shift')).toHaveText(['毎日 07:00']);
 
   // 停止中の headline・状態は画面に出さない（run は office.json に入っている）
   await expect(page.getByText('停止前の最後の報告です。')).toHaveCount(0);
-  await expect(stopped.locator('.of__state')).toHaveCount(0);
+  await expect(stopped.locator('.of2__state')).toHaveText('停止中');
 });
 
-test('generated_at が24時間以上前なら帯の上に鮮度警告が出る（エラーにはしない）', async ({
+test('generated_at が24時間以上前ならフロアの上に鮮度警告が出る（エラーにはしない）', async ({
   page,
 }) => {
   const staleAt = new Date(Date.now() - (30 * 3_600_000 + 60_000));
@@ -535,8 +566,8 @@ test('generated_at が24時間以上前なら帯の上に鮮度警告が出る�
   await expect(warn).toContainText('データが 30 時間前のものです');
   // 生成の停止に気付けるようにするための表示。エラーバナーにはしない（§6）
   await expect(page.locator('.banner')).toHaveCount(0);
-  // 警告は帯の上（勤務帯そのものは通常どおり出る）
-  await expect(page.locator('.of__row').first()).toContainText('夜勤（night-shift）');
+  // 警告が出ても2Dフロアそのものは通常どおり出る
+  await expect(page.locator('.of2__station').first()).toContainText('夜勤（night-shift）');
 });
 
 test('employees が空なら空状態（エラーにしない）', async ({ page }) => {

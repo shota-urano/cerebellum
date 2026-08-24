@@ -1,4 +1,5 @@
-import { OfficeView } from '@/features/office';
+import { Suspense } from 'react';
+import { OfficeScreen } from './OfficeScreen';
 
 /**
  * 「オフィス」画面（docs/specs/20-web-office.md）。automation の勤務帯と直近の報告。
@@ -8,8 +9,8 @@ import { OfficeView } from '@/features/office';
  */
 export default function OfficePage() {
   return (
-    <main>
-      <OfficeView />
-    </main>
+    <Suspense>
+      <OfficeScreen />
+    </Suspense>
   );
 }

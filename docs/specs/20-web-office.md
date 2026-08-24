@@ -40,13 +40,16 @@ cerebellum のサーバーは経由しない（Rust・SQLite・API の変更な�
 
 ## 3. 処理詳細
 
-### 3.1 勤務帯（画面の主役・最上段）
+### 3.1 2Dオフィスフロア（画面の主役・最上段）
 
-1. `employees` を返却順（勤務開始時刻の昇順）のまま**1本の縦の帯**として並べる。夜勤 01:00 から 22:00 までが一直線に並び、これがそのまま「シフト表」になる
-2. 1行 = 1社員。左に `shift.label`（等幅・`毎日 01:00`）、中央に `name`、右に**直近 run の状態**
-3. 行の下に直近 run の `headline` を1行で出す（省略記号は生成側で付与済み。画面で再切り詰めしない）
-4. `enabled: false` の社員は「停止中」として最後にまとめ、`headline` を出さない（休職者を勤務帯に混ぜない）
-5. フロアマップ（座席の絵）は**作らない**（2026-08-21 ユーザー決定。情報密度が帯に劣り、1回見て終わるため → §7）
+1. `employees` を返却順（勤務開始時刻の昇順）のまま、**見下ろし型2Dオフィスの2列の座席**へ配置する。クライアントで再ソートしない
+2. 1席 = 1社員。机・社員アバターの下に `shift.label`（等幅）と**直近 run の状態**を表示する。`name` は机上のネームプレートとして出す
+3. フロア上部に「勤務中」「待機」「失敗」の件数を表示する。`live` / `good` を勤務中、`neutral` を待機、`bad` を失敗として数える。状態は色だけでなく文言と形でも識別できるようにする
+4. `headline` は全席へ常時露出せず、席タップ後の報告シートに表示する。情報密度は空間表現ではなくタップ先で担保する
+5. `enabled: false` の社員はフロアに混ぜず、最後の「停止中」区画に同じ座席表現でまとめる。停止前 run の `headline` は出さない
+6. 390px では2列を維持して縦スクロールする。広い画面でも列数を増やさず、採用デザインのオフィス構造を保つ
+
+（経緯: 2026-08-21 は情報密度を理由にフロアマップを不採用としたが、実装された縦リストを確認したユーザーが「リストではなく本当に office 感が欲しい」と再判断。2026-08-24 に `docs/design/screenshots/cerebellum-office-2d-night-operations.png` を採用し、本節を置き換えた）
 
 ### 3.2 直近 run の状態表示
 
@@ -65,10 +68,10 @@ cerebellum のサーバーは経由しない（Rust・SQLite・API の変更な�
 
 ### 3.3 run 詳細
 
-1. 行タップで `/office?run={run_id}`。`headline` ＋ `output`（報告全文）＋ メタ（`run_number`・`scheduled_for`・`started_at`・`status`・`trigger`）を出す
+1. 席タップで `/office?run={run_id}` に遷移し、フロア下端から報告シートを開く。最初に `headline` と主要メタを出し、「報告を見る」で `output`（報告全文）を展開する
 2. `output` が `null`（3日より古い）ときは「報告全文は保持期間外です」と出す（欠落を無言にしない）
 3. `truncated: true` のときは「報告は途中で切れています」を添える
-4. ブラウザバックで帯へ戻る（19 の一覧・詳細と同じ挙動）
+4. 「閉じる」またはブラウザバックでシートを閉じ、同じフロアへ戻る
 
 ### 3.4 outcome の扱い（重要）
 
@@ -84,30 +87,32 @@ cerebellum のサーバーは経由しない（Rust・SQLite・API の変更な�
 - cerebellum 側に**スキーマ・API を足さない**（[`02-data-model.md`](./02-data-model.md)・[`03-api.md`](./03-api.md) は無変更）。Backend 作業ゼロ
 - 生成の定期実行は second-brain 側に置く（cerebellum に時計駆動を持ち込まない → [`00-overview.md`](./00-overview.md) §5）
 - 0件（`outcome = none`）は正常。空状態もエラーバナーにしない
-- フロアマップ・座席レイアウトは不採用（§3.1-5）
+- フロア背景と社員アバターは `web/public/images/office/` の生成画像を使う。名前・勤務時間・状態・件数・操作は画像に焼き込まず、`office.json` からネイティブUIとして描画する
 - コスト・トークン表示は持たない（orca の `usage` は実測で `usage_not_enabled`＝取得不能）
 
 ## 5. インターフェース
 
 - 構成規約（`app → features → shared`・feature 間 import 禁止・barrel 経由）: [`07-web-foundation.md`](./07-web-foundation.md) §3
 - `shared/ui/RunCard`（夜勤・開発の共通部品）は**流用しない**。dev-loop の run（PR・動画）と automation の run（勤務帯・報告文）は形が違う。共通化は3例目が出てから判断する
-- 警告様式は `dg__warn` を流用する。パネルは 19 §8 と同じ書き分け——勤務帯（一覧）は `panel stack` のリスト様式、run 詳細は `panel dg` 様式を流用する（2026-08-24 承認。勤務帯に `dg` の左右 padding を加えると、390px 幅で区切り線の連続性と本文幅が損なわれるため）
+- 採用デザインの正本は `docs/design/screenshots/cerebellum-office-2d-night-operations.png`
+- フロア背景は `night-floor.png`、座席は `employee-station.png`。両方とも装飾画像（読み上げ対象外）で、アクセシブル名は席リンク側に持たせる
+- 警告様式は `dg__warn` を流用する。報告はフロア下端のモーダルシートとして表示する
 
 ## 6. エラー処理
 
 | 状況 | 表示 |
 |---|---|
 | office.json 取得失敗（サーバ停止・非 tailnet） | `ErrorBanner`（「オフィスのデータに接続できません」） |
-| office.json が古い（`generated_at` が24時間以上前） | 帯の上に「データが {n} 時間前のものです」（生成の停止に気付けるようにする。エラーにはしない） |
+| office.json が古い（`generated_at` が24時間以上前） | フロアの上に「データが {n} 時間前のものです」（生成の停止に気付けるようにする。エラーにはしない） |
 | `employees` が空 | 空状態（「登録されている automation がありません」） |
-| 未知の `run` パラメータ | 「その run は見つかりません」＋帯へ戻る導線 |
+| 未知の `run` パラメータ | 報告シートに「その run は見つかりません」＋フロアへ戻る導線 |
 | `outcome` が未知の値 | `unknown` と同じ中立様式で描く（落とさない） |
 
 ## 7. スコープ外
 
 - **automation の操作**（起動・停止・編集・即時実行）。読むだけ。書き込みは Orca CLI の役割で、cerebellum に持たせると承認なしで夜間ジョブを止められる画面になる
 - **outcome の判定・生成**（second-brain の `build_office.py` と各 skill のトレーラ行が持つ。`AGENTS.md` ルール7）
-- フロアマップ・座席の絵・在席アニメーション
+- 社員がフロア内を歩く在席アニメーション（席は固定。必要性が確認できるまで入れない）
 - コスト・トークン集計（取得不能。§4）
 - dev-loop の run 履歴（「開発」[`19-web-dev-history.md`](./19-web-dev-history.md) の役割。automation の `night-shift` 行からは開発画面へリンクするだけ）
 - second-brain の手書きHTML2枚の撤去（Vault 側の作業。この画面が動いてから人間が消す）
@@ -129,7 +134,7 @@ cerebellum のサーバーは経由しない（Rust・SQLite・API の変更な�
 
 ## 実装単位
 
-- [ ] [Frontend] `office.json` 取得フックと「オフィス」画面の勤務帯（`/office`）
-  - 受け入れ基準: E2E（`web/e2e/<task-id>.spec.ts`・office.json はフィクスチャを配信して :48310 実サーバに依存しない）で、勤務帯が生成側の返却順（01:00→22:00）で並ぶ・各行に勤務ラベルと直近 run の headline が出る・`enabled:false` が末尾の「停止中」に入る・当日 run が無い社員に直近実行日が出る・`generated_at` が24時間以上前のとき鮮度警告が出ることを検証。`make verify` PASS
-- [ ] [Frontend] run 詳細（`/office?run=`）とドロワー項目の追加
-  - 受け入れ基準: E2E で、行タップで報告全文とメタが出る・`output: null` の run で保持期間外メッセージが出る・ブラウザバックで帯に戻る・ドロワーに「オフィス」があり遷移してアクティブ表示になることを検証。`make verify` PASS
+- [ ] [Frontend] `office.json` 取得フックと2D「オフィス」フロア（`/office`）
+  - 受け入れ基準: E2E（`web/e2e/<task-id>.spec.ts`・office.json はフィクスチャを配信して :48310 実サーバに依存しない）で、社員が生成側の返却順で2列フロアに配置される・各席に名前/勤務ラベル/直近状態が出る・勤務中/待機/失敗件数が出る・`enabled:false` が末尾の「停止中」に入る・当日 run が無い社員に直近実行日が出る・`generated_at` が24時間以上前のとき鮮度警告が出ることを検証。`make verify` PASS
+- [ ] [Frontend] 報告シート（`/office?run=`）とドロワー項目の追加
+  - 受け入れ基準: E2E で、席タップで URL 付きシートに `headline` とメタが出る・「報告を見る」で全文が展開される・`output: null` の run で保持期間外メッセージが出る・閉じる/ブラウザバックでフロアへ戻る・ドロワーに「オフィス」があり遷移してアクティブ表示になることを検証。`make verify` PASS
