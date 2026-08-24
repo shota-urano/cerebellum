@@ -315,6 +315,29 @@ a:hover { color: #8FF2FF; }
 .dev__badge { margin-left: 8px; font-size: 11px; letter-spacing: .06em; color: var(--muted); }
 .dev__bad { color: var(--error); }
 
+/* 「オフィス」= automation の勤務帯（docs/specs/20-web-office.md §3.1）。
+   row 様式の上に載せる最小限の追加。色は既存トークンのみ（新色を作らない・§5） */
+/* 帯は「1本の縦の帯」（§3.1-1）なので、行の区切り線をパネル端まで通す＝リスト様式
+   （`panel` + `row`。19 の一覧 RunList.tsx と同じ）。`dg`（padding 14/16px）を足すと
+   390px で区切り線が端に届かず名前と headline の折り返しが増えるため使わない。
+   仕様 20 §5 も 19 §8 と同じ書き分け（一覧はリスト、詳細は panel dg）で承認済み */
+.of__band { overflow: hidden; margin-bottom: 12px; }
+.of__row { align-items: flex-start; }
+/* 失敗様式は dg__warn の流用（左 3px の赤ボーダー）。padding で本文位置を通常行に揃える */
+.of__row--bad { padding-left: 11px; border-left: 3px solid var(--error); }
+.of__shift { flex: none; width: 78px; font-size: 10.5px; line-height: 1.7; letter-spacing: .04em; color: var(--muted); }
+.of__main { flex: 1; min-width: 0; }
+.of__top { display: flex; gap: 8px; align-items: baseline; }
+.of__name { flex: 1; min-width: 0; }
+.of__state { flex: none; max-width: 42%; font-size: 10.5px; line-height: 1.7; letter-spacing: .06em; text-align: right; }
+.of__state--bad { color: var(--error); }
+.of__state--live, .of__state--good { color: var(--accent); }
+.of__state--neutral { color: var(--muted); }
+.of__last { display: block; color: var(--muted); }
+.of__line { display: block; }
+.of__note { letter-spacing: .04em; }
+.of__stale { margin: 0 0 12px; }
+
 /* ハーネス承認（docs/specs/18-web-harness.md）。panel dg 様式の上に載せる最小限の追加 */
 .hn__head { margin: 2px 0 12px; font-size: 15px; font-weight: 500; letter-spacing: .04em; }
 .hn__group { margin: 0 0 8px; font-size: 10px; letter-spacing: .16em; color: var(--error); }
