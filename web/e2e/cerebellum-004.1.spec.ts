@@ -2,8 +2,9 @@ import { expect, test, type Page } from '@playwright/test';
 
 // cerebellum-004.1 [Frontend] office.json 取得フックと2D「オフィス」画面（/office）
 // 受け入れ基準（docs/specs/20-web-office.md §3.1・§3.2・§6）:
-//   社員が2Dフロアへ返却順で配置される / 各席に勤務ラベルと直近 run の状態が出る /
-//   席タップで headline と報告全文が出る / enabled:false が末尾の「停止中」に入る /
+//   全景は4部屋＋MY DESKだけ / 部署内で社員が返却順に出る /
+//   MY DESKは機械可読な承認待ちだけ / 席タップで headline と報告全文が出る /
+//   enabled:false は所属部署内だけに出る /
 //   当日 run が無い社員に直近実行日が出る
 //   / generated_at が24時間以上前のとき鮮度警告が出る
 //
@@ -401,53 +402,31 @@ async function mockOffice(page: Page, body: unknown = office()) {
   );
 }
 
-test('社員が2Dフロアへ返却順で配置され、勤務ラベル・名前・直近 run の状態が出る', async ({
-  page,
-}) => {
+test('全景は4部屋＋MY DESKへ情報を畳み、正常社員の文字を常時読ませない', async ({ page }) => {
   await mockOffice(page);
   await page.goto('/office');
 
   await expect(page.getByText('ROUTINE / OFFICE')).toBeVisible();
-  const floor = page.getByRole('region', { name: '勤務中の社員フロア' });
-  const stations = floor.locator('.of2__station');
-  await expect(stations).toHaveCount(7);
-  await expect(page.getByLabel('オフィスの稼働状況')).toContainText('勤務中 2');
-  await expect(page.getByLabel('オフィスの稼働状況')).toContainText('待機 4');
-  await expect(page.getByLabel('オフィスの稼働状況')).toContainText('失敗 1');
+  const overview = page.getByRole('region', { name: 'AIオフィス全景' });
+  await expect(overview.getByRole('link', { name: /LIBRARYに入る/ })).toBeVisible();
+  await expect(overview.getByRole('link', { name: /LABに入る/ })).toBeVisible();
+  await expect(overview.getByRole('link', { name: /MARKETに入る/ })).toBeVisible();
+  await expect(overview.getByRole('link', { name: /STUDIOに入る/ })).toBeVisible();
+  await expect(overview.getByRole('link', { name: /MY DESK、承認待ち2件/ })).toBeVisible();
 
-  // 生成側の返却順そのままをCSS Gridへ流す。enabled:false はフロアから抜ける（§3.1）。
-  await expect(floor.locator('.of2__shift')).toHaveText([
-    '毎日 01:00',
-    '毎日 02:00',
-    '平日 02:40',
-    '毎日 05:00',
-    '毎日 06:00',
-    '月 08:00',
-    '毎日 22:00',
-  ]);
+  const headline = page.getByLabel('昨夜のオフィス概要');
+  await expect(headline).toContainText('昨夜：失敗 1');
+  await expect(headline).toContainText('あなたの仕事：2件');
+  await expect(overview.getByRole('link', { name: /LABに入る/ })).toContainText('確認 2');
+  await expect(overview.getByRole('link', { name: /MARKETに入る/ })).toContainText('失敗 1');
+  await expect(overview.getByRole('link', { name: /LIBRARYに入る/ })).toContainText('処理中…');
+  await expect(overview.getByRole('link', { name: /STUDIOに入る/ })).toContainText('正常');
 
-  // 席と社員の対応を全件固定する。headline は席タップ後の報告シートにだけ出す。
-  for (const [index, expected] of EXPECTED.entries()) {
-    await expect(stations.nth(index)).toContainText(expected.name);
-  }
-
-  // 直近＝`automation_id` 一致の**先頭**（§3.2）。同じ automation の古い run（前日・前々週）の
-  // headline は、どの行にも——停止中の帯にも——出てはいけない
-  for (const stale of STALE_HEADLINES) {
-    await expect(page.getByText(stale)).toHaveCount(0);
-  }
-
-  // 直近 run の状態表示（§3.2 の表）。前日分は当日分と別の outcome を持たせてあるので、
-  // 古い run を引いていればここも同時に落ちる
-  await expect(stations.nth(1).locator('.of2__state--good')).toContainText('成果あり 2件');
-  await expect(stations.nth(1)).toContainText('承認待ち');
-  await expect(stations.nth(2).locator('.of2__state--bad')).toContainText('失敗');
-  await expect(stations.nth(2)).toHaveClass(/of2__station--bad/);
-  await expect(stations.nth(3).locator('.of2__state--live')).toContainText('実行中');
-  await expect(stations.nth(4).locator('.of2__state--neutral')).toContainText('今日は無し');
-  await expect(stations.nth(6).locator('.of2__state--neutral')).toContainText('まだ実行なし');
-  await expect(stations.nth(6)).toContainText('次回');
-  await expect(stations.nth(0)).not.toHaveClass(/of2__station--bad/);
+  // 全景は部屋と自分の机だけ。社員名・勤務時刻・headline は部署へ入るまで出さない。
+  for (const expected of EXPECTED) await expect(page.getByText(expected.name)).toHaveCount(0);
+  await expect(page.getByText('毎日 01:00')).toHaveCount(0);
+  for (const stale of STALE_HEADLINES) await expect(page.getByText(stale)).toHaveCount(0);
+  await expect(page.getByText('停止中 1名')).toBeVisible();
 
   // 生成が新しいときは鮮度警告を出さない（§6）
   await expect(page.locator('.dg__warn')).toHaveCount(0);
@@ -456,18 +435,28 @@ test('社員が2Dフロアへ返却順で配置され、勤務ラベル・名前
 
   await page.screenshot({
     path: 'test-results/screens/cerebellum-004.1-office.png',
-    fullPage: true,
+    fullPage: false,
   });
 });
 
-test('席タップでURL付き報告シートが開き、headline・メタ・報告全文を読んで閉じられる', async ({
+test('部署へ入ると所属社員だけが返却順で現れ、席から報告を読んで同じ部署へ戻れる', async ({
   page,
 }) => {
   await mockOffice(page);
   await page.goto('/office');
 
+  await page.getByRole('link', { name: /MARKETに入る/ }).click();
+  await expect(page).toHaveURL(/\/office\?room=market/);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  const room = page.getByRole('region', { name: 'MARKETの社員' });
+  await expect(room.locator('.of3__worker')).toHaveCount(1);
+  await expect(room).toContainText('候補仕入れ（market-intake）');
+  await expect(room).toContainText('平日 02:40');
+  await expect(room).toContainText('失敗');
+  await expect(room).not.toContainText('夜勤（night-shift）');
+
   await page.getByRole('link', { name: /候補仕入れ.*直近報告を開く/ }).click();
-  await expect(page).toHaveURL(/\/office\?run=r-market-intake-today/);
+  await expect(page).toHaveURL(/\/office\?room=market&run=r-market-intake-today/);
   const sheet = page.getByRole('dialog', { name: '候補仕入れ（market-intake）' });
   await expect(sheet).toBeVisible();
   await expect(sheet.locator('.of2__headline')).toHaveText('仕入れに失敗しました（レート制限）。');
@@ -483,13 +472,32 @@ test('席タップでURL付き報告シートが開き、headline・メタ・報
   await expect(sheet.getByRole('button', { name: '報告を閉じる' })).toHaveAttribute('aria-expanded', 'true');
 
   await sheet.getByRole('link', { name: '閉じる' }).click();
-  await expect(page).toHaveURL(/\/office\/?$/);
+  await expect(page).toHaveURL(/\/office\?room=market/);
   await expect(sheet).toBeHidden();
 });
 
-test('保持期間外と未知のrunを報告シート内で明示し、ブラウザバックでフロアへ戻る', async ({ page }) => {
+test('MY DESKは承認待ちだけを集め、内容確認後も自分の机へ戻る', async ({ page }) => {
   await mockOffice(page);
   await page.goto('/office');
+
+  await page.getByRole('link', { name: /MY DESK、承認待ち2件/ }).click();
+  await expect(page).toHaveURL(/\/office\?desk=1/);
+  const desk = page.getByRole('dialog', { name: '承認待ち 2件' });
+  await expect(desk).toContainText('ハーネス取り込み判定（night-harness）');
+  await expect(desk).toContainText('取り込み候補を2件出しました。');
+  await expect(desk).not.toContainText('仕入れに失敗しました');
+
+  await desk.getByRole('link', { name: /ハーネス取り込み判定/ }).click();
+  const report = page.getByRole('dialog', { name: 'ハーネス取り込み判定（night-harness）' });
+  await expect(report).toBeVisible();
+  await report.getByRole('link', { name: '閉じる' }).click();
+  await expect(page).toHaveURL(/\/office\?desk=1/);
+  await expect(page.getByRole('dialog', { name: '承認待ち 2件' })).toBeVisible();
+});
+
+test('保持期間外と未知のrunを報告シート内で明示し、ブラウザバックで部署へ戻る', async ({ page }) => {
+  await mockOffice(page);
+  await page.goto('/office?room=studio');
 
   await page.getByRole('link', { name: /X週次PDCA.*直近報告を開く/ }).click();
   const sheet = page.getByRole('dialog', { name: 'X週次PDCA（x-pdca）' });
@@ -497,7 +505,7 @@ test('保持期間外と未知のrunを報告シート内で明示し、ブラ�
   await expect(sheet).toContainText('報告全文は保持期間外です');
 
   await page.goBack();
-  await expect(page).toHaveURL(/\/office\/?$/);
+  await expect(page).toHaveURL(/\/office\?room=studio/);
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
   await page.goto('/office?run=missing-run');
@@ -518,8 +526,8 @@ test('/office にコンソールエラーが出ない（hydration mismatch の�
   await mockOffice(page);
   await page.goto('/office');
 
-  // hydration は最初の描画で起きるので、フロアが出るまで待ってから判定する
-  await expect(page.locator('.of2__station').first()).toContainText('夜勤（night-shift）');
+  // hydration は最初の描画で起きるので、全景が出るまで待ってから判定する
+  await expect(page.getByRole('region', { name: 'AIオフィス全景' })).toBeVisible();
   // 鮮度警告（時計依存の表示）が絡む経路でも出ないことを見る
   await expect(page.locator('.dg__warn')).toHaveCount(0);
 
@@ -528,30 +536,33 @@ test('/office にコンソールエラーが出ない（hydration mismatch の�
 
 test('当日 run が無い社員（週次）には直近実行日が出る', async ({ page }) => {
   await mockOffice(page);
-  await page.goto('/office');
+  await page.goto('/office?room=studio');
 
   // 週次・平日限定の社員が毎日「未実行」に見えるのを防ぐ補助表示（§3.2 末尾）
-  const weekly = page.locator('.of2__station', { hasText: 'X週次PDCA（x-pdca）' });
+  const weekly = page.locator('.of3__worker', { hasText: 'X週次PDCA（x-pdca）' });
   await expect(weekly).toContainText('直近 ' + LAST_WEEK_DATE);
   expect(LAST_WEEK_DATE).not.toBe(TODAY);
 
-  // 当日 run がある社員には出ない（毎日出ると意味が消えるため）
-  const daily = page.locator('.of2__station', { hasText: '夜勤（night-shift）' });
-  await expect(daily.locator('.of2__last')).toHaveCount(0);
+  // 別部署の社員は混ざらない
+  await expect(page.getByText('夜勤（night-shift）')).toHaveCount(0);
 });
 
-test('enabled:false の社員は末尾の「停止中」に入り、headline は出さない', async ({ page }) => {
+test('enabled:false の社員は全景で件数だけ、所属部署内で停止中として見える', async ({ page }) => {
   await mockOffice(page);
   await page.goto('/office');
 
-  const stopped = page.getByRole('region', { name: '停止中' });
-  await expect(stopped.locator('.of2__station')).toHaveCount(1);
-  await expect(stopped.locator('.of2__station')).toContainText('旧ダッシュボード生成（retired）');
-  await expect(stopped.locator('.of2__shift')).toHaveText(['毎日 07:00']);
+  await expect(page.getByText('停止中 1名')).toBeVisible();
+  await expect(page.getByText('旧ダッシュボード生成（retired）')).toHaveCount(0);
 
-  // 停止中の headline・状態は画面に出さない（run は office.json に入っている）
+  await page.getByRole('link', { name: /LIBRARYに入る/ }).click();
+  const stopped = page.locator('.of3__worker--stopped');
+  await expect(stopped).toHaveCount(1);
+  await expect(stopped).toContainText('旧ダッシュボード生成（retired）');
+  await expect(stopped).toContainText('毎日 07:00');
+  await expect(stopped).toContainText('停止中');
+
+  // 停止前の headline は出さない（run は office.json に入っている）
   await expect(page.getByText('停止前の最後の報告です。')).toHaveCount(0);
-  await expect(stopped.locator('.of2__state')).toHaveText('停止中');
 });
 
 test('generated_at が24時間以上前ならフロアの上に鮮度警告が出る（エラーにはしない）', async ({
@@ -566,8 +577,8 @@ test('generated_at が24時間以上前ならフロアの上に鮮度警告が�
   await expect(warn).toContainText('データが 30 時間前のものです');
   // 生成の停止に気付けるようにするための表示。エラーバナーにはしない（§6）
   await expect(page.locator('.banner')).toHaveCount(0);
-  // 警告が出ても2Dフロアそのものは通常どおり出る
-  await expect(page.locator('.of2__station').first()).toContainText('夜勤（night-shift）');
+  // 警告が出ても2D全景そのものは通常どおり出る
+  await expect(page.getByRole('region', { name: 'AIオフィス全景' })).toBeVisible();
 });
 
 test('employees が空なら空状態（エラーにしない）', async ({ page }) => {

@@ -3,26 +3,19 @@
 import { useEffect, useState } from 'react';
 import { ErrorBanner } from '@/shared/ui';
 import { useOffice } from '../hooks/useOffice';
-import { localDate, splitByEnabled, staleHours } from '../lib/office';
-import { OfficeFloor } from './OfficeFloor';
+import { isOfficeRoomId, localDate, splitByEnabled, staleHours } from '../lib/office';
+import { OfficeDeskSheet } from './OfficeDeskSheet';
+import { OfficeOverview } from './OfficeOverview';
 import { OfficeReportSheet } from './OfficeReportSheet';
+import { OfficeRoomView } from './OfficeRoomView';
 
 function Skeleton() {
   return (
     <div className="of2__skeleton" aria-busy="true" aria-live="polite">
-      <div className="of2__summary">
-        {Array.from({ length: 3 }, (_, i) => <span className="skel" key={i}>&nbsp;</span>)}
+      <div className="of3__headline">
+        {Array.from({ length: 2 }, (_, i) => <span className="skel" key={i}>&nbsp;</span>)}
       </div>
-      <div className="of2__floor">
-        <div className="of2__grid">
-          {Array.from({ length: 4 }, (_, i) => (
-            <div className="of2__station of2__station--idle" key={i}>
-              <span className="skel of2__skeleton-name">&nbsp;</span>
-              <span className="skel of2__skeleton-desk">&nbsp;</span>
-            </div>
-          ))}
-        </div>
-      </div>
+      <div className="skel of3__skeleton-floor">&nbsp;</div>
     </div>
   );
 }
@@ -39,7 +32,15 @@ function Skeleton() {
  * 閲覧時の描画が食い違い hydration error #418 になる（ビルド日の日付が焼かれる）。
  * `suppressHydrationWarning` で黙らせると初回描画がビルド日のままになるので使わない。
  */
-export function OfficeView({ runId }: { runId: string | null }) {
+export function OfficeView({
+  runId,
+  roomId,
+  deskOpen,
+}: {
+  runId: string | null;
+  roomId: string | null;
+  deskOpen: boolean;
+}) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   // マウント前は取得もしない（ビルド時の描画＝スケルトンで固定する）
@@ -55,6 +56,7 @@ export function OfficeView({ runId }: { runId: string | null }) {
   const now = new Date();
   const stale = staleHours(office.generated_at, now.getTime());
   const { onDuty, stopped } = splitByEnabled(employees);
+  const selectedRoomId = isOfficeRoomId(roomId) ? roomId : null;
   const selectedRun = runId === null ? undefined : runs.find((run) => run.run_id === runId);
   const selectedEmployee = selectedRun
     ? employees.find((employee) => employee.automation_id === selectedRun.automation_id)
@@ -72,15 +74,25 @@ export function OfficeView({ runId }: { runId: string | null }) {
 
       {employees.length === 0 ? (
         <div className="empty">登録されている automation がありません</div>
-      ) : (
-        <OfficeFloor
+      ) : selectedRoomId ? (
+        <OfficeRoomView
+          roomId={selectedRoomId}
           employees={onDuty}
           runs={runs}
           stopped={stopped}
           today={localDate(now)}
           selectedRunId={runId}
         />
+      ) : (
+        <OfficeOverview
+          employees={onDuty}
+          runs={runs}
+          stoppedCount={stopped.length}
+          today={localDate(now)}
+        />
       )}
+
+      {deskOpen && <OfficeDeskSheet employees={onDuty} runs={runs} />}
 
       {runId !== null && (
         <OfficeReportSheet
@@ -88,6 +100,7 @@ export function OfficeView({ runId }: { runId: string | null }) {
           employee={selectedEmployee}
           run={selectedRun}
           requestedRunId={runId}
+          returnHref={selectedRoomId ? `/office?room=${selectedRoomId}` : deskOpen ? '/office?desk=1' : '/office'}
         />
       )}
     </>

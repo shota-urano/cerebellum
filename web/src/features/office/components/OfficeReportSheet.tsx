@@ -9,16 +9,22 @@ export type OfficeReportSheetProps = {
   employee: OfficeEmployee | undefined;
   run: OfficeRun | undefined;
   requestedRunId: string;
+  returnHref?: string;
 };
 
 /** 選択した社員の直近報告。URL は `/office?run=` のためブラウザバックでも閉じられる。 */
-export function OfficeReportSheet({ employee, run, requestedRunId }: OfficeReportSheetProps) {
+export function OfficeReportSheet({
+  employee,
+  run,
+  requestedRunId,
+  returnHref = '/office',
+}: OfficeReportSheetProps) {
   const [expanded, setExpanded] = useState(false);
   const missing = !run || !employee;
 
   return (
     <div className="of2__sheet-layer" role="presentation">
-      <Link className="of2__sheet-backdrop" href="/office" scroll={false} aria-label="報告を閉じる" />
+      <Link className="of2__sheet-backdrop" href={returnHref} scroll={false} aria-label="報告を閉じる" />
       <section
         className={'of2__sheet' + (run?.outcome === 'failed' ? ' of2__sheet--bad' : '')}
         role="dialog"
@@ -36,7 +42,7 @@ export function OfficeReportSheet({ employee, run, requestedRunId }: OfficeRepor
             </h2>
             {!missing && <p className="mono of2__sheet-shift">{employee.shift?.label ?? '—'}</p>}
           </div>
-          <Link className="mono of2__sheet-close" href="/office" scroll={false}>
+          <Link className="mono of2__sheet-close" href={returnHref} scroll={false}>
             閉じる
           </Link>
         </div>

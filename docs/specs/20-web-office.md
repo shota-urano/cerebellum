@@ -17,7 +17,7 @@ second-brain 側で無人稼働している **Orca automation 19本**が「い�
 
 - **入力**: `GET office.json`（夜勤ビューアと同じ :48310 の静的サーバが配信。接続規則・https 時の path マウントは [`13-web-nightshift.md`](./13-web-nightshift.md) §4 と同一）
 - **出力**: なし（表示のみ。automation の起動・停止・編集はしない → §7）
-- **経路**: `/office`（ドロワー項目。詳細は `/office?run={run_id}`）
+- **経路**: `/office`（全景）／`/office?room={library|lab|market|studio}`（部署内）／`/office?desk=1`（自分の机）／`run` 併用で報告詳細
 
 cerebellum のサーバーは経由しない（Rust・SQLite・API の変更なし）。[`19-web-dev-history.md`](./19-web-dev-history.md) が runs.json を直に読むのと同じ構図で、**Frontend だけで完結する**。
 
@@ -40,16 +40,16 @@ cerebellum のサーバーは経由しない（Rust・SQLite・API の変更な�
 
 ## 3. 処理詳細
 
-### 3.1 2Dオフィスフロア（画面の主役・最上段）
+### 3.1 オフィス全景（4部屋＋MY DESK）
 
-1. `employees` を返却順（勤務開始時刻の昇順）のまま、**見下ろし型2Dオフィスの2列の座席**へ配置する。クライアントで再ソートしない
-2. 1席 = 1社員。机・社員アバターの下に `shift.label`（等幅）と**直近 run の状態**を表示する。`name` は机上のネームプレートとして出す
-3. フロア上部に「勤務中」「待機」「失敗」の件数を表示する。`live` / `good` を勤務中、`neutral` を待機、`bad` を失敗として数える。状態は色だけでなく文言と形でも識別できるようにする
-4. `headline` は全席へ常時露出せず、席タップ後の報告シートに表示する。情報密度は空間表現ではなくタップ先で担保する
-5. `enabled: false` の社員はフロアに混ぜず、最後の「停止中」区画に同じ座席表現でまとめる。停止前 run の `headline` は出さない
-6. 390px では2列を維持して縦スクロールする。広い画面でも列数を増やさず、採用デザインのオフィス構造を保つ
+1. 全景では社員名・勤務時刻・個別 run を出さない。`LIBRARY` / `LAB` / `MARKET` / `STUDIO` の4部屋と中央の `MY DESK` だけを見せる
+2. 最上部は「昨夜：正常（または失敗 n）」「あなたの仕事：n件」だけにする。全員を同じ強さで読ませず、正常なものほど暗く静かにする
+3. 部屋は `skill` と現在の `name`（`skill:null` の補助だけ）を次の順で分類する。市場・ベンチ・フォロワー → MARKET、write/publish/pdca/post/reply/quote・ポスト/リプ/引用 → STUDIO、harness/study/seed/experiment/incubate/blindspot/auto-plug → LAB、それ以外（`null` を含む）→ LIBRARY。分類は表示上のグルーピングだけで outcome 判定には使わない
+4. 部屋の信号は、人間対応（黄）→失敗（赤）→実行中（シアン）→正常（中立）の順で1つを強調する。色だけでなく「確認 n」「失敗 n」「処理中…」「正常」の文言を併記する
+5. 部屋タップで `/office?room={id}` へ入り、初めて所属社員を表示する。`enabled:false` は全景では「停止中 n名」だけを弱く表示し、所属部屋内で停止中社員として確認できる
+6. 390px の最初の viewport に4部屋とMY DESKを収める。全景で社員数に応じた縦スクロールは発生させない
 
-（経緯: 2026-08-21 は情報密度を理由にフロアマップを不採用としたが、実装された縦リストを確認したユーザーが「リストではなく本当に office 感が欲しい」と再判断。2026-08-24 に `docs/design/screenshots/cerebellum-office-2d-night-operations.png` を採用し、本節を置き換えた）
+（経緯: 2026-08-24 の2列フロアはoffice感を得られた一方、全社員の名前・勤務時間・状態が同じ強さで視界に入り、社員増加時の認知負荷が残った。2026-08-26 に「正常なものほど存在感を消す」「部屋＝役割、自分の机＝人間の仕事」という方針をユーザーが採用し、`cerebellum-office-my-desk-focus.png` と `cerebellum-office-studio-room-detail.png` を正本として本節を置き換えた）
 
 ### 3.2 直近 run の状態表示
 
@@ -66,14 +66,30 @@ cerebellum のサーバーは経由しない（Rust・SQLite・API の変更な�
 
 **当日分が無い社員**（`scheduled_for` が今日でない）は、直近 run の日付を補助表示する。週次・平日限定の社員（x-pdca は月曜・night-incubate は土曜・night-blindspot は日曜）が毎日「未実行」に見えるのを防ぐため。
 
-### 3.3 run 詳細
+全景ではこの詳細ラベルを常時出さず、部署内の社員席で出す。正常・`none`・`unknown` の社員は低コントラスト、`running` はシアン、`failed` は赤で示す。
+
+### 3.3 MY DESK（人間の仕事）
+
+1. 自然文から「要対応」を推測しない。直近 run が `outcome = produced` かつ `note = "承認待ち"` の完全一致の場合だけMY DESKへ載せる
+2. 件数は `items` が正の数ならその値、無い・数でない場合はそのrunを1件と数える
+3. 全景のMY DESKタップで `/office?desk=1` のシートを開き、対象社員・`headline`・件数と「内容を確認」を表示する
+4. `failed` は「AIの失敗」であり「人間の承認待ち」ではない。赤い失敗件数へ含めるが、MY DESKには載せない
+
+### 3.4 部署ルーム
+
+1. 部署内では所属社員だけを `employees` の返却順で配置し、社員名・`shift.label`・直近状態を表示する
+2. 承認待ち社員だけ黄で強調し `headline` を席に出す。実行中は「処理中…」、失敗は「失敗」。正常・待機は暗くして情報の背景へ退かせる
+3. 下部に4部署とMY DESKへの導線を置く。ブラウザバックまたは「‹ OFFICE」で全景へ戻る
+4. 所属社員が画面高を超える場合は部署内だけを縦スクロールし、社員を省略しない
+
+### 3.5 run 詳細
 
 1. 席タップで `/office?run={run_id}` に遷移し、フロア下端から報告シートを開く。最初に `headline` と主要メタを出し、「報告を見る」で `output`（報告全文）を展開する
 2. `output` が `null`（3日より古い）ときは「報告全文は保持期間外です」と出す（欠落を無言にしない）
 3. `truncated: true` のときは「報告は途中で切れています」を添える
 4. 「閉じる」またはブラウザバックでシートを閉じ、同じフロアへ戻る
 
-### 3.4 outcome の扱い（重要）
+### 3.6 outcome の扱い（重要）
 
 **`outcome` の判定は生成側（second-brain）の責務**で、cerebellum は受け取った値で塗るだけ（`AGENTS.md` ルール7）。判定は各 skill が最終報告の末尾に置く機械可読行 `OFFICE: outcome=produced items=2 note=…` だけを根拠にし、**自然文からの推測はしない**。
 
@@ -87,15 +103,15 @@ cerebellum のサーバーは経由しない（Rust・SQLite・API の変更な�
 - cerebellum 側に**スキーマ・API を足さない**（[`02-data-model.md`](./02-data-model.md)・[`03-api.md`](./03-api.md) は無変更）。Backend 作業ゼロ
 - 生成の定期実行は second-brain 側に置く（cerebellum に時計駆動を持ち込まない → [`00-overview.md`](./00-overview.md) §5）
 - 0件（`outcome = none`）は正常。空状態もエラーバナーにしない
-- フロア背景と社員アバターは `web/public/images/office/` の生成画像を使う。名前・勤務時間・状態・件数・操作は画像に焼き込まず、`office.json` からネイティブUIとして描画する
+- 全景・ルーム背景、社員、書類は `web/public/images/office/` の生成画像を使う。名前・勤務時間・状態・件数・操作は画像に焼き込まず、`office.json` からネイティブUIとして描画する
 - コスト・トークン表示は持たない（orca の `usage` は実測で `usage_not_enabled`＝取得不能）
 
 ## 5. インターフェース
 
 - 構成規約（`app → features → shared`・feature 間 import 禁止・barrel 経由）: [`07-web-foundation.md`](./07-web-foundation.md) §3
 - `shared/ui/RunCard`（夜勤・開発の共通部品）は**流用しない**。dev-loop の run（PR・動画）と automation の run（勤務帯・報告文）は形が違う。共通化は3例目が出てから判断する
-- 採用デザインの正本は `docs/design/screenshots/cerebellum-office-2d-night-operations.png`
-- フロア背景は `night-floor.png`、座席は `employee-station.png`。両方とも装飾画像（読み上げ対象外）で、アクセシブル名は席リンク側に持たせる
+- 採用デザインの正本は全景 `docs/design/screenshots/cerebellum-office-my-desk-focus.png`、部署内 `docs/design/screenshots/cerebellum-office-studio-room-detail.png`
+- 全景背景は `campus-floor.png`、部署背景は `room-floor.png`、社員は `employee-station*.png`、MY DESKの書類は `approval-folders.png`。すべて装飾画像（読み上げ対象外）で、アクセシブル名はリンク側に持たせる
 - 警告様式は `dg__warn` を流用する。報告はフロア下端のモーダルシートとして表示する
 
 ## 6. エラー処理
@@ -112,7 +128,7 @@ cerebellum のサーバーは経由しない（Rust・SQLite・API の変更な�
 
 - **automation の操作**（起動・停止・編集・即時実行）。読むだけ。書き込みは Orca CLI の役割で、cerebellum に持たせると承認なしで夜間ジョブを止められる画面になる
 - **outcome の判定・生成**（second-brain の `build_office.py` と各 skill のトレーラ行が持つ。`AGENTS.md` ルール7）
-- 社員がフロア内を歩く在席アニメーション（席は固定。必要性が確認できるまで入れない）
+- 社員がフロア内を歩くアニメーション（状態を表す最小限の発光以外は動かさない）
 - コスト・トークン集計（取得不能。§4）
 - dev-loop の run 履歴（「開発」[`19-web-dev-history.md`](./19-web-dev-history.md) の役割。automation の `night-shift` 行からは開発画面へリンクするだけ）
 - second-brain の手書きHTML2枚の撤去（Vault 側の作業。この画面が動いてから人間が消す）
@@ -134,7 +150,7 @@ cerebellum のサーバーは経由しない（Rust・SQLite・API の変更な�
 
 ## 実装単位
 
-- [ ] [Frontend] `office.json` 取得フックと2D「オフィス」フロア（`/office`）
-  - 受け入れ基準: E2E（`web/e2e/<task-id>.spec.ts`・office.json はフィクスチャを配信して :48310 実サーバに依存しない）で、社員が生成側の返却順で2列フロアに配置される・各席に名前/勤務ラベル/直近状態が出る・勤務中/待機/失敗件数が出る・`enabled:false` が末尾の「停止中」に入る・当日 run が無い社員に直近実行日が出る・`generated_at` が24時間以上前のとき鮮度警告が出ることを検証。`make verify` PASS
+- [ ] [Frontend] `office.json` 取得フックと2D「オフィス」全景＋部署ルーム（`/office`）
+  - 受け入れ基準: E2E（`web/e2e/<task-id>.spec.ts`・office.json はフィクスチャを配信して :48310 実サーバに依存しない）で、全景に4部屋とMY DESKだけが出る・正常社員の名前は全景に出ない・部屋信号の優先順・MY DESKの承認件数・部屋タップ後に所属社員が返却順で出る・停止中社員は所属部屋内だけで出る・当日 run が無い社員に直近状態が出る・`generated_at` が24時間以上前のとき鮮度警告が出ることを検証。`make verify` PASS
 - [ ] [Frontend] 報告シート（`/office?run=`）とドロワー項目の追加
-  - 受け入れ基準: E2E で、席タップで URL 付きシートに `headline` とメタが出る・「報告を見る」で全文が展開される・`output: null` の run で保持期間外メッセージが出る・閉じる/ブラウザバックでフロアへ戻る・ドロワーに「オフィス」があり遷移してアクティブ表示になることを検証。`make verify` PASS
+  - 受け入れ基準: E2E で、部署内の席またはMY DESKからURL付きシートに `headline` とメタが出る・「報告を見る」で全文が展開される・閉じると直前の部署/MY DESKへ戻る・`output: null` の run で保持期間外メッセージが出る・ブラウザバックで全景へ戻れる・ドロワーに「オフィス」があり遷移してアクティブ表示になることを検証。`make verify` PASS

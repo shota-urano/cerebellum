@@ -64,6 +64,48 @@ export interface OfficeData {
   runs: OfficeRun[];
 }
 
+export type OfficeRoomId = 'library' | 'lab' | 'market' | 'studio';
+
+export interface OfficeRoom {
+  id: OfficeRoomId;
+  label: string;
+  name: string;
+}
+
+export const OFFICE_ROOMS: readonly OfficeRoom[] = [
+  { id: 'library', label: 'LIBRARY', name: 'Library Room' },
+  { id: 'lab', label: 'LAB', name: 'Laboratory' },
+  { id: 'market', label: 'MARKET', name: 'Market Room' },
+  { id: 'studio', label: 'STUDIO', name: 'Writing Room' },
+] as const;
+
+export function isOfficeRoomId(value: string | null): value is OfficeRoomId {
+  return OFFICE_ROOMS.some((room) => room.id === value);
+}
+
+/**
+ * skill 名を4つの役割空間へ畳む。状態判定ではなく表示上の分類だけを担う。
+ * 未知・null は情報の集積地点である LIBRARY に置き、社員を画面から消さない。
+ */
+export function roomOf(employee: OfficeEmployee): OfficeRoomId {
+  // skill が取れない素の automation も消さないため、現在名は分類の補助にだけ使う。
+  const role = `${employee.skill ?? ''} ${employee.name}`.toLowerCase();
+  if (/market|benchmark|ベンチ|フォロワー/.test(role)) return 'market';
+  if (/write|publish|pdca|post|reply|quote|ポスト|リプ|引用/.test(role)) return 'studio';
+  if (/harness|study|seed|experiment|incubate|blindspot|auto-plug|ハーネス|ブラインド/.test(role)) return 'lab';
+  return 'library';
+}
+
+/**
+ * MY DESK に届く件数。自然文は読まず、生成側の機械可読トレーラだけを使う。
+ * note が完全一致で「承認待ち」の produced run を1つの依頼とし、items が正の数ならその件数。
+ */
+export function actionCountOf(run: OfficeRun | undefined): number {
+  if (!run || run.outcome !== 'produced' || run.note !== '承認待ち') return 0;
+  const items = typeof run.items === 'number' ? run.items : Number(run.items);
+  return Number.isFinite(items) && items > 0 ? Math.floor(items) : 1;
+}
+
 /** 状態表示の色調（§3.2）。`neutral` は「色で語らない」＝ muted で headline を読ませる */
 export type StateTone = 'bad' | 'live' | 'good' | 'neutral';
 
