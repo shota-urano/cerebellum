@@ -1,6 +1,6 @@
 ---
 status: confirmed
-confirmed_rev: 033fac1
+confirmed_rev: 0f4e347
 ---
 
 # 20. 「オフィス」画面仕様（自動化の勤務帯と直近の報告）
@@ -37,6 +37,7 @@ cerebellum のサーバーは経由しない（Rust・SQLite・API の変更な�
 - `skill` は automation の prompt から取れたときだけ入る（素のシェル実行ジョブは `null`。**名前を捏造しない**）
 - `output`（報告全文）は直近3日の run にだけ入る。それより古い run は `null` で `headline` だけ（office.json の重さ対策。実測 206KB / 206 run）
 - `name` は automation の現在の表示名、`title` はその run 当時の表示名。**改名されるので同一視しない**（実測: daily-digest は「daily-digest (朝の脳ダイジェスト)」→「つながり発見：daily-digest」に改名済み）。安定キーは `automation_id`
+- `employees[]` には社員の起動方式（`trigger`）と名簿（`profile`）も入る。形と扱いは [`21-web-office-roster.md`](./21-web-office-roster.md) §2（ここでは二重定義しない）
 
 ## 3. 処理詳細
 
@@ -77,14 +78,14 @@ cerebellum のサーバーは経由しない（Rust・SQLite・API の変更な�
 
 ### 3.4 部署ルーム
 
-1. 部署内では所属社員だけを `employees` の返却順で配置し、社員名・`shift.label`・直近状態を表示する
+1. 部署内では所属社員だけを `employees` の返却順で配置し、社員名・`shift.label`・直近状態を表示する（勤務帯／手動起動／停止中のブロック分けは [`21-web-office-roster.md`](./21-web-office-roster.md) §3.4）
 2. 承認待ち社員だけ黄で強調し `headline` を席に出す。実行中は「処理中…」、失敗は「失敗」。正常・待機は暗くして情報の背景へ退かせる
 3. 下部に4部署とMY DESKへの導線を置く。ブラウザバックまたは「‹ OFFICE」で全景へ戻る
-4. 所属社員が画面高を超える場合は部署内だけを縦スクロールし、社員を省略しない
+4. 所属社員が画面高を超える場合は部署内だけを縦スクロールし、社員を省略しない。5名以上（3行以上）は行数に応じて部屋画像の奥行きを伸ばし、最終行も下壁より内側へ収める
 
 ### 3.5 run 詳細
 
-1. 席タップで `/office?run={run_id}` に遷移し、フロア下端から報告シートを開く。最初に `headline` と主要メタを出し、「報告を見る」で `output`（報告全文）を展開する
+1. 席タップは社員カード（[`21-web-office-roster.md`](./21-web-office-roster.md) §3.1）を開き、その「報告を見る」で `/office?run={run_id}` に遷移して、フロア下端から報告シートを開く。最初に `headline` と主要メタを出し、「報告を見る」で `output`（報告全文）を展開する
 2. `output` が `null`（3日より古い）ときは「報告全文は保持期間外です」と出す（欠落を無言にしない）
 3. `truncated: true` のときは「報告は途中で切れています」を添える
 4. 「閉じる」またはブラウザバックでシートを閉じ、同じフロアへ戻る
@@ -151,6 +152,6 @@ cerebellum のサーバーは経由しない（Rust・SQLite・API の変更な�
 ## 実装単位
 
 - [ ] [Frontend] `office.json` 取得フックと2D「オフィス」全景＋部署ルーム（`/office`）
-  - 受け入れ基準: E2E（`web/e2e/<task-id>.spec.ts`・office.json はフィクスチャを配信して :48310 実サーバに依存しない）で、全景に4部屋とMY DESKだけが出る・正常社員の名前は全景に出ない・部屋信号の優先順・MY DESKの承認件数・部屋タップ後に所属社員が返却順で出る・停止中社員は所属部屋内だけで出る・当日 run が無い社員に直近状態が出る・`generated_at` が24時間以上前のとき鮮度警告が出ることを検証。`make verify` PASS
+  - 受け入れ基準: E2E（`web/e2e/<task-id>.spec.ts`・office.json はフィクスチャを配信して :48310 実サーバに依存しない）で、全景に4部屋とMY DESKだけが出る・正常社員の名前は全景に出ない・部屋信号の優先順・MY DESKの承認件数・部屋タップ後に所属社員が返却順で出る・7名の部署でも最終行が部屋の下壁より内側に収まる・停止中社員は所属部屋内だけで出る・当日 run が無い社員に直近状態が出る・`generated_at` が24時間以上前のとき鮮度警告が出ることを検証。`make verify` PASS
 - [ ] [Frontend] 報告シート（`/office?run=`）とドロワー項目の追加
   - 受け入れ基準: E2E で、部署内の席またはMY DESKからURL付きシートに `headline` とメタが出る・「報告を見る」で全文が展開される・閉じると直前の部署/MY DESKへ戻る・`output: null` の run で保持期間外メッセージが出る・ブラウザバックで全景へ戻れる・ドロワーに「オフィス」があり遷移してアクティブ表示になることを検証。`make verify` PASS
