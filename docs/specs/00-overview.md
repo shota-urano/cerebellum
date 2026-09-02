@@ -11,7 +11,9 @@ Phase 1 = 今日のタスク表示・消し込み・履歴閲覧・スナップ�
 Phase 1.5（進行中）= ルーティン表マスタの SQLite 移管とブラウザからの編集。
 Phase 1.6 = 朝ダイジェストの取り込みと詳細ビュー（Slack 停止に伴い、Phase 2 の digest を一部前倒し）。
 Phase 1.7 = 学習セッション（[14](./14-learning.md)・[15](./15-web-learning.md)）とハーネス承認（[17](./17-harness-approval.md)・[18](./18-web-harness.md)）。いずれも second-brain の夜間ハーネスが push し、画面での入力を翌日の自動処理が読み戻す双方向ループ。
-Phase 1.8 = 「オフィス」画面（[20](./20-web-office.md)）。Orca automation の勤務帯と直近報告の表示。Frontend のみで、cerebellum のスキーマ・API は無変更。
+Phase 1.8 = 「オフィス」画面（[20](./20-web-office.md)・[21](./21-web-office-roster.md)）。Orca automation の勤務帯・直近報告・社員名簿の表示。Frontend のみで、cerebellum のスキーマ・API は無変更。
+Phase 1.9 = 「あなた待ち」画面（[22](./22-daily-intake.md)・[23](./23-web-waiting.md)）。daily取り込み候補（ToDo・考え・口調）の承認を Obsidian のチェックから画面のタップへ移す。17/18 と同じ「Vault が正本・cerebellum は人間の意思だけ持つ」双方向ループ。**→ 出荷せず Phase 2.0 に畳む（2026-09-02 決定）**。
+Phase 2.0 = 人間待ち項目の汎用化（[24](./24-inbox.md)・[25](./25-web-inbox.md)）。ハーネスごとに専用 API・画面を作る二重工事をやめ、「承認・選択・読む・異常」の4種類を1つの口で受ける。second-brain 側で社員カードに `review` を書けば枠が自動で立つ。Slack 通知の全廃止先でもある。cerebellum に載るものは「人間の日課」「学習」「AI からの確認待ち」の3種類と整理し、「今日」画面でこの3種を1枚に集約する。学習は固有の構造を持つため専用のまま残す唯一の例外。
 
 ## 2. システム全体像
 
@@ -54,6 +56,11 @@ Phase 1.8 = 「オフィス」画面（[20](./20-web-office.md)）。Orca automa
 | 18 | [`18-web-harness.md`](./18-web-harness.md) | ハーネス承認ビュー（1行要約で判断・チェックが翌朝の適用入力になる） | Frontend |
 | 19 | [`19-web-dev-history.md`](./19-web-dev-history.md) | 「開発」画面（夜勤・手動 run の履歴一覧と詳細） | Frontend |
 | 20 | [`20-web-office.md`](./20-web-office.md) | 「オフィス」画面（automation の勤務帯と直近報告） | Frontend |
+| 21 | [`21-web-office-roster.md`](./21-web-office-roster.md) | 社員名簿（プロフィール・手動起動社員。20 の増分） | Frontend |
+| 22 | [`22-daily-intake.md`](./22-daily-intake.md) | daily取り込み候補の受け入れ・承認記録（domain/usecase/API）**superseded → 24** | Backend |
+| 23 | [`23-web-waiting.md`](./23-web-waiting.md) | 「あなた待ち」画面（daily取り込みの承認・レーン別タップ）**superseded → 25** | Frontend |
+| 24 | [`24-inbox.md`](./24-inbox.md) | 人間待ち項目（汎用）の受け入れ・決定記録・summary（domain/usecase/API） | Backend |
+| 25 | [`25-web-inbox.md`](./25-web-inbox.md) | 「今日」の3種集約（日課・学習・確認待ち）と「あなた待ち」汎用画面 | Frontend |
 
 ## 4. 確定済みの初期値（横断・変更禁止）
 
@@ -64,7 +71,9 @@ Phase 1.8 = 「オフィス」画面（[20](./20-web-office.md)）。Orca automa
 | ダイジェスト | second-brain 側が生成し `POST /api/digests` で送る（push）。cerebellum は生成も Slack 送信もしない | [11](./11-digest.md) |
 | 学習セット | second-brain の `night-study` が生成し `POST /api/learning/sets` で送る（push）。正本は cerebellum SQLite（2026-07-29 に Vault `40_Projects/learning` から移管決定）。cerebellum は生成も verify 実行もしない | [14](./14-learning.md) |
 | ハーネス提案 | second-brain の `night-harness` が判定し `POST /api/harness/proposals` で送る（push）。画面のチェック＝承認の正本、翌朝06:20 の無人 `--apply` がそれを読んで適用する。cerebellum は判定も適用もしない（2026-07-29 決定・Slack 廃止） | [17](./17-harness-approval.md) |
-| detail_ref | `digest.connection` / `digest.derive` / `digest.idea` / `digest.consolidate` ＋ `nightshift.report`（2026-07-28）＋ `learning.session`（[14](./14-learning.md)・実装時追加）＋ `harness.proposals`（[17](./17-harness-approval.md)・実装時追加） | [02](./02-data-model.md) §6 |
+| daily取り込み候補 | second-brain の `daily-harness` が毎晩 00:40 に仕分けて `POST /api/intake/candidates` で送る（push・0件の日も送る）。**正本は Vault の候補ファイル**で、画面の✅は同じ 00:40 の実行冒頭に候補ファイルへ書き戻されてから適用される。cerebellum は仕分けも適用も Linear 起票もしない（2026-08-29 決定） | [22](./22-daily-intake.md) |
+| 人間待ち項目 | second-brain の各 skill が `POST /api/inbox/batches` で送る（push・**0件でも送る**）。kind は `approve` / `choose` / `read` / `alert` の4値固定。cerebellum が持つのは人間の意思（`status`）と機械の結果（`apply_state`）だけ。「今日届いているべき送信元」は名簿（office.json の `profile.review`）が正本で、サーバは受信の事実だけを持つ。ハーネス承認（17）と daily取り込み（22）はこの口へ移し、専用 API は移行完了後に撤去する（2026-09-02 決定） | [24](./24-inbox.md) |
+| detail_ref | `digest.connection` / `digest.derive` / `digest.idea` / `digest.consolidate` ＋ `nightshift.report`（2026-07-28）＋ `learning.session`（[14](./14-learning.md)・実装時追加）＋ `harness.proposals`（[17](./17-harness-approval.md)・実装時追加）＋ `inbox.items`（[24](./24-inbox.md)・実装時追加。`intake.candidates` は出荷しない） | [02](./02-data-model.md) §6 |
 | Vault パス | env `CEREBELLUM_VAULT`（既定 `$HOME/second-brain`）。実パスは環境固有のためリポジトリに書かない | [06](./06-cli-serve.md) |
 | task_id | `sha1("間隔|時刻|内容")` 先頭12桁（16進小文字。実施・ツール列は含めない） | [02](./02-data-model.md) |
 | 曜日文字列 | `"月火水木金土日"`（`weekday()` 0=月 に対応） | [04](./04-routine-parse.md) |
@@ -82,6 +91,7 @@ Phase 1.8 = 「オフィス」画面（[20](./20-web-office.md)）。Orca automa
 - 下書き一覧・通知の自前実装・メトリクス可視化（Phase 2 以降）
   ※**承認フローはハーネス取り込みに限り Phase 1.7 として前倒し**（[17](./17-harness-approval.md)・[18](./18-web-harness.md)）。X ポスト等の下書き承認は対象外のまま
   ※**automation の勤務帯と直近報告の表示に限り Phase 1.8 として前倒し**（[20](./20-web-office.md)）。集計・コスト可視化は対象外のまま
+  ※**daily取り込み候補の承認に限り Phase 1.9 として前倒し**（[22](./22-daily-intake.md)・[23](./23-web-waiting.md)）。承認の前倒しはハーネス取り込みと daily取り込みの2つだけで、X ポスト等の下書き承認は対象外のまま
 - digest の**生成**（second-brain の `daily-digest` skill が持つ。cerebellum は受け取って表示するだけ → [11](./11-digest.md)）
 - **時計駆動の仕組み全般**（日次 ensure・リマインド・launchd の定期実行）。Phase 2 の通知と一体で設計する（[05](./05-day-usecase.md) §7 にトレードオフを記載）
 - 単発 TODO の追加（対象は繰り返しのルーティンのみ）

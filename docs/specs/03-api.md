@@ -34,6 +34,12 @@ Rust（axum）と Next.js（`shared/api/types.ts` に手動同期）が共有す
 | GET | `/api/harness/proposals?applyState=failed` | 日付を問わず適用失敗の提案を新しい順で取得（画面の「未処理の失敗」枠。2026-07-29 追加） | [17](./17-harness-approval.md) |
 | POST | `/api/harness/proposals/{id}/decision` | ハーネス取り込み提案への承認意思を記録 | [17](./17-harness-approval.md) |
 | POST | `/api/harness/proposals/{id}/apply-result` | ハーネス取り込み提案の適用結果を書き戻す | [17](./17-harness-approval.md) |
+| POST | `/api/intake/candidates` | daily取り込み候補を日単位で取り込む（**0件の日も送る**） | [22](./22-daily-intake.md) |
+| GET | `/api/intake/candidates?status=proposed` | 未決の候補を日付問わず新しい順で取得（「あなた待ち」画面の本体） | [22](./22-daily-intake.md) |
+| GET | `/api/intake/candidates?status=approved&applyState=pending` | 日付を問わず承認済み・適用待ちの候補を古い順で取得 | [22](./22-daily-intake.md) |
+| GET | `/api/intake/candidates?applyState=failed` | 日付を問わず反映失敗の候補を新しい順で取得 | [22](./22-daily-intake.md) |
+| POST | `/api/intake/candidates/{id}/decision` | daily取り込み候補への承認意思を記録 | [22](./22-daily-intake.md) |
+| POST | `/api/intake/candidates/{id}/apply-result` | daily取り込み候補の反映結果を書き戻す | [22](./22-daily-intake.md) |
 | GET | `/api/health` | 自己診断（DB 可否・マスタ件数） | [06](./06-cli-serve.md) |
 | GET | 上記以外 | 静的アセット配信＋SPA フォールバック | [06](./06-cli-serve.md) |
 
@@ -232,6 +238,71 @@ Rust（axum）と Next.js（`shared/api/types.ts` に手動同期）が共有す
 // → 200
 { "proposal": { /* 上記 proposal と同形 */ } }
 
+// POST /api/intake/candidates
+// 同じ date への再送は、その日の全行が proposed かつ apply_state=pending の場合だけ一括置換
+{
+  "date": "2026-08-28",               // "today" も可。元ノート＝候補ファイルの日付（実行日の前日）
+  "sourcePath": "90_Meta/daily_intake/2026-08-28.md",
+  "sourceNote": "01_Daily/2026-08-28.md",   // 任意（省略時 null）
+  "items": [                          // 0〜60件。空配列可（0件の日も受信記録を残すため）
+    {
+      "lane": "thought",              // todo | thought | tone
+      "text": "「アイデアの原料は一人称の摩擦にしかない」",  // 本人の原文そのまま
+      "note": "idea-forge の配線がまだ無い",  // 任意・「考え」レーンの補足1文
+      "lineNo": 12                    // 任意・候補ファイル内の行番号（書き戻しのヒント）
+    }
+  ]
+}
+// → 200
+{
+  "date": "2026-08-28",
+  "receivedAt": "2026-08-29T00:41:00+09:00",
+  "itemCount": 1,
+  "items": [ { /* 下記 item と同形 */ } ]
+}
+
+// GET /api/intake/candidates?status=proposed        （未決・日付降順、同日内 id 昇順）
+// GET /api/intake/candidates?status=approved&applyState=pending  （日付昇順、同日内 id 昇順）
+// GET /api/intake/candidates?applyState=failed      （日付降順、同日内 id 昇順）
+// → 200（3形とも同じ封筒。latest* は intake_days の receivedAt 最大の行。受信ゼロなら全て null）
+{
+  "items": [
+    {
+      "id": 1,
+      "date": "2026-08-28",
+      "slug": "9c1f2a7b0e34",         // sha1("{date}|{lane}|{text}") 先頭12桁（サーバ計算）
+      "lane": "thought",              // todo | thought | tone
+      "text": "「アイデアの原料は一人称の摩擦にしかない」",
+      "note": "idea-forge の配線がまだ無い",
+      "lineNo": 12,
+      "sourcePath": "90_Meta/daily_intake/2026-08-28.md",   // intake_days から
+      "sourceNote": "01_Daily/2026-08-28.md",
+      "status": "proposed",           // proposed | approved | rejected
+      "decidedAt": null,
+      "applyState": "pending",        // pending | applied | failed
+      "appliedAt": null,
+      "error": null,
+      "resultPath": null,             // 反映先の Vault 相対パス
+      "resultUrl": null,              // ToDo レーンで作成した Linear issue の URL
+      "receivedAt": "2026-08-29T00:41:00+09:00"
+    }
+  ],
+  "latestDate": "2026-08-28",
+  "latestReceivedAt": "2026-08-29T00:41:00+09:00",
+  "latestItemCount": 1
+}
+
+// POST /api/intake/candidates/{id}/decision
+{ "status": "approved" }              // proposed | approved | rejected
+// → 200
+{ "item": { /* 上記 item と同形 */ } }
+
+// POST /api/intake/candidates/{id}/apply-result
+{ "state": "applied", "resultPath": "20_Insights/....md", "resultUrl": null }
+// failed のとき: { "state": "failed", "error": "候補ファイルに一致する原文が無い" }
+// → 200
+{ "item": { /* 上記 item と同形 */ } }
+
 // GET /api/health
 { "db": "ok", "routines": 13, "version": "0.1.0" }
 // 異常時は db が "ng"（HTTP 200 のまま返す）。routines はマスタの active 件数
@@ -251,6 +322,10 @@ Rust（axum）と Next.js（`shared/api/types.ts` に手動同期）が共有す
 - ハーネス一覧 GET のクエリは、`date` だけ（省略時 `today`）／`status=approved&applyState=pending`／`applyState=failed` の**3形のみ**（2026-07-29 に failed 形を追加）。未知パラメータ・混在・値違い・条件の片方欠落など、その他は理由文字列つきの 400 `bad_request`
 - ハーネスの decision / apply-result の状態遷移検証は [17](./17-harness-approval.md) §3.3〜§3.4。不正な遷移は 400 `bad_request`
 - ハーネス提案が未着の日は **404 にせず** `receivedAt: null`・`proposals: []` を 200 で返す
+- `POST /api/intake/candidates` の検証（400 `bad_request`）: 詳細は [22](./22-daily-intake.md) §3.1〜§3.2。body は 256KiB 以下、`items` は0〜60件（**空配列は正常**）、`text` は1件2KiB以下かつ空不可、`lane` は `todo`・`thought`・`tone` のみ、`note` は200文字以下、`sourcePath` 欠落・空は不可、同一 date 内の `slug`（サーバ計算）重複は不可
+- daily取り込み一覧 GET のクエリは、`status=proposed`／`status=approved&applyState=pending`／`applyState=failed` の**3形のみ**（`date` 単独の形は持たない——候補の `date` は前日日付であり、画面は状態で引くため → [22](./22-daily-intake.md) §3.5）。その他は理由文字列つきの 400 `bad_request`
+- daily取り込みの decision / apply-result の状態遷移検証は [22](./22-daily-intake.md) §3.3〜§3.4。不正な遷移は 400 `bad_request`。`apply-result` の `error` は1000文字以下（`failed` のとき必須）
+- daily取り込みの受信が1件も無い場合の一覧 GET は **404 にせず** `items: []`・`latestReceivedAt: null` を 200 で返す
 - 過去日でスナップショットが無い日: `tasks: []`・`progress: {done:0,total:0}`・`readonly:true` を 200 で返し、フロントが「記録なし」表示にする
 
 ## 4. エラーレスポンス（確定形）
