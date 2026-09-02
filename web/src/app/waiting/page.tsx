@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { InboxView, rosterOf } from '@/features/inbox';
+import { InboxView, rosterOf, shiftRosterOf } from '@/features/inbox';
 import { useOffice } from '@/features/office';
 
 /**
@@ -13,9 +13,11 @@ import { useOffice } from '@/features/office';
  * 名簿（office.json）は :48310 が配信する外部データで、取得口は office feature が持つ（§5）。
  * **ここで組み合わせる**ことで features 間 import を作らない（AGENTS.md ルール5）。
  * 取得できないときは `undefined` のまま渡し、名簿との突合だけを諦める（§3.4）。
+ * 未着判定（§3.3）も同じ名簿の突合なので、取れなかったことを `rosterUnavailable` で伝える
+ * ——「まだ読み込み中」と「:48310 が停止していて読めない」を画面が区別できるようにする（§6）。
  */
 export default function WaitingPage() {
-  const { office } = useOffice();
+  const { office, error } = useOffice();
 
   return (
     <main>
@@ -25,7 +27,11 @@ export default function WaitingPage() {
         </Link>
       </div>
 
-      <InboxView roster={rosterOf(office)} />
+      <InboxView
+        roster={rosterOf(office)}
+        shiftRoster={shiftRosterOf(office)}
+        rosterUnavailable={Boolean(error)}
+      />
     </main>
   );
 }

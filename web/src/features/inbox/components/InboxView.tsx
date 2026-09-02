@@ -5,6 +5,7 @@ import type { InboxItemDto } from '@/shared/api';
 import { ErrorBanner, Toast } from '@/shared/ui';
 import { useInboxDecision } from '../hooks/useInboxDecision';
 import { useFailedInboxItems, useInboxItems } from '../hooks/useInboxItems';
+import { useInboxSummary } from '../hooks/useInboxSummary';
 import {
   groupByKind,
   kindEffect,
@@ -14,7 +15,9 @@ import {
   senderOf,
   type InboxRosterEntry,
 } from '../lib/item';
+import { missingSources, type InboxShiftEntry } from '../lib/missing';
 import { InboxItemRow } from './InboxItemRow';
+import { InboxMissing } from './InboxMissing';
 
 export type InboxViewProps = {
   /**
@@ -23,6 +26,18 @@ export type InboxViewProps = {
    * 読めていないときは `undefined` が来る＝名簿との突合を諦める（§3.4）。
    */
   roster?: InboxRosterEntry[];
+  /**
+   * 未着判定に使う名簿の行（`review.cadence = "shift"` の社員だけ・§3.3-1）。
+   * `roster` と同じく **app 層が office.json から作って渡す**（features 間 import を作らない・§5）。
+   * `undefined` は「名簿と突き合わせられていない」＝未着判定を諦める（§3.3 末尾）。
+   */
+  shiftRoster?: InboxShiftEntry[];
+  /**
+   * office.json の取得が失敗した（:48310 停止など・§6）。**読み込み中と区別する**ために
+   * 別の prop で受ける——`shiftRoster` が `undefined` なだけでは「まだ」か「取れない」かが
+   * 分からず、諦めた旨の1行（§3.3 末尾）を出す時機を誤る。
+   */
+  rosterUnavailable?: boolean;
 };
 
 function Skeleton() {
@@ -48,9 +63,11 @@ function Skeleton() {
  * **kind でグループし、文言は kind で固定する**。送信元ごとの文言・専用コンポーネントを
  * 作らない——作った時点でハーネスごとの専用画面が再発する（同 §4・docs/specs/24-inbox.md §1）。
  */
-export function InboxView({ roster }: InboxViewProps) {
+export function InboxView({ roster, shiftRoster, rosterUnavailable }: InboxViewProps) {
   const { list, error, isLoading, mutate } = useInboxItems();
   const { failed: failedAcrossDates, failedError } = useFailedInboxItems();
+  // 未着判定の受信側の根拠（§3.3-2）。受信の事実はサーバしか持たない（24 §3.5）
+  const { summary, summaryError } = useInboxSummary();
   const { decide, failure, retry, dismiss } = useInboxDecision(list, mutate);
   // `bodyMd` の開閉。1画面で片付ける導線を割らないよう、遷移せずその場で開く（§3.2）
   const [openIds, setOpenIds] = useState<number[]>([]);
@@ -70,6 +87,8 @@ export function InboxView({ roster }: InboxViewProps) {
   const today = localToday();
   const { failed, pending, decided } = partition(list.items, failedAcrossDates);
   const groups = groupByKind(pending);
+  // 名簿 × 勤務帯 × 受信の突合（§3.3）。0件の受信も「届いた」なので未着にはならない
+  const missing = missingSources(shiftRoster, summary?.sources);
 
   const row = (item: InboxItemDto, options?: { decided?: boolean; showDate?: boolean }) => (
     <InboxItemRow
@@ -96,6 +115,16 @@ export function InboxView({ roster }: InboxViewProps) {
       {failedError && (
         <ErrorBanner message={'未処理の失敗を取得できませんでした: ' + failedError.message} />
       )}
+
+      {/* summary が取れないと未着は判定できない。判定を黙って落とさず、取得の失敗として出す
+          （§6 の「`/api/inbox/*` 500・通信失敗 → ErrorBanner」。office.json 側の失敗と違い
+          こちらは cerebellum の API なので、名簿の1行notice ではなくバナーで扱う） */}
+      {summaryError && (
+        <ErrorBanner message={'受信の状況を取得できませんでした: ' + summaryError.message} />
+      )}
+
+      {/* 未着（§3.3）。失敗枠より上——監視の監視がここしか無い（24 §9） */}
+      <InboxMissing entries={missing} unavailable={rosterUnavailable} />
 
       {/* 未処理の失敗（§3.2）。取得元は `?applyState=failed` なので過去日の失敗もここに出る
           ——下に埋もれると気づけないので**最上部**に固定し、日付をカードに併記する */}
