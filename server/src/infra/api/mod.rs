@@ -14,6 +14,7 @@ use crate::{
         get_summary::GetSummary,
         manage_digest::ManageDigest,
         manage_harness::ManageHarness,
+        manage_inbox::ManageInbox,
         manage_intake::ManageIntake,
         manage_learning::ManageLearning,
         manage_routines::ManageRoutines,
@@ -35,6 +36,7 @@ pub struct AppState {
     pub manage_learning: Arc<ManageLearning>,
     pub manage_harness: Arc<ManageHarness>,
     pub manage_intake: Arc<ManageIntake>,
+    pub manage_inbox: Arc<ManageInbox>,
     pub routine_repository: Arc<dyn RoutineRepository>,
     pub task_repository: Arc<dyn TaskRepository>,
     pub config: Arc<Config>,
@@ -80,6 +82,17 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route(
             "/intake/candidates/{id}/apply-result",
             post(handlers::save_intake_apply_result),
+        )
+        .route("/inbox/batches", post(handlers::save_inbox_batch))
+        .route("/inbox/items", get(handlers::get_inbox_items))
+        .route("/inbox/summary", get(handlers::get_inbox_summary))
+        .route(
+            "/inbox/items/{id}/decision",
+            post(handlers::save_inbox_decision),
+        )
+        .route(
+            "/inbox/items/{id}/apply-result",
+            post(handlers::save_inbox_apply_result),
         )
         .route(
             "/routines",

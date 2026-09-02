@@ -23,12 +23,13 @@ use crate::{
         get_summary::GetSummary,
         manage_digest::ManageDigest,
         manage_harness::ManageHarness,
+        manage_inbox::ManageInbox,
         manage_intake::ManageIntake,
         manage_learning::ManageLearning,
         manage_routines::ManageRoutines,
         ports::{
-            Clock, DigestRepository, HarnessRepository, IntakeRepository, LearningRepository,
-            RoutineRepository, TaskRepository,
+            Clock, DigestRepository, HarnessRepository, InboxRepository, IntakeRepository,
+            LearningRepository, RoutineRepository, TaskRepository,
         },
         toggle_check::ToggleCheck,
     },
@@ -80,6 +81,7 @@ fn test_app_with_routines(seed_routines: bool) -> axum::Router {
     let digest_repository: Arc<dyn DigestRepository> = repository.clone();
     let learning_repository: Arc<dyn LearningRepository> = repository.clone();
     let harness_repository: Arc<dyn HarnessRepository> = repository.clone();
+    let inbox_repository: Arc<dyn InboxRepository> = repository.clone();
     let intake_repository: Arc<dyn IntakeRepository> = repository.clone();
     let task_repository: Arc<dyn TaskRepository> = repository;
     let clock: Arc<dyn Clock> = Arc::new(FakeClock);
@@ -91,6 +93,7 @@ fn test_app_with_routines(seed_routines: bool) -> axum::Router {
     let manage_learning = Arc::new(ManageLearning::new(learning_repository, Arc::clone(&clock)));
     let manage_harness = Arc::new(ManageHarness::new(harness_repository, Arc::clone(&clock)));
     let manage_intake = Arc::new(ManageIntake::new(intake_repository, Arc::clone(&clock)));
+    let manage_inbox = Arc::new(ManageInbox::new(inbox_repository, Arc::clone(&clock)));
 
     router(Arc::new(AppState {
         get_day: Arc::new(GetDay::new(
@@ -112,6 +115,7 @@ fn test_app_with_routines(seed_routines: bool) -> axum::Router {
         manage_learning,
         manage_harness,
         manage_intake,
+        manage_inbox,
         routine_repository,
         task_repository,
         config: Arc::new(Config {
@@ -1671,4 +1675,239 @@ async fn harness_list_rejects_unknown_and_mixed_query_parameters() {
             "{path}"
         );
     }
+}
+
+fn inbox_batch(source: &str, date: &str, items: Value) -> Value {
+    json!({"source":source,"date":date,"items":items})
+}
+
+#[tokio::test]
+async fn inbox_http_round_trip_supports_approve_and_choose() {
+    let app = test_app();
+    let empty_items = call(app.clone(), "GET", "/api/inbox/items?status=open").await;
+    assert_eq!(empty_items.status(), StatusCode::OK);
+    assert_eq!(json_body(empty_items).await, json!({"items":[]}));
+    let empty_summary = call(app.clone(), "GET", "/api/inbox/summary").await;
+    assert_eq!(empty_summary.status(), StatusCode::OK);
+    assert_eq!(json_body(empty_summary).await, json!({"sources":[]}));
+
+    let newer = call_json(
+        app.clone(), "POST", "/api/inbox/batches",
+        inbox_batch("sender", "2026-07-26", json!([
+            {"slug":"choose","kind":"choose","title":"newer choose","options":[{"id":"one","label":"One"},{"id":"two","label":"Two"}],"payload":{"opaque":true}}
+        ])),
+    ).await;
+    assert_eq!(newer.status(), StatusCode::OK);
+    assert_eq!(json_body(newer).await["itemCount"], 1);
+    let older = call_json(
+        app.clone(),
+        "POST",
+        "/api/inbox/batches",
+        inbox_batch(
+            "sender",
+            "2026-07-25",
+            json!([
+                {"slug":"approve","kind":"approve","title":"older approve","bodyMd":"details"}
+            ]),
+        ),
+    )
+    .await;
+    assert_eq!(older.status(), StatusCode::OK);
+
+    let open = json_body(call(app.clone(), "GET", "/api/inbox/items?status=open").await).await;
+    assert_eq!(
+        open["items"][0]["slug"], "choose",
+        "open list is newest first"
+    );
+    assert_eq!(open["items"][1]["slug"], "approve");
+    let choose_id = open["items"][0]["id"].as_i64().unwrap();
+    let approve_id = open["items"][1]["id"].as_i64().unwrap();
+
+    let approved = call_json(
+        app.clone(),
+        "POST",
+        &format!("/api/inbox/items/{approve_id}/decision"),
+        json!({"status":"approved"}),
+    )
+    .await;
+    assert_eq!(approved.status(), StatusCode::OK);
+    assert_eq!(json_body(approved).await["item"]["status"], "approved");
+    let chosen = call_json(
+        app.clone(),
+        "POST",
+        &format!("/api/inbox/items/{choose_id}/decision"),
+        json!({"status":"chosen","choice":"two"}),
+    )
+    .await;
+    assert_eq!(chosen.status(), StatusCode::OK);
+    let chosen = json_body(chosen).await;
+    assert_eq!(chosen["item"]["status"], "chosen");
+    assert_eq!(chosen["item"]["choice"], "two");
+
+    // These rows must not leak into the decided/pending extraction below:
+    // one belongs to another source, and one was already applied for this source.
+    let other_source = call_json(
+        app.clone(),
+        "POST",
+        "/api/inbox/batches",
+        inbox_batch(
+            "other-sender",
+            "2026-07-24",
+            json!([{"slug":"other","kind":"approve","title":"other source"}]),
+        ),
+    )
+    .await;
+    assert_eq!(other_source.status(), StatusCode::OK);
+    let other_open =
+        json_body(call(app.clone(), "GET", "/api/inbox/items?status=open").await).await;
+    let other_id = other_open["items"][0]["id"].as_i64().unwrap();
+    let other_decided = call_json(
+        app.clone(),
+        "POST",
+        &format!("/api/inbox/items/{other_id}/decision"),
+        json!({"status":"approved"}),
+    )
+    .await;
+    assert_eq!(other_decided.status(), StatusCode::OK);
+
+    let already_applied = call_json(
+        app.clone(),
+        "POST",
+        "/api/inbox/batches",
+        inbox_batch(
+            "sender",
+            "2026-07-23",
+            json!([{"slug":"applied","kind":"approve","title":"already applied"}]),
+        ),
+    )
+    .await;
+    assert_eq!(already_applied.status(), StatusCode::OK);
+    let applied_open =
+        json_body(call(app.clone(), "GET", "/api/inbox/items?status=open").await).await;
+    let applied_id = applied_open["items"][0]["id"].as_i64().unwrap();
+    let applied_decided = call_json(
+        app.clone(),
+        "POST",
+        &format!("/api/inbox/items/{applied_id}/decision"),
+        json!({"status":"approved"}),
+    )
+    .await;
+    assert_eq!(applied_decided.status(), StatusCode::OK);
+    let applied_result = call_json(
+        app.clone(),
+        "POST",
+        &format!("/api/inbox/items/{applied_id}/apply-result"),
+        json!({"state":"applied","resultPath":"opaque/already-applied.md"}),
+    )
+    .await;
+    assert_eq!(applied_result.status(), StatusCode::OK);
+
+    let decided = json_body(
+        call(
+            app.clone(),
+            "GET",
+            "/api/inbox/items?source=sender&status=decided&applyState=pending",
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(
+        decided["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|item| item["id"].as_i64().unwrap())
+            .collect::<Vec<_>>(),
+        vec![approve_id, choose_id],
+        "decided extraction contains only sender's pending items, oldest first"
+    );
+    for id in [approve_id, choose_id] {
+        let result = call_json(
+            app.clone(),
+            "POST",
+            &format!("/api/inbox/items/{id}/apply-result"),
+            json!({"state":"applied","resultPath":"opaque/result.md"}),
+        )
+        .await;
+        assert_eq!(result.status(), StatusCode::OK);
+        assert_eq!(json_body(result).await["item"]["applyState"], "applied");
+    }
+}
+
+#[tokio::test]
+async fn inbox_alert_resend_reopens_and_http_errors_follow_contract() {
+    let app = test_app();
+    let alert = inbox_batch(
+        "watchdog",
+        "today",
+        json!([
+            {"slug":"alert","kind":"alert","title":"watch this"}
+        ]),
+    );
+    let saved = call_json(app.clone(), "POST", "/api/inbox/batches", alert.clone()).await;
+    let id = json_body(saved).await;
+    assert_eq!(id["itemCount"], 1);
+    let open = json_body(call(app.clone(), "GET", "/api/inbox/items?status=open").await).await;
+    let id = open["items"][0]["id"].as_i64().unwrap();
+    let acknowledged = call_json(
+        app.clone(),
+        "POST",
+        &format!("/api/inbox/items/{id}/decision"),
+        json!({"status":"acknowledged"}),
+    )
+    .await;
+    assert_eq!(acknowledged.status(), StatusCode::OK);
+    assert_eq!(
+        json_body(acknowledged).await["item"]["status"],
+        "acknowledged"
+    );
+    let resent = call_json(app.clone(), "POST", "/api/inbox/batches", alert).await;
+    assert_eq!(resent.status(), StatusCode::OK);
+    let open = json_body(call(app.clone(), "GET", "/api/inbox/items?status=open").await).await;
+    assert_eq!(open["items"][0]["status"], "open");
+
+    let invalid = call_json(app.clone(), "POST", "/api/inbox/batches", json!({"source":"bad","date":"today","items":[{"slug":"x","kind":"approve","title":"x","options":[]}]})).await;
+    assert_eq!(invalid.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(json_body(invalid).await["error"]["code"], "bad_request");
+    let missing = call_json(
+        app.clone(),
+        "POST",
+        "/api/inbox/items/99999/decision",
+        json!({"status":"approved"}),
+    )
+    .await;
+    assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+    assert_eq!(json_body(missing).await["error"]["code"], "not_found");
+    let protected = inbox_batch(
+        "protected",
+        "2026-07-25",
+        json!([
+            {"slug":"approve","kind":"approve","title":"approve"}
+        ]),
+    );
+    let first = call_json(app.clone(), "POST", "/api/inbox/batches", protected.clone()).await;
+    assert_eq!(first.status(), StatusCode::OK);
+    let open = json_body(call(app.clone(), "GET", "/api/inbox/items?status=open").await).await;
+    let protected_id = open["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["source"] == "protected")
+        .unwrap()["id"]
+        .as_i64()
+        .unwrap();
+    assert_eq!(
+        call_json(
+            app.clone(),
+            "POST",
+            &format!("/api/inbox/items/{protected_id}/decision"),
+            json!({"status":"rejected"})
+        )
+        .await
+        .status(),
+        StatusCode::OK
+    );
+    let conflict = call_json(app, "POST", "/api/inbox/batches", protected).await;
+    assert_eq!(conflict.status(), StatusCode::CONFLICT);
+    assert_eq!(json_body(conflict).await["error"]["code"], "conflict");
 }

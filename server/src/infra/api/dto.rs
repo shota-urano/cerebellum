@@ -4,6 +4,10 @@ use crate::domain::{
     day::{DaySnapshot, Progress, SummaryDay},
     digest::{Block, Section},
     harness::{ApplyResultInput, HarnessProposalBatchInput, HarnessProposalInput},
+    inbox::{
+        InboxApplyResultInput, InboxBatchInput, InboxDecisionInput, InboxItemInput,
+        InboxOptionInput,
+    },
     intake::{IntakeApplyResultInput, IntakeBatchInput, IntakeItemInput},
     learning::{
         LearningGrade, LearningGradeInput, LearningGradeValue, LearningProblem,
@@ -17,7 +21,7 @@ use crate::usecase::{
     manage_harness::HarnessProposalList,
     manage_intake::{IntakeList, IntakeSaved},
     manage_learning::{LearningResultView, LearningSetView, LearningStoredAt},
-    ports::{StoredHarnessProposal, StoredIntakeCandidate},
+    ports::{InboxSourceSummary, StoredHarnessProposal, StoredInboxItem, StoredIntakeCandidate},
 };
 
 #[derive(Debug, Serialize)]
@@ -844,6 +848,250 @@ impl From<StoredIntakeCandidate> for IntakeCandidateDto {
             result_path: v.result_path,
             result_url: v.result_url,
             received_at: v.received_at,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct InboxBatchInputDto {
+    source: Option<String>,
+    date: Option<String>,
+    items: Option<Vec<InboxItemInputDto>>,
+}
+impl From<InboxBatchInputDto> for InboxBatchInput {
+    fn from(input: InboxBatchInputDto) -> Self {
+        Self {
+            source: input.source,
+            date: input.date,
+            items: input
+                .items
+                .map(|items| items.into_iter().map(Into::into).collect()),
+        }
+    }
+}
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InboxItemInputDto {
+    slug: Option<String>,
+    kind: Option<String>,
+    title: Option<String>,
+    body_md: Option<String>,
+    options: Option<Vec<InboxOptionInputDto>>,
+    ref_path: Option<String>,
+    payload: Option<serde_json::Value>,
+    expires_at: Option<String>,
+}
+impl From<InboxItemInputDto> for InboxItemInput {
+    fn from(input: InboxItemInputDto) -> Self {
+        Self {
+            slug: input.slug,
+            kind: input.kind,
+            title: input.title,
+            body_md: input.body_md,
+            options: input
+                .options
+                .map(|options| options.into_iter().map(Into::into).collect()),
+            ref_path: input.ref_path,
+            payload: input.payload,
+            expires_at: input.expires_at,
+        }
+    }
+}
+#[derive(Debug, Deserialize)]
+struct InboxOptionInputDto {
+    id: Option<String>,
+    label: Option<String>,
+}
+impl From<InboxOptionInputDto> for InboxOptionInput {
+    fn from(input: InboxOptionInputDto) -> Self {
+        Self {
+            id: input.id,
+            label: input.label,
+        }
+    }
+}
+#[derive(Debug, Deserialize)]
+pub(super) struct InboxDecisionInputDto {
+    status: Option<String>,
+    choice: Option<String>,
+}
+impl From<InboxDecisionInputDto> for InboxDecisionInput {
+    fn from(input: InboxDecisionInputDto) -> Self {
+        Self {
+            status: input.status,
+            choice: input.choice,
+        }
+    }
+}
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct InboxApplyResultInputDto {
+    state: Option<String>,
+    result_path: Option<String>,
+    result_url: Option<String>,
+    error: Option<String>,
+}
+impl From<InboxApplyResultInputDto> for InboxApplyResultInput {
+    fn from(input: InboxApplyResultInputDto) -> Self {
+        Self {
+            state: input.state,
+            result_path: input.result_path,
+            result_url: input.result_url,
+            error: input.error,
+        }
+    }
+}
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct InboxBatchSavedDto {
+    source: String,
+    date: String,
+    received_at: String,
+    item_count: usize,
+}
+impl From<crate::usecase::manage_inbox::InboxBatchSaved> for InboxBatchSavedDto {
+    fn from(saved: crate::usecase::manage_inbox::InboxBatchSaved) -> Self {
+        Self {
+            source: saved.source,
+            date: saved.date,
+            received_at: saved.received_at,
+            item_count: saved.item_count,
+        }
+    }
+}
+#[derive(Debug, Serialize)]
+pub(super) struct InboxItemsDto {
+    items: Vec<InboxItemDto>,
+}
+impl From<Vec<StoredInboxItem>> for InboxItemsDto {
+    fn from(items: Vec<StoredInboxItem>) -> Self {
+        Self {
+            items: items.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+#[derive(Debug, Serialize)]
+pub(super) struct InboxItemResponseDto {
+    item: InboxItemDto,
+}
+impl From<StoredInboxItem> for InboxItemResponseDto {
+    fn from(item: StoredInboxItem) -> Self {
+        Self { item: item.into() }
+    }
+}
+#[derive(Debug, Serialize)]
+pub(super) struct InboxSummaryDto {
+    sources: Vec<InboxSourceSummaryDto>,
+}
+impl From<Vec<InboxSourceSummary>> for InboxSummaryDto {
+    fn from(sources: Vec<InboxSourceSummary>) -> Self {
+        Self {
+            sources: sources.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct InboxItemDto {
+    id: i64,
+    source: String,
+    date: String,
+    slug: String,
+    kind: &'static str,
+    title: String,
+    body_md: Option<String>,
+    options: Option<Vec<InboxOptionDto>>,
+    ref_path: Option<String>,
+    payload: Option<serde_json::Value>,
+    expires_at: Option<String>,
+    status: &'static str,
+    choice: Option<String>,
+    decided_at: Option<String>,
+    apply_state: &'static str,
+    applied_at: Option<String>,
+    error: Option<String>,
+    result_path: Option<String>,
+    result_url: Option<String>,
+    received_at: String,
+}
+impl From<StoredInboxItem> for InboxItemDto {
+    fn from(item: StoredInboxItem) -> Self {
+        Self {
+            id: item.id,
+            source: item.source,
+            date: item.date,
+            slug: item.slug,
+            kind: item.kind.as_str(),
+            title: item.title,
+            body_md: item.body_md,
+            options: item
+                .options
+                .map(|options| options.into_iter().map(Into::into).collect()),
+            ref_path: item.ref_path,
+            payload: item.payload,
+            expires_at: item.expires_at,
+            status: item.status.as_str(),
+            choice: item.choice,
+            decided_at: item.decided_at,
+            apply_state: item.apply_state.as_str(),
+            applied_at: item.applied_at,
+            error: item.apply_error,
+            result_path: item.result_path,
+            result_url: item.result_url,
+            received_at: item.received_at,
+        }
+    }
+}
+#[derive(Debug, Serialize)]
+struct InboxOptionDto {
+    id: String,
+    label: String,
+}
+impl From<crate::domain::inbox::InboxOption> for InboxOptionDto {
+    fn from(option: crate::domain::inbox::InboxOption) -> Self {
+        Self {
+            id: option.id,
+            label: option.label,
+        }
+    }
+}
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct InboxSourceSummaryDto {
+    source: String,
+    latest_date: String,
+    latest_received_at: String,
+    latest_item_count: usize,
+    open_count: InboxOpenCountDto,
+    failed_count: usize,
+}
+impl From<InboxSourceSummary> for InboxSourceSummaryDto {
+    fn from(summary: InboxSourceSummary) -> Self {
+        Self {
+            source: summary.source,
+            latest_date: summary.latest_date,
+            latest_received_at: summary.latest_received_at,
+            latest_item_count: summary.latest_item_count,
+            open_count: summary.open_count.into(),
+            failed_count: summary.failed_count,
+        }
+    }
+}
+#[derive(Debug, Serialize)]
+struct InboxOpenCountDto {
+    approve: usize,
+    choose: usize,
+    read: usize,
+    alert: usize,
+}
+impl From<crate::usecase::ports::InboxOpenCount> for InboxOpenCountDto {
+    fn from(count: crate::usecase::ports::InboxOpenCount) -> Self {
+        Self {
+            approve: count.approve,
+            choose: count.choose,
+            read: count.read,
+            alert: count.alert,
         }
     }
 }
