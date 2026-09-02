@@ -9,6 +9,7 @@ use crate::domain::{
         ApplyResult, ApplyState, ChallengeVerdict, HarnessKind, HarnessProposalBatch,
         HarnessStatus, HarnessVerdict,
     },
+    inbox::{InboxApplyResult, InboxApplyState, InboxBatch, InboxKind, InboxOption, InboxStatus},
     intake::{IntakeApplyResult, IntakeApplyState, IntakeBatch, IntakeLane, IntakeStatus},
     routine::{Routine, RoutineFields},
     task::{CheckedTask, Task},
@@ -229,6 +230,84 @@ pub struct StoredIntakeCandidate {
     pub received_at: String,
 }
 
+pub trait InboxRepository: Send + Sync {
+    fn replace_inbox_batch(
+        &self,
+        batch: &InboxBatch,
+        received_at: &str,
+    ) -> Result<(), InboxRepositoryError>;
+    fn list_open_inbox_items(
+        &self,
+        now: &str,
+    ) -> Result<Vec<StoredInboxItem>, InboxRepositoryError>;
+    fn list_decided_inbox_items(
+        &self,
+        source: &str,
+    ) -> Result<Vec<StoredInboxItem>, InboxRepositoryError>;
+    fn list_failed_inbox_items(&self) -> Result<Vec<StoredInboxItem>, InboxRepositoryError>;
+    fn get_inbox_item(&self, id: i64) -> Result<Option<StoredInboxItem>, InboxRepositoryError>;
+    fn save_inbox_decision(
+        &self,
+        id: i64,
+        expected_status: InboxStatus,
+        expected_apply_state: InboxApplyState,
+        decision_status: InboxStatus,
+        choice: Option<&str>,
+        decided_at: &str,
+    ) -> Result<StoredInboxItem, InboxRepositoryError>;
+    fn save_inbox_apply_result(
+        &self,
+        id: i64,
+        expected_status: InboxStatus,
+        expected_apply_state: InboxApplyState,
+        result: &InboxApplyResult,
+        applied_at: &str,
+    ) -> Result<StoredInboxItem, InboxRepositoryError>;
+    fn inbox_summary(&self) -> Result<Vec<InboxSourceSummary>, InboxRepositoryError>;
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StoredInboxItem {
+    pub id: i64,
+    pub source: String,
+    pub date: String,
+    pub slug: String,
+    pub kind: InboxKind,
+    pub title: String,
+    pub body_md: Option<String>,
+    pub options: Option<Vec<InboxOption>>,
+    pub ref_path: Option<String>,
+    pub payload: Option<serde_json::Value>,
+    pub expires_at: Option<String>,
+    pub status: InboxStatus,
+    pub choice: Option<String>,
+    pub decided_at: Option<String>,
+    pub apply_state: InboxApplyState,
+    pub applied_at: Option<String>,
+    pub apply_error: Option<String>,
+    pub result_path: Option<String>,
+    pub result_url: Option<String>,
+    pub received_at: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InboxOpenCount {
+    pub approve: usize,
+    pub choose: usize,
+    pub read: usize,
+    pub alert: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InboxSourceSummary {
+    pub source: String,
+    pub latest_date: String,
+    pub latest_received_at: String,
+    pub latest_item_count: usize,
+    pub open_count: InboxOpenCount,
+    pub failed_count: usize,
+}
+
 pub trait Clock: Send + Sync {
     fn now(&self) -> DateTime<FixedOffset>;
 }
@@ -335,6 +414,27 @@ pub enum IntakeRepositoryError {
     },
 }
 impl IntakeRepositoryError {
+    pub fn internal(error: impl Error + Send + Sync + 'static) -> Self {
+        Self::Internal {
+            source: Box::new(error),
+        }
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum InboxRepositoryError {
+    #[error("inbox items for the source and date contain a protected state")]
+    Conflict,
+    #[error("inbox item no longer matches the expected state")]
+    StateMismatch,
+    #[error("inbox repository failed")]
+    Internal {
+        #[source]
+        source: Box<dyn Error + Send + Sync>,
+    },
+}
+
+impl InboxRepositoryError {
     pub fn internal(error: impl Error + Send + Sync + 'static) -> Self {
         Self::Internal {
             source: Box::new(error),
