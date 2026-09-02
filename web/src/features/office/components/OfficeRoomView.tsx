@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import {
   actionCountOf,
+  hasNoProfile,
   hasReview,
   lastRunOf,
   lineBlocksOf,
@@ -131,7 +132,9 @@ export function OfficeRoomView({
   // 名簿の設定漏れは在籍状態と独立に潰す対象なので、停止中を外すと漏れが隠れる（26 §3.2-2）。
   const members = [...blocks.scheduled, ...blocks.manual, ...blocks.stopped];
   const reviewers = members.filter(hasReview).length;
-  const unlisted = members.filter((employee) => rosterOf(employee).missing).length;
+  // 数えるのは `profile` 不在だけ（§3.2-2）。`job` が空の社員はカードでは「名簿 未記載」
+  // （21 §3.2-3）だが frontmatter そのものはあるので、ここには混ぜない
+  const unlisted = members.filter(hasNoProfile).length;
   const breakdown = [
     `勤務帯 ${blocks.scheduled.length}名`,
     blocks.manual.length > 0 ? `手動 ${blocks.manual.length}名` : null,

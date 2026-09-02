@@ -255,6 +255,18 @@ export function hasReview(employee: OfficeEmployee): boolean {
   return rosterOf(employee).review !== null;
 }
 
+/**
+ * 名簿（`profile`）そのものが無い社員（docs/specs/26-web-office-company.md §3.2-2 の
+ * 「名簿未記載 m名」）。数えるのは正本の「**カードが書けない一体**」＝ `profile` 不在だけ。
+ *
+ * `rosterOf().missing`（21 §3.2-3）とは**別の述語**。あちらは社員カードの表示用で
+ * 「`profile` が無い／`job` が空」の両方を「名簿 未記載」に畳むが、`job` だけが空の社員は
+ * カードが書けている（frontmatter はある）ので §3.2-2 の集計には入れない。
+ */
+export function hasNoProfile(employee: OfficeEmployee): boolean {
+  return (employee.profile ?? null) === null;
+}
+
 /** ライン（`profile.line`）の日本語ラベル（21 §3.7-2）。識別子→表示語彙の対応で、名簿の値ではない */
 export const OFFICE_LINE_LABELS: Readonly<Record<string, string>> = {
   knowledge: '知識',

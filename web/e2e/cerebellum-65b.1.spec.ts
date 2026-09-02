@@ -80,7 +80,8 @@ const EMPLOYEES = [
     trigger: 'scheduled',
     profile: profile({
       job: '消し込み漏れを見張ります',
-      dept: 'engineering',
+      // `dept` キーそのものが無い社員（生成側が §9 に未対応のあいだの実データ）。
+      // 明示 null と同じく「部署 未記載」になることを検証する
       review: { kinds: ['alert'], cadence: 'shift' } satisfies Review,
     }),
   },
@@ -95,7 +96,8 @@ const EMPLOYEES = [
     last_run_at: atLocal(0, '05:00'),
     last_run_id: 'r-collect',
     trigger: 'scheduled',
-    profile: profile({ job: '受信箱を仕分けます', dept: 'engineering' }),
+    // **明示的な null** で受ける（キー欠落での代替にしない）
+    profile: profile({ job: '受信箱を仕分けます', dept: 'engineering', review: null }),
   },
   {
     // `dept` が届いていない社員（§9 の未実装期）。skill 名や line から埋めない（§3.1-3）
@@ -108,7 +110,8 @@ const EMPLOYEES = [
     last_run_at: null,
     last_run_id: null,
     trigger: 'scheduled',
-    profile: profile({ job: '思いつきを鍛えます', line: 'incubate' }),
+    // **明示的な null** で受ける（キー欠落での代替にしない）
+    profile: profile({ job: '思いつきを鍛えます', line: 'incubate', dept: null, review: null }),
   },
   {
     // 名簿そのものが無い社員。「カードが書けない一体」＝内訳の「名簿未記載」（§3.2-2）
@@ -122,6 +125,20 @@ const EMPLOYEES = [
     last_run_id: null,
     trigger: 'scheduled',
     profile: null,
+  },
+  {
+    // `profile` はあるが `job` が空の社員。カードでは「名簿 未記載」（21 §3.2-3）だが、
+    // frontmatter そのものはある＝「カードが書けない一体」ではないので §3.2-2 の集計に入らない
+    automation_id: 'a-blank',
+    name: '空欄の社員（stub）',
+    skill: 'stub',
+    enabled: true,
+    shift: { hour: 3, minute: 0, days: '毎日', label: '毎日 03:00' },
+    next_run_at: atLocal(1, '03:00'),
+    last_run_at: null,
+    last_run_id: null,
+    trigger: 'scheduled',
+    profile: profile({ job: '', dept: null, review: null }),
   },
   {
     // 手動起動 × 不定期の人間確認（§3.1-1 の cadence: adhoc）
@@ -254,8 +271,9 @@ test('cadence が adhoc なら「不定期」と添える', async ({ page }) => 
   await expect(card.locator('.of__card-review')).toHaveText('人間確認: choose（不定期）');
 });
 
-test('review が null なら「人間確認: なし」で、未記載様式にしない', async ({ page }) => {
+test('review が明示的な null なら「人間確認: なし」で、未記載様式にしない', async ({ page }) => {
   await mockOffice(page);
+  // a-collect の `profile.review` は **`null` を明示**したフィクスチャ（キー欠落での代替にしない）
   const card = await openCard(page, 'a-collect', '情報収集（collect）');
 
   const review = card.locator('.of__card-review');
@@ -273,15 +291,30 @@ test('review が null なら「人間確認: なし」で、未記載様式に�
 
 // ---- 所属部署（§3.1-3） ----
 
-test('dept が null なら「部署 未記載」で、skill 名から推測した値を出さない', async ({ page }) => {
+test('dept が明示的な null なら「部署 未記載」で、skill 名から推測した値を出さない', async ({
+  page,
+}) => {
   await mockOffice(page);
+  // a-idea-forge の `profile.dept` は **`null` を明示**したフィクスチャ（キー欠落での代替にしない）
   const card = await openCard(page, 'a-idea-forge', '着想鍛造（idea-forge）');
 
   await expect(card.locator('.of__card-meta-wide dd')).toHaveText('部署 未記載');
-  // 他社員の部署 id も、skill 名・line からの推測値も出ない（§3.1-3・§9）
+  // 他社員の部署 id も、skill 名（idea-forge）・line（incubate）からの推測値も出ない（§3.1-3・§9）
   await expect(card).not.toContainText('second-brain-harness');
   await expect(card).not.toContainText('engineering');
   await expect(card).not.toContainText('harness');
+  await expect(card).not.toContainText('incubate');
+});
+
+test('dept のキーが無い社員も同じく「部署 未記載」（生成側の未対応を推測で埋めない）', async ({
+  page,
+}) => {
+  await mockOffice(page);
+  // a-watchdog の `profile` には `dept` キーそのものが無い（§2「届くまでは全社員 null として扱う」）
+  const card = await openCard(page, 'a-watchdog', 'ルーティン監視（routine-watchdog）');
+
+  await expect(card.locator('.of__card-meta-wide dd')).toHaveText('部署 未記載');
+  await expect(card).not.toContainText('engineering');
 });
 
 // ---- 席には出さない（§3.1-4） ----
@@ -291,7 +324,7 @@ test('席には所属部署も人間確認も出ない（正常なものほど�
   await page.goto('/office?room=library');
 
   const room = page.getByRole('region', { name: 'LIBRARYの社員' });
-  await expect(room.locator('.of3__worker')).toHaveCount(7);
+  await expect(room.locator('.of3__worker')).toHaveCount(8);
   const seats = (await room.locator('.of3__worker').allInnerTexts()).join(' ');
   expect(seats).not.toContain('人間確認');
   expect(seats).not.toContain('second-brain-harness');
@@ -325,10 +358,11 @@ test('部署ヘッダに「人間確認あり n名」と「名簿未記載 m名�
   await mockOffice(page);
   await page.goto('/office?room=library');
 
-  // 勤務帯5・手動1・停止中1／review を持つのは digest・watchdog・ask・retired の4名／
-  // profile が無いのは bare の1名。未記載を隠すと設定漏れが永久に見えなくなる（§3.2-2）
+  // 勤務帯6・手動1・停止中1／review を持つのは digest・watchdog・ask・retired の4名／
+  // **`profile` が無いのは bare の1名だけ**——`job` が空の a-blank は frontmatter があるので
+  // 数えない（§3.2-2）。未記載を隠すと設定漏れが永久に見えなくなる
   await expect(page.locator('.of3__room-breakdown')).toHaveText(
-    '勤務帯 5名・手動 1名・停止中 1名・人間確認あり 4名・名簿未記載 1名',
+    '勤務帯 6名・手動 1名・停止中 1名・人間確認あり 4名・名簿未記載 1名',
   );
 
   await page.screenshot({
@@ -337,11 +371,28 @@ test('部署ヘッダに「人間確認あり n名」と「名簿未記載 m名�
   });
 });
 
+test('job が空だけの社員はカードでは「名簿 未記載」でも、ヘッダの名簿未記載には数えない', async ({
+  page,
+}) => {
+  await mockOffice(page);
+
+  // カードの表示は 21 §3.2-3 のまま（`profile` が無い／`job` が空 → 「名簿 未記載」）
+  const blank = await openCard(page, 'a-blank', '空欄の社員（stub）');
+  await expect(blank.locator('.of__card-job')).toHaveText('名簿 未記載');
+  const bare = await openCard(page, 'a-bare', '旧バックアップ（bare）');
+  await expect(bare.locator('.of__card-job')).toHaveText('名簿 未記載');
+
+  // ヘッダが数えるのは「カードが書けない一体」＝ `profile` 不在の a-bare だけ（26 §3.2-2）。
+  // 2名になっていたら `job` 空の a-blank まで混ざっている
+  await page.goto('/office?room=library');
+  await expect(page.locator('.of3__room-breakdown')).toContainText('名簿未記載 1名');
+});
+
 test('review を持つ社員が居なければ「人間確認あり」の項は出ない（0名を書かない）', async ({ page }) => {
   await mockOffice(page, office({ employees: EMPLOYEES_WITHOUT_REVIEW }));
   await page.goto('/office?room=library');
 
   const breakdown = page.locator('.of3__room-breakdown');
-  await expect(breakdown).toHaveText('勤務帯 5名・手動 1名・停止中 1名・名簿未記載 1名');
+  await expect(breakdown).toHaveText('勤務帯 6名・手動 1名・停止中 1名・名簿未記載 1名');
   await expect(breakdown).not.toContainText('人間確認あり');
 });
