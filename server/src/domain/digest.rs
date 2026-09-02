@@ -9,7 +9,7 @@
 /// `nightshift.report` はダイジェストではなく夜勤詳細ビュー（/nightshift・
 /// docs/specs/13-web-nightshift.md）への結び付け。サーバーは語彙検証のみで、
 /// データは表示側が夜勤ビューア（:48310）の runs.json を直接読む。
-pub const DETAIL_REFS: [&str; 8] = [
+pub const DETAIL_REFS: [&str; 9] = [
     "digest.connection",
     "digest.derive",
     "digest.idea",
@@ -18,6 +18,7 @@ pub const DETAIL_REFS: [&str; 8] = [
     "learning.session",
     "harness.proposals",
     "intake.candidates",
+    "inbox.items",
 ];
 
 pub fn is_valid_detail_ref(value: &str) -> bool {
@@ -273,6 +274,7 @@ mod tests {
         assert!(is_valid_detail_ref("learning.session"));
         assert!(is_valid_detail_ref("harness.proposals"));
         assert!(is_valid_detail_ref("intake.candidates"));
+        assert!(is_valid_detail_ref("inbox.items"));
         assert!(!is_valid_detail_ref("learning.unknown"));
         assert!(!is_valid_detail_ref(""));
     }

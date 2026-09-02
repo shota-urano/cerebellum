@@ -109,7 +109,7 @@ JSON 契約の正本は [`03-api.md`](./03-api.md) §3。ここには検証規�
 
 ## 5. インターフェース（実装時に他仕様へ追記するもの）
 
-- [`02-data-model.md`](./02-data-model.md): `inbox_receipts`（source・date・received_at・item_count、`PRIMARY KEY(source, date)`）と `inbox_items`（id PK・source・date・slug・kind・title・body_md・options_json・ref_path・payload_json・expires_at・status・choice・decided_at・apply_state・applied_at・apply_error・result_path・result_url・received_at、`UNIQUE(source, date, slug)`）→ migration `006_inbox.sql`・`user_version = 6`（**[`22`](./22-daily-intake.md) 用の `006_intake.sql` は作業ツリーに未コミット・本番 DB は v5 のまま（2026-09-02 実測）**。intake の migration は出荷せず、v6 を本仕様が使う → §8）
+- [`02-data-model.md`](./02-data-model.md): `inbox_receipts`（source・date・received_at・item_count、`PRIMARY KEY(source, date)`）と `inbox_items`（id PK・source・date・slug・kind・title・body_md・options_json・ref_path・payload_json・expires_at・status・choice・decided_at・apply_state・applied_at・apply_error・result_path・result_url・received_at、`UNIQUE(source, date, slug)`）→ migration `007_inbox.sql`・`user_version = 7`（**[`22`](./22-daily-intake.md) 用の `006_intake.sql` は 2026-09-02 に main へ出荷済み（v6）**。本仕様は v7 を使う → §8）
 - [`02-data-model.md`](./02-data-model.md) §6: `detail_ref` 語彙に `inbox.items` を追加（「今日」のタスク行から「あなた待ち」へ入る導線。`intake.candidates` は追加しない）
 - [`03-api.md`](./03-api.md): §2 に6エンドポイント、§3 に DTO
 
@@ -170,7 +170,7 @@ JSON 契約の正本は [`03-api.md`](./03-api.md) §3。ここには検証規�
 
 ## 実装単位
 
-- [ ] [Backend] migration `006_inbox.sql`（`inbox_receipts` / `inbox_items`・`user_version=6`）＋ `02-data-model.md` への追記（§6 語彙 `inbox.items` を含む）
+- [ ] [Backend] migration `007_inbox.sql`（`inbox_receipts` / `inbox_items`・`user_version=7`）＋ `02-data-model.md` への追記（§6 語彙 `inbox.items` を含む）
   - 受け入れ基準: ハーネス migration 適用済みの DB（user_version=5）に適用できるテストと、`UNIQUE(source, date, slug)`・`PRIMARY KEY(source, date)` 違反が検知されるテストが通る。`make verify` PASS
 - [ ] [Backend] `domain/inbox.rs`（項目・kind 別の状態遷移の検証。I/O 依存ゼロ）
   - 受け入れ基準: 検証ルールのテストが通る——必須欠落・kind 不正・101件以上・slug 重複・サイズ超過の拒否、**空配列の受理**、`choose` 以外への `options` 拒否、`choice` が options 外の拒否、kind ごとの許可 status 表（§3.3-1）の全組み合わせ、`apply_state ≠ pending` 行への decision 拒否、`apply_state = none` 行への apply-result 拒否。`make verify` PASS

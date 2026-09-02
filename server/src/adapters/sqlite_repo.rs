@@ -31,7 +31,8 @@ const MIGRATION_V3: &str = include_str!("migrations/003_digests.sql");
 const MIGRATION_V4: &str = include_str!("migrations/004_learning.sql");
 const MIGRATION_V5: &str = include_str!("migrations/005_harness.sql");
 const MIGRATION_V6: &str = include_str!("migrations/006_intake.sql");
-const LATEST_SCHEMA_VERSION: i64 = 6;
+const MIGRATION_V7: &str = include_str!("migrations/007_inbox.sql");
+const LATEST_SCHEMA_VERSION: i64 = 7;
 
 pub struct SqliteTaskRepository {
     connection: Mutex<Connection>,
@@ -71,6 +72,7 @@ impl SqliteTaskRepository {
                 MIGRATION_V4,
                 MIGRATION_V5,
                 MIGRATION_V6,
+                MIGRATION_V7,
             ][..],
             1 => &[
                 MIGRATION_V2,
@@ -78,11 +80,19 @@ impl SqliteTaskRepository {
                 MIGRATION_V4,
                 MIGRATION_V5,
                 MIGRATION_V6,
+                MIGRATION_V7,
             ][..],
-            2 => &[MIGRATION_V3, MIGRATION_V4, MIGRATION_V5, MIGRATION_V6][..],
-            3 => &[MIGRATION_V4, MIGRATION_V5, MIGRATION_V6][..],
-            4 => &[MIGRATION_V5, MIGRATION_V6][..],
-            5 => &[MIGRATION_V6][..],
+            2 => &[
+                MIGRATION_V3,
+                MIGRATION_V4,
+                MIGRATION_V5,
+                MIGRATION_V6,
+                MIGRATION_V7,
+            ][..],
+            3 => &[MIGRATION_V4, MIGRATION_V5, MIGRATION_V6, MIGRATION_V7][..],
+            4 => &[MIGRATION_V5, MIGRATION_V6, MIGRATION_V7][..],
+            5 => &[MIGRATION_V6, MIGRATION_V7][..],
+            6 => &[MIGRATION_V7][..],
             LATEST_SCHEMA_VERSION => return Ok(()),
             version => return Err(SqliteRepositoryError::UnsupportedSchemaVersion(version)),
         };
@@ -1374,7 +1384,8 @@ mod tests {
     use rusqlite::{Connection, params};
 
     use super::{
-        MIGRATION_V1, MIGRATION_V2, MIGRATION_V3, MIGRATION_V4, MIGRATION_V5, SqliteTaskRepository,
+        MIGRATION_V1, MIGRATION_V2, MIGRATION_V3, MIGRATION_V4, MIGRATION_V5, MIGRATION_V6,
+        SqliteTaskRepository,
     };
     use crate::{
         domain::{
@@ -1472,7 +1483,7 @@ mod tests {
                      FROM sqlite_master
                      WHERE type = 'table'
                        AND name IN (
-                         'digests', 'harness_proposals', 'intake_candidates', 'intake_days', 'learning_results', 'learning_sets',
+                         'digests', 'harness_proposals', 'inbox_items', 'inbox_receipts', 'intake_candidates', 'intake_days', 'learning_results', 'learning_sets',
                          'routines', 'task_days', 'task_checks'
                        )
                      ORDER BY name",
@@ -1496,12 +1507,14 @@ mod tests {
             )
             .expect("routine index should be queryable");
 
-        assert_eq!(version, 6);
+        assert_eq!(version, 7);
         assert_eq!(
             tables,
             vec![
                 "digests",
                 "harness_proposals",
+                "inbox_items",
+                "inbox_receipts",
                 "intake_candidates",
                 "intake_days",
                 "learning_results",
@@ -1585,7 +1598,7 @@ mod tests {
             )
             .expect("learning tables should be queryable");
 
-        assert_eq!(version, 6);
+        assert_eq!(version, 7);
         assert_eq!(existing_digest, "existing digest");
         assert_eq!(learning_rows, 2);
     }
@@ -1667,13 +1680,13 @@ mod tests {
             })
             .expect("harness proposals should be queryable");
 
-        assert_eq!(version, 6);
+        assert_eq!(version, 7);
         assert_eq!(learning_raw, r#"{"theme":"existing learning set"}"#);
         assert_eq!(proposal_count, 1);
     }
 
     #[test]
-    fn migrates_version_five_database_to_intake_schema() {
+    fn migrates_version_five_database_through_intake_to_inbox_schema() {
         let connection = Connection::open_in_memory().unwrap();
         for migration in [
             MIGRATION_V1,
@@ -1693,8 +1706,13 @@ mod tests {
         let version_after: i64 = connection
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .unwrap();
-        assert_eq!(version_after, 6);
-        for table in ["intake_days", "intake_candidates"] {
+        assert_eq!(version_after, 7);
+        for table in [
+            "intake_days",
+            "intake_candidates",
+            "inbox_receipts",
+            "inbox_items",
+        ] {
             let exists: bool = connection
                 .query_row(
                     "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1)",
@@ -1713,6 +1731,79 @@ mod tests {
         connection.execute("INSERT INTO intake_days(date,source_path,item_count,received_at) VALUES('2026-08-28','opaque',2,'2026-08-29T00:41:00+09:00')",[]).unwrap();
         connection.execute("INSERT INTO intake_candidates(date,slug,lane,text,status,apply_state,received_at) VALUES('2026-08-28','same','todo','one','proposed','pending','now')",[]).unwrap();
         let duplicate=connection.execute("INSERT INTO intake_candidates(date,slug,lane,text,status,apply_state,received_at) VALUES('2026-08-28','same','tone','two','proposed','pending','now')",[]);
+        assert!(matches!(
+            duplicate,
+            Err(rusqlite::Error::SqliteFailure(_, _))
+        ));
+    }
+
+    #[test]
+    fn migrates_version_six_database_to_inbox_schema() {
+        let connection = Connection::open_in_memory().unwrap();
+        for migration in [
+            MIGRATION_V1,
+            MIGRATION_V2,
+            MIGRATION_V3,
+            MIGRATION_V4,
+            MIGRATION_V5,
+            MIGRATION_V6,
+        ] {
+            connection.execute_batch(migration).unwrap();
+        }
+        let version_before: i64 = connection
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .unwrap();
+        assert_eq!(version_before, 6);
+
+        let repository = SqliteTaskRepository::from_connection(connection).unwrap();
+        let connection = repository.connection().unwrap();
+        let version_after: i64 = connection
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .unwrap();
+
+        assert_eq!(version_after, 7);
+    }
+
+    #[test]
+    fn rejects_duplicate_inbox_source_date_and_slug() {
+        let repository = repository();
+        let connection = repository.connection().unwrap();
+        connection
+            .execute(
+                "INSERT INTO inbox_items (source, date, slug, kind, title, status, apply_state, received_at) \
+                 VALUES ('night-harness', '2026-09-02', 'same', 'approve', 'one', 'open', 'pending', 'now')",
+                [],
+            )
+            .unwrap();
+        let duplicate = connection.execute(
+            "INSERT INTO inbox_items (source, date, slug, kind, title, status, apply_state, received_at) \
+             VALUES ('night-harness', '2026-09-02', 'same', 'alert', 'two', 'open', 'none', 'now')",
+            [],
+        );
+
+        assert!(matches!(
+            duplicate,
+            Err(rusqlite::Error::SqliteFailure(_, _))
+        ));
+    }
+
+    #[test]
+    fn rejects_duplicate_inbox_receipt_source_and_date() {
+        let repository = repository();
+        let connection = repository.connection().unwrap();
+        connection
+            .execute(
+                "INSERT INTO inbox_receipts (source, date, received_at, item_count) \
+                 VALUES ('night-harness', '2026-09-02', 'now', 1)",
+                [],
+            )
+            .unwrap();
+        let duplicate = connection.execute(
+            "INSERT INTO inbox_receipts (source, date, received_at, item_count) \
+             VALUES ('night-harness', '2026-09-02', 'later', 2)",
+            [],
+        );
+
         assert!(matches!(
             duplicate,
             Err(rusqlite::Error::SqliteFailure(_, _))
@@ -2204,7 +2295,7 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM routines", [], |row| row.get(0))
             .expect("routines should be queryable");
 
-        assert_eq!(version, 6);
+        assert_eq!(version, 7);
         assert_eq!(
             stored,
             (
@@ -2216,7 +2307,7 @@ mod tests {
         );
         assert_eq!(routine_count, 0);
         println!(
-            "migration v1→v6: user_version={version}, existing_task_days=1, \
+            "migration v1→v7: user_version={version}, existing_task_days=1, \
              existing_task_checks=1, routines={routine_count}"
         );
     }
