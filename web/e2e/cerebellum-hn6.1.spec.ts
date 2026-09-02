@@ -255,9 +255,9 @@ test('名簿に無い送信元は source を等幅で出し「名簿未登録」
   await expect(cardOf(page, '名簿にある skill からの異常').getByText('名簿未登録')).toHaveCount(0);
 });
 
-// ---- bodyMd の展開（§3.2） ----
+// ---- bodyMd の展開と refPath（§3.2） ----
 
-test('bodyMd がある行は title タップで全文が開き、refPath は表示のみ（リンクにしない）', async ({
+test('bodyMd がある行は title タップで全文が開く（refPath は開閉に関係なく出たまま）', async ({
   page,
 }) => {
   await mockOffice(page);
@@ -277,20 +277,49 @@ test('bodyMd がある行は title タップで全文が開き、refPath は表�
   const title = card.getByRole('button', { name: '週報を読む' });
   await expect(title).toHaveAttribute('aria-expanded', 'false');
   await expect(card.getByText('承認の口を1本に寄せた')).toHaveCount(0);
+  // refPath は `bodyMd` に従属しない（03-api.md §3 で独立した任意フィールド）ので、
+  // 閉じている段でも在処は見えている
+  await expect(card.getByText('90_Meta/weekly/2026-W35.md')).toBeVisible();
 
   await title.click();
   await expect(title).toHaveAttribute('aria-expanded', 'true');
   await expect(card.getByText('先週の要点')).toBeVisible();
   await expect(card.getByText('承認の口を1本に寄せた')).toBeVisible();
-  // refPath は等幅で出すだけ（cerebellum は Vault を参照しない・§3.2）
   await expect(card.getByText('90_Meta/weekly/2026-W35.md')).toBeVisible();
   await expect(card.getByRole('link')).toHaveCount(0);
 
   await title.click();
   await expect(card.getByText('承認の口を1本に寄せた')).toHaveCount(0);
+  await expect(card.getByText('90_Meta/weekly/2026-W35.md')).toBeVisible();
 
   // bodyMd が無い行は開閉ボタンを持たない
   await expect(cardOf(page, '本文の無い報告').getByRole('button', { name: '本文の無い報告' })).toHaveCount(0);
+});
+
+test('bodyMd が無く refPath だけある行でも、在処は等幅で表示のみ（リンクにしない）', async ({
+  page,
+}) => {
+  const refPath = '90_Meta/daily_intake/2026-09-01.md';
+  await mockOffice(page);
+  await stubList(page, [
+    // `refPath` は `bodyMd` と独立した任意フィールド（docs/specs/03-api.md §3）。
+    // 本文が無い行で在処が消えると、人間が原文へ辿る唯一の手がかりが画面から落ちる
+    stubItem({ id: 501, kind: 'alert', title: '候補ファイルの整合が崩れている', refPath }),
+    stubItem({ id: 502, kind: 'alert', title: '在処の無い異常' }),
+  ]);
+  await page.goto('/waiting');
+
+  const card = cardOf(page, '候補ファイルの整合が崩れている');
+  // 展開操作を持たない行でも、タップ無しで在処が読める
+  await expect(card.getByRole('button', { name: '候補ファイルの整合が崩れている' })).toHaveCount(0);
+  const path = card.getByText(refPath);
+  await expect(path).toBeVisible();
+  // 等幅（`mono`）で出すだけ・リンクにしない（§3.2）
+  await expect(path).toHaveClass(/mono/);
+  await expect(card.getByRole('link')).toHaveCount(0);
+
+  // refPath が無い行に空の枠を出さない
+  await expect(cardOf(page, '在処の無い異常').locator('.wt__ref')).toHaveCount(0);
 });
 
 // ---- approve（§3.2 の表） ----

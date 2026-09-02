@@ -168,10 +168,13 @@ export function InboxItemRow({
       {open && item.bodyMd && (
         <div className="wt__body">
           <Markdown md={item.bodyMd} />
-          {/* `refPath` は等幅で表示のみ・リンクにしない（§3.2）。cerebellum は Vault を参照しない */}
-          {item.refPath && <p className="mono wt__ref">{item.refPath}</p>}
         </div>
       )}
+
+      {/* `refPath` は等幅で表示のみ・リンクにしない（§3.2）。cerebellum は Vault を参照しないので
+          開くのはターミナル／Obsidian の仕事。**`bodyMd` とは独立した任意フィールド**
+          （docs/specs/03-api.md §3）なので、本文が無い行でも在処は消さずに出す */}
+      {item.refPath && <p className="mono wt__ref">{item.refPath}</p>}
 
       {decided ? (
         <div className="wt__acts">
