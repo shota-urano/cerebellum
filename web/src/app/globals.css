@@ -467,6 +467,9 @@ a:hover { color: #8FF2FF; }
 .of__card-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 8px; }
 /* 部署 id（`second-brain-harness` など）は半列に収まらないので1行使う（26 §3.1） */
 .of__card-meta-wide { grid-column: 1 / -1; }
+/* 所属部署タップ＝部署絞り込みの入口（26 §3.3-6）。ライン見出し（.of__ml-line）と同じ様式 */
+.of__card-dept { color: var(--accent); text-decoration: none; overflow-wrap: anywhere; }
+.of__card-dept:hover { text-decoration: underline; }
 /* 人間確認の1行（docs/specs/26-web-office-company.md §3.1-1）。「なし」も同じ様式で出す
    ——欠損ではなく正常な状態なので、未記載の muted 表示に寄せない */
 .of__card-review { margin: 12px 0 0; font-size: 11px; line-height: 1.55; letter-spacing: .04em; color: var(--text); overflow-wrap: anywhere; }

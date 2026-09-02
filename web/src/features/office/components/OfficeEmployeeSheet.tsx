@@ -116,7 +116,17 @@ export function OfficeEmployeeSheet({
           <div className="of__card-meta-wide">
             {/* 組織図の所属（26 §3.1）。値域を検査も翻訳もしない——id をそのまま等幅で出す（26 §4） */}
             <dt>部署</dt>
-            <dd>{roster.dept ?? '部署 未記載'}</dd>
+            <dd>
+              {roster.dept === null ? (
+                // 未記載はリンクにしない（行き先が無い・26 §3.1-3）
+                '部署 未記載'
+              ) : (
+                // 部署絞り込みの入口はここと会社案内シートだけ。全景には足さない（26 §3.3-6）
+                <Link className="of__card-dept" href={`/office?dept=${encodeURIComponent(roster.dept)}`}>
+                  {roster.dept}
+                </Link>
+              )}
+            </dd>
           </div>
         </dl>
 

@@ -290,6 +290,14 @@ export function lineOf(employee: OfficeEmployee): string | null {
   return rosterOf(employee).line;
 }
 
+/**
+ * その社員の所属部署（docs/specs/26-web-office-company.md §3.3-1）。未記載は null。
+ * **`line` や skill 名から推測して埋めない**（26 §9）——対応表を持たないので推測もできない。
+ */
+export function deptOf(employee: OfficeEmployee): string | null {
+  return rosterOf(employee).dept;
+}
+
 /** ミニラインのノード種別（21 §2 の4種＋解決できなかったもの） */
 export type LineNodeKind = 'employee' | 'manual' | 'human' | 'place' | 'unknown';
 
@@ -444,6 +452,19 @@ export function lineBlocksOf(
   lineId: string,
 ): RoomBlocks {
   return blocksOf(onDuty, stopped, (employee) => lineOf(employee) === lineId);
+}
+
+/**
+ * 部署絞り込み（docs/specs/26-web-office-company.md §3.3-1）。ライン絞り込みと**同型**で、
+ * 部屋をまたいで `dept` 一致の社員を1フロアに出す。席・ブロック分け・状態表示は部署ルームと
+ * 同一規則を流用する（別軸のグルーピングであって別の画面ではない・26 §5）。
+ */
+export function deptBlocksOf(
+  onDuty: OfficeEmployee[],
+  stopped: OfficeEmployee[],
+  deptId: string,
+): RoomBlocks {
+  return blocksOf(onDuty, stopped, (employee) => deptOf(employee) === deptId);
 }
 
 function blocksOf(

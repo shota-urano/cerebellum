@@ -39,12 +39,14 @@ export function OfficeView({
   deskOpen,
   employeeId,
   lineId,
+  deptId,
 }: {
   runId: string | null;
   roomId: string | null;
   deskOpen: boolean;
   employeeId: string | null;
   lineId: string | null;
+  deptId: string | null;
 }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -71,18 +73,23 @@ export function OfficeView({
   const cardEmployee =
     employeeId === null ? undefined : employees.find((employee) => employee.automation_id === employeeId);
   const cardRun = cardEmployee ? lastRunOf(runs, cardEmployee.automation_id) : undefined;
-  // `room` と `line` が同時に来たら `room` を優先する（部屋が主・ラインが従・21 §3.7-7）
+  // `room`・`line`・`dept` が同時に来たら `room` → `line` → `dept` の優先順
+  // （部屋が主・ラインと部署が従。URL を多軸で解釈しない・21 §3.7-7・26 §3.3-4）
   const scope: OfficeFloorScope | null = selectedRoomId
     ? { kind: 'room', roomId: selectedRoomId }
     : lineId !== null
       ? { kind: 'line', lineId }
-      : null;
+      : deptId !== null
+        ? { kind: 'dept', deptId }
+        : null;
   const roomHref =
     scope === null
       ? '/office'
       : scope.kind === 'room'
         ? `/office?room=${scope.roomId}`
-        : `/office?line=${encodeURIComponent(scope.lineId)}`;
+        : scope.kind === 'line'
+          ? `/office?line=${encodeURIComponent(scope.lineId)}`
+          : `/office?dept=${encodeURIComponent(scope.deptId)}`;
   // 報告シートの戻り先は、社員カード経由で来たときだけカードへ返す（21 §3.1-4）。
   // `?run=` 単独・MY DESK 経由の既存 deep link の戻り先は 20 §3.5-4 のまま変えない。
   const cardHref =

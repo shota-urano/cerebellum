@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import {
   actionCountOf,
+  deptBlocksOf,
   hasNoProfile,
   hasReview,
   lastRunOf,
@@ -18,10 +19,14 @@ import {
 } from '../lib/office';
 
 /**
- * フロアの軸。部屋（役割）が主で、ライン（工程）は同じ席・同じ並びの**絞り込み**
- * （docs/specs/21-web-office-roster.md §3.7-1）。見た目を作り分けない。
+ * フロアの軸。部屋（役割）が主で、ライン（工程）と部署（組織図の所属）は同じ席・同じ並びの
+ * **絞り込み**（docs/specs/21-web-office-roster.md §3.7-1・
+ * docs/specs/26-web-office-company.md §3.3-1）。見た目を作り分けない。
  */
-export type OfficeFloorScope = { kind: 'room'; roomId: OfficeRoomId } | { kind: 'line'; lineId: string };
+export type OfficeFloorScope =
+  | { kind: 'room'; roomId: OfficeRoomId }
+  | { kind: 'line'; lineId: string }
+  | { kind: 'dept'; deptId: string };
 
 export type OfficeRoomViewProps = {
   scope: OfficeFloorScope;
@@ -113,15 +118,27 @@ export function OfficeRoomView({
     scope.kind === 'room'
       ? (OFFICE_ROOMS.find((candidate) => candidate.id === scope.roomId) ?? OFFICE_ROOMS[0])
       : null;
-  // ラインの未知の値はラベルに変えず値のまま出す（21 §3.7-3）
-  const title = scope.kind === 'room' ? (room?.label ?? '') : `LINE: ${lineLabelOf(scope.lineId)}`;
+  // ラインの未知の値はラベルに変えず値のまま出す（21 §3.7-3）。
+  // 部署は**そもそも翻訳しない**——日本語ラベルの対応表を cerebellum に持たない（26 §3.3-2・§4）
+  const title =
+    scope.kind === 'room'
+      ? (room?.label ?? '')
+      : scope.kind === 'line'
+        ? `LINE: ${lineLabelOf(scope.lineId)}`
+        : `DEPT: ${scope.deptId}`;
   const scopeHref =
-    scope.kind === 'room' ? `/office?room=${scope.roomId}` : `/office?line=${encodeURIComponent(scope.lineId)}`;
+    scope.kind === 'room'
+      ? `/office?room=${scope.roomId}`
+      : scope.kind === 'line'
+        ? `/office?line=${encodeURIComponent(scope.lineId)}`
+        : `/office?dept=${encodeURIComponent(scope.deptId)}`;
   // 勤務帯 → 手動起動 → 停止中（21 §3.4-1）。ブロック内は返却順のまま
   const blocks =
     scope.kind === 'room'
       ? roomBlocksOf(employees, stopped, scope.roomId)
-      : lineBlocksOf(employees, stopped, scope.lineId);
+      : scope.kind === 'line'
+        ? lineBlocksOf(employees, stopped, scope.lineId)
+        : deptBlocksOf(employees, stopped, scope.deptId);
   const onDuty = [...blocks.scheduled, ...blocks.manual];
   const actions = onDuty.reduce(
     (count, employee) => count + actionCountOf(lastRunOf(runs, employee.automation_id)),
