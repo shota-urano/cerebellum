@@ -151,7 +151,7 @@ cerebellum のサーバーは経由しない（Rust・SQLite・API の変更な�
 
 ## 実装単位
 
-- [ ] [Frontend] `office.json` 取得フックと2D「オフィス」全景＋部署ルーム（`/office`）
+- [x] [Frontend] `office.json` 取得フックと2D「オフィス」全景＋部署ルーム（`/office`）（2026-09-02 完了）
   - 受け入れ基準: E2E（`web/e2e/<task-id>.spec.ts`・office.json はフィクスチャを配信して :48310 実サーバに依存しない）で、全景に4部屋とMY DESKだけが出る・正常社員の名前は全景に出ない・部屋信号の優先順・MY DESKの承認件数・部屋タップ後に所属社員が返却順で出る・7名の部署でも最終行が部屋の下壁より内側に収まる・停止中社員は所属部屋内だけで出る・当日 run が無い社員に直近状態が出る・`generated_at` が24時間以上前のとき鮮度警告が出ることを検証。`make verify` PASS
-- [ ] [Frontend] 報告シート（`/office?run=`）とドロワー項目の追加
+- [x] [Frontend] 報告シート（`/office?run=`）とドロワー項目の追加（2026-09-02 完了）
   - 受け入れ基準: E2E で、部署内の席またはMY DESKからURL付きシートに `headline` とメタが出る・「報告を見る」で全文が展開される・閉じると直前の部署/MY DESKへ戻る・`output: null` の run で保持期間外メッセージが出る・ブラウザバックで全景へ戻れる・ドロワーに「オフィス」があり遷移してアクティブ表示になることを検証。`make verify` PASS
