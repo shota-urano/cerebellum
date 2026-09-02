@@ -2,9 +2,8 @@
 import Link from 'next/link';
 import {
   actionCountOf,
+  breakdownOf,
   deptBlocksOf,
-  hasNoProfile,
-  hasReview,
   lastRunOf,
   lineBlocksOf,
   lineLabelOf,
@@ -144,22 +143,9 @@ export function OfficeRoomView({
     (count, employee) => count + actionCountOf(lastRunOf(runs, employee.automation_id)),
     0,
   );
-  // 内訳（21 §3.4-3 ＋ docs/specs/26-web-office-company.md §3.2）。0名の項は書かない。
-  // 人間確認・名簿未記載は**このフロアに出ている社員全員**（停止中を含む）で数える——
-  // 名簿の設定漏れは在籍状態と独立に潰す対象なので、停止中を外すと漏れが隠れる（26 §3.2-2）。
-  const members = [...blocks.scheduled, ...blocks.manual, ...blocks.stopped];
-  const reviewers = members.filter(hasReview).length;
-  // 数えるのは `profile` 不在だけ（§3.2-2）。`job` が空の社員はカードでは「名簿 未記載」
-  // （21 §3.2-3）だが frontmatter そのものはあるので、ここには混ぜない
-  const unlisted = members.filter(hasNoProfile).length;
-  const breakdown = [
-    `勤務帯 ${blocks.scheduled.length}名`,
-    blocks.manual.length > 0 ? `手動 ${blocks.manual.length}名` : null,
-    blocks.stopped.length > 0 ? `停止中 ${blocks.stopped.length}名` : null,
-    reviewers > 0 ? `人間確認あり ${reviewers}名` : null,
-    // 「カードが書けない一体は編成に載せない」を画面で可視化する。隠さない（26 §3.2-2）
-    unlisted > 0 ? `名簿未記載 ${unlisted}名` : null,
-  ].filter((part): part is string => part !== null);
+  // 内訳（21 §3.4-3 ＋ docs/specs/26-web-office-company.md §3.2）。
+  // 組むのは lib の `breakdownOf`——会社案内（26 §3.4-1「§3.2 の内訳」）と同じ形を2箇所に書かない
+  const breakdown = breakdownOf(blocks);
 
   const station = (employee: OfficeEmployee, isStopped: boolean) => {
     const run = isStopped ? undefined : lastRunOf(runs, employee.automation_id);
@@ -185,7 +171,7 @@ export function OfficeRoomView({
           <p className={actions > 0 ? 'of3__room-action-copy' : 'of3__room-quiet-copy'}>
             {actions > 0 ? `確認が必要な仕事：${actions}件` : '静かに稼働中'}
           </p>
-          <p className="mono of3__room-breakdown">{breakdown.join('・')}</p>
+          <p className="mono of3__room-breakdown">{breakdown}</p>
         </div>
       </header>
 

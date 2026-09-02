@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { ErrorBanner } from '@/shared/ui';
 import { useOffice } from '../hooks/useOffice';
 import { isOfficeRoomId, lastRunOf, localDate, splitByEnabled, staleHours } from '../lib/office';
+import { OfficeCompanyView } from './OfficeCompanyView';
 import { OfficeDeskSheet } from './OfficeDeskSheet';
 import { OfficeEmployeeSheet } from './OfficeEmployeeSheet';
 import { OfficeOverview } from './OfficeOverview';
@@ -40,6 +41,7 @@ export function OfficeView({
   employeeId,
   lineId,
   deptId,
+  companyOpen,
 }: {
   runId: string | null;
   roomId: string | null;
@@ -47,6 +49,8 @@ export function OfficeView({
   employeeId: string | null;
   lineId: string | null;
   deptId: string | null;
+  /** 会社案内（docs/specs/26-web-office-company.md §3.4）。全景の代わりに出す1枚 */
+  companyOpen: boolean;
 }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -110,6 +114,8 @@ export function OfficeView({
       {employees.length === 0 ? (
         <div className="empty">登録されている automation がありません</div>
       ) : scope !== null ? (
+        // 部屋・ライン・部署のフロア。会社案内は絞り込みの軸ではないので優先順の外に置き、
+        // 絞り込みが指定されていないときだけ全景の代わりに出す（26 §3.4-6）
         <OfficeRoomView
           scope={scope}
           employees={onDuty}
@@ -119,6 +125,9 @@ export function OfficeView({
           selectedRunId={runId}
           selectedEmployeeId={employeeId}
         />
+      ) : companyOpen ? (
+        // 停止中も含めた全員を渡す。部署の並びは返却順で決まる（26 §3.4-2）
+        <OfficeCompanyView employees={employees} />
       ) : (
         <OfficeOverview
           employees={onDuty}

@@ -467,6 +467,88 @@ export function deptBlocksOf(
   return blocksOf(onDuty, stopped, (employee) => deptOf(employee) === deptId);
 }
 
+/**
+ * 在籍の内訳1行（21 §3.4-3 ＋ docs/specs/26-web-office-company.md §3.2）。0名の項は書かない。
+ *
+ * 部屋・ライン・部署のフロア（`OfficeRoomView`）と会社案内シート（§3.4-1「§3.2 の内訳」）を
+ * **同じ関数で組む**。同じ形と言われているものを2箇所に書くと片方だけ直して静かにずれる。
+ *
+ * 人間確認・名簿未記載は**その束に出ている社員全員**（停止中を含む）で数える——
+ * 名簿の設定漏れは在籍状態と独立に潰す対象なので、停止中を外すと漏れが隠れる（26 §3.2-2）。
+ */
+export function breakdownOf(blocks: {
+  scheduled: OfficeEmployee[];
+  manual: OfficeEmployee[];
+  stopped: OfficeEmployee[];
+}): string {
+  const members = [...blocks.scheduled, ...blocks.manual, ...blocks.stopped];
+  const reviewers = members.filter(hasReview).length;
+  // 数えるのは `profile` 不在だけ（§3.2-2）。`job` が空の社員はカードでは「名簿 未記載」
+  // （21 §3.2-3）だが frontmatter そのものはあるので、ここには混ぜない
+  const unlisted = members.filter(hasNoProfile).length;
+  return [
+    `勤務帯 ${blocks.scheduled.length}名`,
+    blocks.manual.length > 0 ? `手動 ${blocks.manual.length}名` : null,
+    blocks.stopped.length > 0 ? `停止中 ${blocks.stopped.length}名` : null,
+    reviewers > 0 ? `人間確認あり ${reviewers}名` : null,
+    // 「カードが書けない一体は編成に載せない」を画面で可視化する。隠さない（26 §3.2-2）
+    unlisted > 0 ? `名簿未記載 ${unlisted}名` : null,
+  ]
+    .filter((part): part is string => part !== null)
+    .join('・');
+}
+
+/** 会社案内の1部署（docs/specs/26-web-office-company.md §3.4）。`id: null` は「部署 未記載」の束 */
+export interface CompanyDept {
+  /** 部署 id。**翻訳しない**（対応表を持たない・§4）。未記載の束は null */
+  id: string | null;
+  /** 勤務帯の社員（返却順のまま） */
+  scheduled: OfficeEmployee[];
+  /** 手動起動の社員（返却順のまま） */
+  manual: OfficeEmployee[];
+  /** 停止中の社員。各部署の末尾に「停止中」の小見出しで出す（§3.4-4） */
+  stopped: OfficeEmployee[];
+}
+
+function companyDeptOf(employees: OfficeEmployee[], id: string | null): CompanyDept {
+  const members = employees.filter((employee) => deptOf(employee) === id);
+  // 部署内の並びは 勤務帯 → 手動起動 → 停止中（21 §3.4-1 と同じ順・§3.4-4）。
+  // 各ブロック内は返却順のまま——クライアントで再ソートしない（20 §3.1-1）
+  const { onDuty, stopped } = splitByEnabled(members);
+  return {
+    id,
+    scheduled: onDuty.filter((employee) => !isManualEmployee(employee)),
+    manual: onDuty.filter(isManualEmployee),
+    stopped,
+  };
+}
+
+/**
+ * 会社案内の部署の束（docs/specs/26-web-office-company.md §3.4-2）。
+ *
+ * 並びは **`employees` の返却順で最初に現れた `dept` の順**。cerebellum 側に部署の順序表を
+ * 持たない（§4）ので、名前順にも 8部署 id の定義順にも並べ替えない。
+ * 最初に現れた位置は**停止中の社員も数える**——在籍状態は部署の並びと無関係で、
+ * 停止中しか居ない部署だけが末尾へ押し出されるのは「返却順」ではない。
+ *
+ * `dept` が `null` の社員は末尾に1束（`id: null`）でまとめる。**隠さない**（§3.4-2）——
+ * 隠すと名簿の設定漏れが永久に見えなくなる（21 §3.3-1 と同じ理由）。0名なら束ごと出さない。
+ */
+export function companyDeptsOf(employees: OfficeEmployee[]): CompanyDept[] {
+  const ids: string[] = [];
+  let hasUnlisted = false;
+  for (const employee of employees) {
+    const dept = deptOf(employee);
+    if (dept === null) {
+      hasUnlisted = true;
+    } else if (!ids.includes(dept)) {
+      ids.push(dept);
+    }
+  }
+  const depts = ids.map((id) => companyDeptOf(employees, id));
+  return hasUnlisted ? [...depts, companyDeptOf(employees, null)] : depts;
+}
+
 function blocksOf(
   onDuty: OfficeEmployee[],
   stopped: OfficeEmployee[],

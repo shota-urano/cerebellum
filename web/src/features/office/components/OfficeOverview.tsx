@@ -82,6 +82,14 @@ export function OfficeOverview({ employees, runs, stoppedCount, today }: OfficeO
         </p>
       </div>
 
+      {/*
+        会社案内への導線（docs/specs/26-web-office-company.md §3.4-6）。**全景からはここ1つだけ**で、
+        4部屋＋MY DESK の構図（`.of3__campus`）には足さない（同 §3.3-6）。
+      */}
+      <p className="of3__company-link">
+        <Link className="mono of3__company" href="/office?company=1">会社案内</Link>
+      </p>
+
       <section className="of3__campus" aria-label="AIオフィス全景">
         {summary.rooms.map((room) => (
           <Link
