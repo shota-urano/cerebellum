@@ -12,4 +12,8 @@ pub enum DomainError {
     InvalidIntakeCandidate(String),
     #[error("invalid intake state transition: {0}")]
     InvalidIntakeTransition(String),
+    #[error("invalid inbox item: {0}")]
+    InvalidInboxItem(String),
+    #[error("invalid inbox state transition: {0}")]
+    InvalidInboxTransition(String),
 }
