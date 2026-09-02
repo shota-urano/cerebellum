@@ -355,8 +355,14 @@ a:hover { color: #8FF2FF; }
 .of3__room-title { margin: 0; font-size: 16px; letter-spacing: .18em; color: var(--text); }
 .of3__room-action-copy, .of3__room-quiet-copy { margin: 5px 0 0; font-size: 11px; color: #ffc34d; }
 .of3__room-quiet-copy { color: var(--muted); }
+/* 在籍の内訳（21 §3.4-3）。勤務形態は全景に出さず部署内で読む */
+.of3__room-breakdown { margin: 4px 0 0; font-size: 8.5px; letter-spacing: .1em; color: var(--muted); opacity: .7; }
 .of3__room-floor { position: relative; min-height: 660px; margin: 0 -16px; background: #050b1a url('/images/office/room-floor.png') center top / 100% 100% no-repeat; overflow: hidden; }
-.of3__worker-grid { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 4px; padding: 145px 16px 74px; }
+.of3__room-floor--crowded { background-size: 100% 128%; }
+/* 席は 勤務帯 → 手動起動 → 停止中 の3ブロック（docs/specs/21-web-office-roster.md §3.4） */
+.of3__room-blocks { position: relative; z-index: 1; padding: 145px 16px 74px; }
+.of3__worker-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 4px; }
+.of3__block-label { margin: 14px 0 8px; font-size: 9px; letter-spacing: .18em; color: var(--muted); opacity: .7; }
 .of3__worker { position: relative; display: flex; flex-direction: column; align-items: center; min-width: 0; min-height: 205px; padding: 4px 4px 10px; border: 1px solid transparent; border-radius: var(--radius); color: var(--text); text-align: center; text-decoration: none; }
 .of3__worker:hover { color: var(--text); }
 .of3__worker--neutral, .of3__worker--good { opacity: .5; }
@@ -373,6 +379,8 @@ a:hover { color: #8FF2FF; }
 .of3__worker-bad { color: var(--error); }
 .of3__worker-name { width: 100%; min-height: 32px; padding: 5px 4px; font-size: 10.5px; font-weight: 500; line-height: 1.35; text-wrap: balance; }
 .of3__worker-shift { font-size: 8.5px; letter-spacing: .05em; color: var(--muted); }
+/* 席で読める唯一の名簿項目＝起動コマンド（21 §3.3-2） */
+.of3__worker-command { margin-top: 2px; font-size: 8.5px; letter-spacing: .04em; color: var(--accent); opacity: .8; overflow-wrap: anywhere; }
 .of3__worker-meta { margin-top: 3px; font-size: 8px; line-height: 1.35; color: var(--muted); }
 .of3__worker-copy { margin-top: 6px; font-size: 9.5px; line-height: 1.45; color: var(--text); text-wrap: pretty; }
 .of3__room-nav { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; margin-top: 10px; }
@@ -421,7 +429,8 @@ a:hover { color: #8FF2FF; }
   .of3__room-count, .of3__room-signal { font-size: 10px; }
   .of3__desk-status { font-size: 14px; }
   .of3__room-floor { margin: 0; min-height: 880px; border-radius: var(--radius); }
-  .of3__worker-grid { gap: 20px 18px; padding: 190px 78px 96px; }
+  .of3__room-blocks { padding: 190px 78px 96px; }
+  .of3__worker-grid { gap: 20px 18px; }
   .of3__worker { min-height: 260px; }
   .of3__worker-visual { width: 168px; height: 168px; }
   .of3__worker-name { font-size: 13px; }
@@ -430,8 +439,47 @@ a:hover { color: #8FF2FF; }
   .of3__headline p { font-size: 10px; }
   .of3__headline strong { font-size: 13px; }
   .of3__room-name { font-size: 9px; }
-  .of3__worker-grid { padding-inline: 7px; }
+  .of3__room-blocks { padding-inline: 7px; }
 }
+
+/* 社員名簿カード（docs/specs/21-web-office-roster.md §3.1・§3.2）。報告シートの様式に載せる */
+.of__card { border-color: var(--border); }
+.of__card .of2__sheet-grip { background: var(--border); }
+.of__card .of2__sheet-state { color: var(--muted); }
+.of__card-job { font-size: 15px; }
+/* 欠損は空白で埋めず、直す場所（SKILL.md）を添える（§3.2-3） */
+.of__card-job--missing { color: var(--muted); }
+.of__card-doc { display: block; margin-top: 6px; font-size: 10px; letter-spacing: .04em; color: var(--muted); overflow-wrap: anywhere; }
+.of__card-doc--foot { margin: 14px 0 0; opacity: .6; }
+/* 勤務・起動・AGENT・SKILL の4項目。390px で4列は潰れるので2×2にする */
+.of__card-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 8px; }
+/* ミニライン（docs/specs/21-web-office-roster.md §3.6）。SVG も図形ライブラリも使わない（§5） */
+.of__ml { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); text-align: center; }
+.of__ml-head { margin: 0 0 10px; text-align: left; }
+.of__ml-line { color: var(--accent); letter-spacing: .12em; text-decoration: none; }
+.of__ml-line:hover { text-decoration: underline; }
+.of__ml-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.of__ml-node { display: inline-flex; flex-direction: column; align-items: center; gap: 3px; max-width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); color: var(--muted); font-size: 10.5px; line-height: 1.45; text-decoration: none; overflow-wrap: anywhere; }
+a.of__ml-node:hover { border-color: var(--accent); color: var(--text); }
+/* 人間が止まるとラインが止まる。ここだけ強く出す（§3.6-6） */
+.of__ml-node--human { border-color: #ffc34d; background: rgba(255, 195, 77, .07); color: #ffc34d; font-size: 11.5px; }
+.of__ml-node--place { border-style: dashed; }
+.of__ml-tag { padding: 1px 6px; border-radius: 999px; background: rgba(56, 229, 255, .12); font-size: 8.5px; letter-spacing: .08em; color: var(--accent); }
+.of__ml-arrow { margin: 5px 0; font-size: 11px; color: var(--muted); opacity: .55; }
+.of__ml-self { margin: 0; padding: 9px 10px; border: 1px solid var(--accent); border-radius: var(--radius-sm); background: rgba(56, 229, 255, .05); font-size: 13px; color: var(--text); }
+.of3__floor-empty { margin: 0; padding: 18px 12px; border: 1px dashed var(--border); border-radius: var(--radius-sm); background: rgba(5, 11, 26, .72); font-size: 12px; color: var(--muted); text-align: center; }
+.of__card-label { margin: 0 0 6px; font-size: 9px; letter-spacing: .14em; color: var(--muted); }
+.of__card-checks { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+.of__card-checks ul { margin: 0; padding-left: 18px; }
+.of__card-checks li { margin-bottom: 5px; font-size: 13px; line-height: 1.65; color: var(--text); text-wrap: pretty; }
+.of__card-empty { margin: 0; font-size: 12px; color: var(--muted); }
+.of__card-state { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+.of__card-status { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 0; font-size: 13px; color: var(--muted); }
+.of__card-status--bad { color: var(--error); }
+.of__card-status--live { color: var(--accent); }
+.of__card-when { font-size: 10px; letter-spacing: .06em; color: var(--muted); }
+.of__card-headline { margin: 8px 0 0; font-size: 13px; line-height: 1.7; color: var(--text); text-wrap: pretty; }
+.of__card-report { display: flex; align-items: center; justify-content: center; text-decoration: none; }
 
 /* ハーネス承認（docs/specs/18-web-harness.md）。panel dg 様式の上に載せる最小限の追加 */
 .hn__head { margin: 2px 0 12px; font-size: 15px; font-weight: 500; letter-spacing: .04em; }
@@ -465,3 +513,39 @@ a:hover { color: #8FF2FF; }
 /* コピーできなかったことを出す（黙って何もしない経路を残さない・17 §3.5） */
 .hn__copyerr { flex: 1 0 100%; font-size: 10.5px; line-height: 1.6; color: var(--error); }
 .hn__foot { margin: 16px 0 0; padding: 10px 12px; border: 1px dashed var(--border); border-radius: var(--radius-sm); font-size: 11.5px; line-height: 1.6; color: var(--muted); text-align: center; }
+
+/* あなた待ち（docs/specs/23-web-waiting.md）。panel dg 様式の上に載せる最小限の追加。
+   ハーネス承認（hn__）と役割は近いが、feature 間でクラスを共有しない（別 feature・別文脈） */
+.wt__head { margin: 2px 0 12px; font-size: 15px; font-weight: 500; letter-spacing: .04em; }
+.wt__group { margin: 0 0 4px; font-size: 10px; letter-spacing: .16em; color: var(--error); }
+.wt__group--lane { display: flex; align-items: center; gap: 8px; margin-top: 22px; font-size: 12px; letter-spacing: .1em; color: var(--text); }
+.wt__count { font-size: 10px; letter-spacing: .08em; color: var(--muted); }
+/* そのレーンの✅が何を起こすか（§3.1）。見出しの直下に必ず出す */
+.wt__effect { margin: 0 0 10px; font-size: 10.5px; line-height: 1.6; letter-spacing: .04em; color: var(--muted); }
+.wt__missing { margin-bottom: 12px; }
+/* 決着した行は**消さずに淡色へ**（§3.2）。再タップで proposed に戻せる誤タップの救済路 */
+.wt__card--decided { opacity: .5; }
+/* 原文はカード内で最も大きい文字（§3.2）。要約は存在しないので判断材料は原文そのもの */
+.wt__text { margin-top: 2px; padding-left: 10px; border-left: 2px solid var(--border); font-size: 15.5px; font-weight: 500; line-height: 1.6; color: var(--text); word-break: break-word; text-wrap: pretty; }
+.wt__note { margin-top: 8px; font-size: 11.5px; line-height: 1.65; color: var(--muted); word-break: break-word; }
+.wt__acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; }
+.wt__check { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); font: inherit; font-size: 12.5px; letter-spacing: .06em; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.wt__check--on { border-color: var(--accent); color: var(--accent); background: rgba(56, 229, 255, .06); }
+/* 反映が動いた行は押せないが**見えたまま**にする（§4「無効化」＝非表示ではない） */
+.wt__check:disabled, .wt__reject:disabled { opacity: .55; cursor: default; }
+.wt__reject--on { border-color: var(--error); color: var(--error); }
+.wt__date { margin-left: auto; font-size: 10px; letter-spacing: .06em; color: var(--muted); }
+.wt__more { min-height: 32px; padding: 6px 10px; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; color: var(--muted); font: inherit; font-size: 10.5px; letter-spacing: .08em; cursor: pointer; }
+.wt__more:hover { border-color: var(--border); color: var(--accent); }
+.wt__src { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+.wt__result { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 12px; padding: 10px 12px; border: 1px solid var(--border); border-left: 3px solid var(--error); border-radius: var(--radius-sm); background: var(--bg); }
+.wt__result__tag { flex: none; font-size: 13px; line-height: 1.7; }
+.wt__result__body { flex: 1; min-width: 0; }
+/* 失敗理由は全文（原文が編集されて行が見つからない等・§3.4）。切ると手で直せない */
+.wt__err { margin-top: 6px; font-size: 11.5px; line-height: 1.6; color: var(--error); white-space: pre-wrap; word-break: break-word; }
+.wt__path { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
+.wt__pathtext { flex: 1; min-width: 0; font-size: 10.5px; letter-spacing: .04em; color: var(--muted); word-break: break-all; }
+.wt__copy { flex: none; min-height: 32px; padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: transparent; color: var(--muted); font: inherit; font-size: 10.5px; letter-spacing: .08em; cursor: pointer; }
+.wt__copy:hover { border-color: var(--accent); color: var(--accent); }
+.wt__copyerr { flex: 1 0 100%; font-size: 10.5px; line-height: 1.6; color: var(--error); }
+.wt__foot { margin: 18px 0 0; padding: 10px 12px; border: 1px dashed var(--border); border-radius: var(--radius-sm); font-size: 11.5px; line-height: 1.7; color: var(--muted); text-align: center; }

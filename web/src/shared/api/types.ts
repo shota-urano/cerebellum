@@ -292,6 +292,103 @@ export type HarnessApplyResultInput =
   | { state: 'applied'; snapshotPath?: string | null; error?: null }
   | { state: 'failed'; snapshotPath?: string | null; error: string };
 
+/** 03-api.md §3: daily取り込み候補のレーン（22-daily-intake.md §3.1。痛点・種は送られない） */
+export type IntakeLane = 'todo' | 'thought' | 'tone';
+
+/**
+ * 03-api.md §3: 候補の `status`（人間の意思）。
+ * ハーネスと違い `killed` が無い——機械が拾わなかった行はそもそも送られてこない（22 §4）
+ */
+export type IntakeStatus = 'proposed' | 'approved' | 'rejected';
+
+/** 03-api.md §3: 候補の `applyState`（機械の結果） */
+export type IntakeApplyState = 'pending' | 'applied' | 'failed';
+
+/** 03-api.md §3: `items[]` の要素（一覧 / decision / apply-result で同じ形） */
+export interface IntakeCandidateDto {
+  id: number;
+  date: string;
+  slug: string;
+  lane: IntakeLane;
+  text: string;
+  note: string | null;
+  lineNo: number | null;
+  sourcePath: string;
+  sourceNote: string | null;
+  status: IntakeStatus;
+  decidedAt: string | null;
+  applyState: IntakeApplyState;
+  appliedAt: string | null;
+  error: string | null;
+  resultPath: string | null;
+  resultUrl: string | null;
+  receivedAt: string;
+}
+
+/**
+ * 03-api.md §3: 一覧 GET の封筒（`?status=proposed` ／ `?status=approved&applyState=pending`
+ * ／ `?applyState=failed` の3形で共通）。
+ *
+ * `latest*` は `intake_days` の `receivedAt` 最大の行で、**受信そのものの有無**を表す
+ * （22 §3.5）。`items` が空でも「0件だった（正常）」と「00:40 が落ちた（異常）」は
+ * これでしか区別できない。受信ゼロなら3つとも null
+ */
+export interface IntakeCandidatesResponse {
+  items: IntakeCandidateDto[];
+  latestDate: string | null;
+  latestReceivedAt: string | null;
+  latestItemCount: number | null;
+}
+
+/**
+ * 03-api.md §3: `POST /api/intake/candidates/{id}/decision` と
+ * `POST /api/intake/candidates/{id}/apply-result` のレスポンス（同形）
+ */
+export interface IntakeCandidateResponse {
+  item: IntakeCandidateDto;
+}
+
+/** 03-api.md §3: `POST /api/intake/candidates/{id}/decision` のリクエストボディ */
+export interface IntakeDecisionInput {
+  status: IntakeStatus;
+}
+
+/**
+ * 03-api.md §3: `POST /api/intake/candidates/{id}/apply-result` のリクエストボディ。
+ * 送信元は翌晩 00:40 の無人 `--apply`（画面からは送らない。22 §3.4）
+ */
+export type IntakeApplyResultInput =
+  | { state: 'applied'; resultPath?: string | null; resultUrl?: string | null; error?: null }
+  | { state: 'failed'; resultPath?: null; resultUrl?: null; error: string };
+
+/** 03-api.md §3: `POST /api/intake/candidates` の `items[]` の要素 */
+export interface IntakeCandidateInput {
+  lane: IntakeLane;
+  text: string;
+  note?: string | null;
+  lineNo?: number | null;
+}
+
+/**
+ * 03-api.md §3: `POST /api/intake/candidates` のリクエストボディ。
+ * 送信元は second-brain の daily-harness（画面からは送らない。22 §2）。
+ * `items` は**空配列可**——0件の日も送る契約（22 §3.1）
+ */
+export interface IntakeCandidatesInput {
+  date: string;
+  sourcePath: string;
+  sourceNote?: string | null;
+  items: IntakeCandidateInput[];
+}
+
+/** 03-api.md §3: `POST /api/intake/candidates` のレスポンス */
+export interface IntakeIngestResponse {
+  date: string;
+  receivedAt: string;
+  itemCount: number;
+  items: IntakeCandidateDto[];
+}
+
 /** 03-api.md §3: health の各フィールド */
 export type HealthStatus = 'ok' | 'ng';
 

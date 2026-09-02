@@ -92,6 +92,78 @@ CREATE TABLE harness_proposals (
   UNIQUE(date, slug)
 );
 
+-- daily取り込み候補の受信日（0件受信も記録。§22）
+CREATE TABLE intake_days (
+  date        TEXT PRIMARY KEY,
+  source_path TEXT NOT NULL, -- Vault 相対パス（サーバーはアクセスしない）
+  source_note TEXT,
+  item_count  INTEGER NOT NULL,
+  received_at TEXT NOT NULL
+);
+
+-- daily取り込み候補と承認・適用状態（§22）
+CREATE TABLE intake_candidates (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  date        TEXT NOT NULL,
+  slug        TEXT NOT NULL,
+  lane        TEXT NOT NULL, -- todo | thought | tone
+  text        TEXT NOT NULL,
+  note        TEXT,
+  line_no     INTEGER,
+  status      TEXT NOT NULL, -- proposed | approved | rejected
+  decided_at  TEXT,
+  apply_state TEXT NOT NULL, -- pending | applied | failed
+  applied_at  TEXT,
+  apply_error TEXT,
+  result_path TEXT,
+  result_url  TEXT,
+  received_at TEXT NOT NULL,
+  UNIQUE(date, slug)
+);
+
+-- 人間待ち項目の受信記録（0件受信も記録。§24）
+CREATE TABLE inbox_receipts (
+  source      TEXT NOT NULL,
+  date        TEXT NOT NULL,
+  received_at TEXT NOT NULL,
+  item_count  INTEGER NOT NULL,
+  PRIMARY KEY (source, date)
+);
+
+-- 人間待ち項目と決定・適用状態（§24）
+CREATE TABLE inbox_items (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  source       TEXT NOT NULL,
+  date         TEXT NOT NULL,
+  slug         TEXT NOT NULL,
+  kind         TEXT NOT NULL,
+  title        TEXT NOT NULL,
+  body_md      TEXT,
+  options_json TEXT,
+  ref_path     TEXT,
+  payload_json TEXT,
+  expires_at   TEXT,
+  status       TEXT NOT NULL,
+  choice       TEXT,
+  decided_at   TEXT,
+  apply_state  TEXT NOT NULL,
+  applied_at   TEXT,
+  apply_error  TEXT,
+  result_path  TEXT,
+  result_url   TEXT,
+  received_at  TEXT NOT NULL,
+  UNIQUE(source, date, slug)
+);
+
+CREATE INDEX inbox_items_status_date
+  ON inbox_items (status, date DESC, id DESC);
+
+CREATE INDEX inbox_items_apply_state_date
+  ON inbox_items (apply_state, date DESC, id DESC);
+
+CREATE INDEX inbox_items_source_status_apply_state_date
+  ON inbox_items (source, status, apply_state, date ASC, id ASC);
+
 -- 消し込み状態
 CREATE TABLE task_checks (
   date       TEXT NOT NULL,
@@ -141,6 +213,8 @@ task_id = hex(sha1("{間隔}|{時刻}|{内容}"))[0..12]   # 16進小文字・�
 | 3 | `digests` を追加、`routines.detail_ref` / `task_days.detail_ref` を追加（ダイジェスト取り込み。2026-07-27） |
 | 4 | `learning_sets` / `learning_results` を追加（学習。[`14-learning.md`](./14-learning.md)。2026-07-29） |
 | 5 | `harness_proposals` を追加（ハーネス承認。[`17-harness-approval.md`](./17-harness-approval.md)。2026-07-29） |
+| 6 | `intake_days` / `intake_candidates` を追加（daily取り込み承認。[`22-daily-intake.md`](./22-daily-intake.md)。2026-08-29） |
+| 7 | `inbox_receipts` / `inbox_items` を追加（人間待ち項目。[`24-inbox.md`](./24-inbox.md)。2026-09-02） |
 
 - v3 の列追加は `ALTER TABLE ... ADD COLUMN`（既定 NULL）。**既存 `task_days` 行の値は書き換えない**（追加列が NULL のまま残るのは正常。過去日に詳細は無い）
 
@@ -151,11 +225,13 @@ task_id = hex(sha1("{間隔}|{時刻}|{内容}"))[0..12]   # 16進小文字・�
 
 タスク行から「その日の詳細」を開くための結び付け。
 
-- `detail_ref` の語彙は**次の7つのみ**（これ以外は保存時に `bad_request`）:
-  `digest.connection` ／ `digest.derive` ／ `digest.idea` ／ `digest.consolidate` ／ `nightshift.report` ／ `learning.session` ／ `harness.proposals`
+- `detail_ref` の語彙は**次の9つのみ**（これ以外は保存時に `bad_request`）:
+  `digest.connection` ／ `digest.derive` ／ `digest.idea` ／ `digest.consolidate` ／ `nightshift.report` ／ `learning.session` ／ `harness.proposals` ／ `intake.candidates` ／ `inbox.items`
 - `nightshift.report` はダイジェストではなく**夜勤詳細ビュー**（`/nightshift`・[`13-web-nightshift.md`](./13-web-nightshift.md)）への結び付け（2026-07-28 追加）。サーバーは語彙検証のみ行い、データは cerebellum を経由しない（表示側が夜勤ビューアの `runs.json` を直接読む）
 - `learning.session` は**学習詳細ビュー**（`/learning`・[`15-web-learning.md`](./15-web-learning.md)）への結び付け。対応する学習セットと成績は `learning_sets` / `learning_results` に保存する（[`14-learning.md`](./14-learning.md)）
 - `harness.proposals` は**ハーネス提案画面**（`/harness`・[`18-web-harness.md`](./18-web-harness.md)）への結び付け。対応する提案と承認・適用状態は `harness_proposals` に保存する（[`17-harness-approval.md`](./17-harness-approval.md)）
+- `intake.candidates` は**あなた待ち画面**（`/waiting`・[`23-web-waiting.md`](./23-web-waiting.md)）への結び付け。対応する受信記録・候補・承認・適用状態は `intake_days` / `intake_candidates` に保存する（[`22-daily-intake.md`](./22-daily-intake.md)）
+- `inbox.items` は**人間待ち画面**（`/inbox`・[`25-web-inbox.md`](./25-web-inbox.md)）への結び付け。対応する受信記録・項目・決定・適用状態は `inbox_receipts` / `inbox_items` に保存する（[`24-inbox.md`](./24-inbox.md)）
 - スナップショット確定時に `routines.detail_ref` を `task_days.detail_ref` へコピーする。以後マスタ側を変えても過去日の結び付きは変わらない（§4 不変性と同じ理由）
 - `digests.body` は**受信原文をそのまま保存**する。セクション分割・整形は表示時のパースで行い、保存時には行わない（[`11-digest.md`](./11-digest.md) §3）。フォーマットが変わっても再パースで救えるようにするため
 - 同じ date への再 POST は**上書き**（`received_at` を更新）。ダイジェストは生成物であり、`task_days` のような不変記録ではない

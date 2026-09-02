@@ -73,7 +73,7 @@ const openDrawer = async (page: Page) => {
   return drawer;
 };
 
-test('ドロワーは内部6項目＋brainで、ダイジェスト・夜勤・学習は無い', async ({
+test('ドロワーは内部7項目＋brainで、ダイジェスト・夜勤・学習は無い', async ({
   page,
 }) => {
   await mockRuns(page);
@@ -81,18 +81,20 @@ test('ドロワーは内部6項目＋brainで、ダイジェスト・夜勤・�
 
   const drawer = await openDrawer(page);
   // 完全一致で並びごと固定する（余計な項目が増えたらここで落ちる）
-  // 「ハーネス」は docs/specs/18-web-harness.md の実装で追加（docs/specs/16 §3.3）
+  // 「ハーネス」は docs/specs/18-web-harness.md の実装で追加（docs/specs/16 §3.3）。
+  // 「あなた待ち」は docs/specs/23-web-waiting.md の実装で追加（承認2画面を隣に並べる）
   await expect(drawer.getByRole('link')).toHaveText([
     '今日',
     '履歴',
     'ルーティン',
+    'あなた待ち',
     'ハーネス',
     '開発',
     'オフィス',
     'brain',
   ]);
   // 読む系のタスク起点詳細ビューは常設ナビに置かない（docs/specs/16 §3.6）。
-  // ハーネスだけが例外として常設される——という仕様の主張をここで守る
+  // ハーネスと「あなた待ち」だけが例外として常設される——という仕様の主張をここで守る
   await expect(drawer.getByRole('link', { name: 'ダイジェスト', exact: true })).toHaveCount(0);
   await expect(drawer.getByRole('link', { name: '夜勤', exact: true })).toHaveCount(0);
   await expect(drawer.getByRole('link', { name: '学習', exact: true })).toHaveCount(0);

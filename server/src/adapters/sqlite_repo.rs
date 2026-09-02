@@ -13,13 +13,17 @@ use crate::domain::{
         ApplyResult, ApplyState, ChallengeVerdict, HarnessKind, HarnessProposalBatch,
         HarnessStatus, HarnessVerdict,
     },
+    inbox::{InboxApplyResult, InboxApplyState, InboxBatch, InboxKind, InboxOption, InboxStatus},
+    intake::{IntakeApplyResult, IntakeApplyState, IntakeBatch, IntakeLane, IntakeStatus},
     routine::{Routine, RoutineFields},
     task::{CheckedTask, Task},
 };
 use crate::usecase::ports::{
-    DigestRepository, HarnessRepository, HarnessRepositoryError, LearningRepository,
-    RepositoryError, RoutineImportRepository, RoutineImportRepositoryError, RoutineRepository,
-    RoutineRepositoryError, StoredDigest, StoredHarnessProposal, StoredLearningResult,
+    DigestRepository, HarnessRepository, HarnessRepositoryError, InboxOpenCount, InboxRepository,
+    InboxRepositoryError, InboxSourceSummary, IntakeReceipt, IntakeRepository,
+    IntakeRepositoryError, LearningRepository, RepositoryError, RoutineImportRepository,
+    RoutineImportRepositoryError, RoutineRepository, RoutineRepositoryError, StoredDigest,
+    StoredHarnessProposal, StoredInboxItem, StoredIntakeCandidate, StoredLearningResult,
     StoredLearningSet, TaskRepository,
 };
 
@@ -28,7 +32,9 @@ const MIGRATION_V2: &str = include_str!("migrations/002_routines.sql");
 const MIGRATION_V3: &str = include_str!("migrations/003_digests.sql");
 const MIGRATION_V4: &str = include_str!("migrations/004_learning.sql");
 const MIGRATION_V5: &str = include_str!("migrations/005_harness.sql");
-const LATEST_SCHEMA_VERSION: i64 = 5;
+const MIGRATION_V6: &str = include_str!("migrations/006_intake.sql");
+const MIGRATION_V7: &str = include_str!("migrations/007_inbox.sql");
+const LATEST_SCHEMA_VERSION: i64 = 7;
 
 pub struct SqliteTaskRepository {
     connection: Mutex<Connection>,
@@ -67,11 +73,28 @@ impl SqliteTaskRepository {
                 MIGRATION_V3,
                 MIGRATION_V4,
                 MIGRATION_V5,
+                MIGRATION_V6,
+                MIGRATION_V7,
             ][..],
-            1 => &[MIGRATION_V2, MIGRATION_V3, MIGRATION_V4, MIGRATION_V5][..],
-            2 => &[MIGRATION_V3, MIGRATION_V4, MIGRATION_V5][..],
-            3 => &[MIGRATION_V4, MIGRATION_V5][..],
-            4 => &[MIGRATION_V5][..],
+            1 => &[
+                MIGRATION_V2,
+                MIGRATION_V3,
+                MIGRATION_V4,
+                MIGRATION_V5,
+                MIGRATION_V6,
+                MIGRATION_V7,
+            ][..],
+            2 => &[
+                MIGRATION_V3,
+                MIGRATION_V4,
+                MIGRATION_V5,
+                MIGRATION_V6,
+                MIGRATION_V7,
+            ][..],
+            3 => &[MIGRATION_V4, MIGRATION_V5, MIGRATION_V6, MIGRATION_V7][..],
+            4 => &[MIGRATION_V5, MIGRATION_V6, MIGRATION_V7][..],
+            5 => &[MIGRATION_V6, MIGRATION_V7][..],
+            6 => &[MIGRATION_V7][..],
             LATEST_SCHEMA_VERSION => return Ok(()),
             version => return Err(SqliteRepositoryError::UnsupportedSchemaVersion(version)),
         };
@@ -1124,6 +1147,623 @@ fn invalid_harness_value(index: usize, column: &'static str, value: String) -> r
     )
 }
 
+impl IntakeRepository for SqliteTaskRepository {
+    fn replace_intake_candidates(
+        &self,
+        batch: &IntakeBatch,
+        received_at: &str,
+    ) -> Result<(), IntakeRepositoryError> {
+        let mut connection = self.connection().map_err(IntakeRepositoryError::internal)?;
+        let transaction = connection
+            .transaction()
+            .map_err(IntakeRepositoryError::internal)?;
+        let protected: bool = transaction.query_row(
+            "SELECT EXISTS(SELECT 1 FROM intake_candidates WHERE date=?1 AND (status IN ('approved','rejected') OR apply_state<>'pending'))",
+            [&batch.date], |row| row.get(0)).map_err(IntakeRepositoryError::internal)?;
+        if protected {
+            return Err(IntakeRepositoryError::Conflict);
+        }
+        transaction
+            .execute("DELETE FROM intake_candidates WHERE date=?1", [&batch.date])
+            .map_err(IntakeRepositoryError::internal)?;
+        let item_count =
+            i64::try_from(batch.items.len()).map_err(IntakeRepositoryError::internal)?;
+        transaction.execute(
+            "INSERT INTO intake_days(date,source_path,source_note,item_count,received_at) VALUES(?1,?2,?3,?4,?5)
+             ON CONFLICT(date) DO UPDATE SET source_path=excluded.source_path,source_note=excluded.source_note,item_count=excluded.item_count,received_at=excluded.received_at",
+            params![batch.date, batch.source_path, batch.source_note, item_count, received_at]
+        ).map_err(IntakeRepositoryError::internal)?;
+        {
+            let mut statement = transaction.prepare(
+                "INSERT INTO intake_candidates(date,slug,lane,text,note,line_no,status,apply_state,received_at) VALUES(?1,?2,?3,?4,?5,?6,'proposed','pending',?7)"
+            ).map_err(IntakeRepositoryError::internal)?;
+            for item in &batch.items {
+                statement
+                    .execute(params![
+                        batch.date,
+                        item.slug,
+                        item.lane.as_str(),
+                        item.text,
+                        item.note,
+                        item.line_no,
+                        received_at
+                    ])
+                    .map_err(IntakeRepositoryError::internal)?;
+            }
+        }
+        transaction
+            .commit()
+            .map_err(IntakeRepositoryError::internal)
+    }
+
+    fn list_proposed_intake(&self) -> Result<Vec<StoredIntakeCandidate>, IntakeRepositoryError> {
+        self.list_intake_where("c.status='proposed'", "c.date DESC, c.id ASC")
+    }
+    fn list_pending_approved_intake(
+        &self,
+    ) -> Result<Vec<StoredIntakeCandidate>, IntakeRepositoryError> {
+        self.list_intake_where(
+            "c.status='approved' AND c.apply_state='pending'",
+            "c.date ASC, c.id ASC",
+        )
+    }
+    fn list_failed_intake(&self) -> Result<Vec<StoredIntakeCandidate>, IntakeRepositoryError> {
+        self.list_intake_where("c.apply_state='failed'", "c.date DESC, c.id ASC")
+    }
+
+    fn latest_intake_receipt(&self) -> Result<Option<IntakeReceipt>, IntakeRepositoryError> {
+        self.connection().map_err(IntakeRepositoryError::internal)?.query_row(
+            "SELECT date,received_at,item_count FROM intake_days ORDER BY received_at DESC, date DESC LIMIT 1", [],
+            |row| Ok((row.get::<_, String>(0)?,row.get::<_, String>(1)?,row.get::<_, i64>(2)?))
+        ).optional().map_err(IntakeRepositoryError::internal)?.map(|(date,received_at,count)| Ok(IntakeReceipt { date, received_at, item_count: usize::try_from(count).map_err(IntakeRepositoryError::internal)? })).transpose()
+    }
+
+    fn get_intake_candidate(
+        &self,
+        id: i64,
+    ) -> Result<Option<StoredIntakeCandidate>, IntakeRepositoryError> {
+        self.connection()
+            .map_err(IntakeRepositoryError::internal)?
+            .query_row(
+                &intake_select("c.id=?1", None),
+                [id],
+                intake_candidate_from_row,
+            )
+            .optional()
+            .map_err(IntakeRepositoryError::internal)
+    }
+
+    fn save_intake_decision(
+        &self,
+        id: i64,
+        expected_status: IntakeStatus,
+        status: IntakeStatus,
+        decided_at: &str,
+    ) -> Result<StoredIntakeCandidate, IntakeRepositoryError> {
+        let connection = self.connection().map_err(IntakeRepositoryError::internal)?;
+        let changed=connection.execute("UPDATE intake_candidates SET status=?1,decided_at=?2 WHERE id=?3 AND status=?4 AND apply_state='pending'",params![status.as_str(),decided_at,id,expected_status.as_str()]).map_err(IntakeRepositoryError::internal)?;
+        if changed == 0 {
+            return Err(IntakeRepositoryError::StateMismatch);
+        }
+        connection
+            .query_row(
+                &intake_select("c.id=?1", None),
+                [id],
+                intake_candidate_from_row,
+            )
+            .map_err(IntakeRepositoryError::internal)
+    }
+
+    fn save_intake_apply_result(
+        &self,
+        id: i64,
+        result: &IntakeApplyResult,
+        applied_at: &str,
+    ) -> Result<StoredIntakeCandidate, IntakeRepositoryError> {
+        let connection = self.connection().map_err(IntakeRepositoryError::internal)?;
+        let changed=connection.execute("UPDATE intake_candidates SET apply_state=?1,applied_at=?2,apply_error=?3,result_path=?4,result_url=?5 WHERE id=?6 AND status='approved'",params![result.state.as_str(),applied_at,result.error,result.result_path,result.result_url,id]).map_err(IntakeRepositoryError::internal)?;
+        if changed == 0 {
+            return Err(IntakeRepositoryError::StateMismatch);
+        }
+        connection
+            .query_row(
+                &intake_select("c.id=?1", None),
+                [id],
+                intake_candidate_from_row,
+            )
+            .map_err(IntakeRepositoryError::internal)
+    }
+}
+
+impl SqliteTaskRepository {
+    fn list_intake_where(
+        &self,
+        condition: &str,
+        order: &str,
+    ) -> Result<Vec<StoredIntakeCandidate>, IntakeRepositoryError> {
+        let connection = self.connection().map_err(IntakeRepositoryError::internal)?;
+        let sql = intake_select(condition, Some(order));
+        let mut statement = connection
+            .prepare(&sql)
+            .map_err(IntakeRepositoryError::internal)?;
+        statement
+            .query_map([], intake_candidate_from_row)
+            .map_err(IntakeRepositoryError::internal)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(IntakeRepositoryError::internal)
+    }
+}
+
+fn intake_select(condition: &str, order: Option<&str>) -> String {
+    format!(
+        "SELECT c.id,c.date,c.slug,c.lane,c.text,c.note,c.line_no,d.source_path,d.source_note,c.status,c.decided_at,c.apply_state,c.applied_at,c.apply_error,c.result_path,c.result_url,c.received_at FROM intake_candidates c JOIN intake_days d ON d.date=c.date WHERE {condition}{}",
+        order.map(|v| format!(" ORDER BY {v}")).unwrap_or_default()
+    )
+}
+
+fn intake_candidate_from_row(row: &Row<'_>) -> rusqlite::Result<StoredIntakeCandidate> {
+    let lane: String = row.get(3)?;
+    let status: String = row.get(9)?;
+    let apply: String = row.get(11)?;
+    Ok(StoredIntakeCandidate {
+        id: row.get(0)?,
+        date: row.get(1)?,
+        slug: row.get(2)?,
+        lane: match lane.as_str() {
+            "todo" => IntakeLane::Todo,
+            "thought" => IntakeLane::Thought,
+            "tone" => IntakeLane::Tone,
+            _ => return Err(invalid_intake_value(3, "lane", lane)),
+        },
+        text: row.get(4)?,
+        note: row.get(5)?,
+        line_no: row.get(6)?,
+        source_path: row.get(7)?,
+        source_note: row.get(8)?,
+        status: match status.as_str() {
+            "proposed" => IntakeStatus::Proposed,
+            "approved" => IntakeStatus::Approved,
+            "rejected" => IntakeStatus::Rejected,
+            _ => return Err(invalid_intake_value(9, "status", status)),
+        },
+        decided_at: row.get(10)?,
+        apply_state: match apply.as_str() {
+            "pending" => IntakeApplyState::Pending,
+            "applied" => IntakeApplyState::Applied,
+            "failed" => IntakeApplyState::Failed,
+            _ => return Err(invalid_intake_value(11, "apply_state", apply)),
+        },
+        applied_at: row.get(12)?,
+        apply_error: row.get(13)?,
+        result_path: row.get(14)?,
+        result_url: row.get(15)?,
+        received_at: row.get(16)?,
+    })
+}
+fn invalid_intake_value(index: usize, column: &'static str, value: String) -> rusqlite::Error {
+    rusqlite::Error::FromSqlConversionFailure(
+        index,
+        Type::Text,
+        Box::new(SqliteRepositoryError::InvalidStoredIntakeValue { column, value }),
+    )
+}
+
+impl InboxRepository for SqliteTaskRepository {
+    fn replace_inbox_batch(
+        &self,
+        batch: &InboxBatch,
+        received_at: &str,
+    ) -> Result<(), InboxRepositoryError> {
+        let mut connection = self.connection().map_err(InboxRepositoryError::internal)?;
+        let transaction = connection
+            .transaction()
+            .map_err(InboxRepositoryError::internal)?;
+        let protected = transaction
+            .query_row(
+                "SELECT EXISTS(
+                    SELECT 1 FROM inbox_items
+                    WHERE source = ?1 AND date = ?2
+                      AND (
+                        status IN ('approved', 'rejected', 'chosen')
+                        OR (kind IN ('approve', 'choose') AND apply_state <> 'pending')
+                      )
+                )",
+                params![batch.source, batch.date],
+                |row| row.get::<_, bool>(0),
+            )
+            .map_err(InboxRepositoryError::internal)?;
+        if protected {
+            return Err(InboxRepositoryError::Conflict);
+        }
+
+        transaction
+            .execute(
+                "DELETE FROM inbox_items WHERE source = ?1 AND date = ?2",
+                params![batch.source, batch.date],
+            )
+            .map_err(InboxRepositoryError::internal)?;
+        let item_count =
+            i64::try_from(batch.items.len()).map_err(InboxRepositoryError::internal)?;
+        transaction
+            .execute(
+                "INSERT INTO inbox_receipts (source, date, received_at, item_count)
+                 VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT(source, date) DO UPDATE SET
+                   received_at = excluded.received_at,
+                   item_count = excluded.item_count",
+                params![batch.source, batch.date, received_at, item_count],
+            )
+            .map_err(InboxRepositoryError::internal)?;
+        {
+            let mut statement = transaction
+                .prepare(
+                    "INSERT INTO inbox_items (
+                        source, date, slug, kind, title, body_md, options_json, ref_path,
+                        payload_json, expires_at, status, apply_state, received_at
+                    ) VALUES (
+                        ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13
+                    )",
+                )
+                .map_err(InboxRepositoryError::internal)?;
+            for item in &batch.items {
+                let options = item
+                    .options
+                    .as_deref()
+                    .map(inbox_options_json)
+                    .transpose()?;
+                let payload = item
+                    .payload
+                    .as_ref()
+                    .map(serde_json::to_string)
+                    .transpose()
+                    .map_err(InboxRepositoryError::internal)?;
+                statement
+                    .execute(params![
+                        batch.source,
+                        batch.date,
+                        item.slug,
+                        item.kind.as_str(),
+                        item.title,
+                        item.body_md,
+                        options,
+                        item.ref_path,
+                        payload,
+                        item.expires_at,
+                        item.status.as_str(),
+                        item.apply_state.as_str(),
+                        received_at,
+                    ])
+                    .map_err(InboxRepositoryError::internal)?;
+            }
+        }
+        transaction.commit().map_err(InboxRepositoryError::internal)
+    }
+
+    fn list_open_inbox_items(
+        &self,
+        now: &str,
+    ) -> Result<Vec<StoredInboxItem>, InboxRepositoryError> {
+        self.list_inbox_items(
+            "status = 'open' AND (expires_at IS NULL OR expires_at >= ?1)",
+            "date DESC, id DESC",
+            [now],
+        )
+    }
+
+    fn list_decided_inbox_items(
+        &self,
+        source: &str,
+    ) -> Result<Vec<StoredInboxItem>, InboxRepositoryError> {
+        self.list_inbox_items(
+            "source = ?1 AND status IN ('approved', 'chosen') AND apply_state = 'pending'",
+            "date ASC, id ASC",
+            [source],
+        )
+    }
+
+    fn list_failed_inbox_items(&self) -> Result<Vec<StoredInboxItem>, InboxRepositoryError> {
+        self.list_inbox_items("apply_state = 'failed'", "date DESC, id DESC", [])
+    }
+
+    fn get_inbox_item(&self, id: i64) -> Result<Option<StoredInboxItem>, InboxRepositoryError> {
+        self.connection()
+            .map_err(InboxRepositoryError::internal)?
+            .query_row(
+                &inbox_item_select("id = ?1", None),
+                [id],
+                inbox_item_from_row,
+            )
+            .optional()
+            .map_err(InboxRepositoryError::internal)
+    }
+
+    fn save_inbox_decision(
+        &self,
+        id: i64,
+        expected_status: InboxStatus,
+        expected_apply_state: InboxApplyState,
+        decision_status: InboxStatus,
+        choice: Option<&str>,
+        decided_at: &str,
+    ) -> Result<StoredInboxItem, InboxRepositoryError> {
+        let connection = self.connection().map_err(InboxRepositoryError::internal)?;
+        let changed = connection
+            .execute(
+                "UPDATE inbox_items
+                 SET status = ?1, choice = ?2, decided_at = ?3
+                 WHERE id = ?4 AND status = ?5 AND apply_state = ?6",
+                params![
+                    decision_status.as_str(),
+                    choice,
+                    decided_at,
+                    id,
+                    expected_status.as_str(),
+                    expected_apply_state.as_str(),
+                ],
+            )
+            .map_err(InboxRepositoryError::internal)?;
+        if changed == 0 {
+            return Err(InboxRepositoryError::StateMismatch);
+        }
+        connection
+            .query_row(
+                &inbox_item_select("id = ?1", None),
+                [id],
+                inbox_item_from_row,
+            )
+            .map_err(InboxRepositoryError::internal)
+    }
+
+    fn save_inbox_apply_result(
+        &self,
+        id: i64,
+        expected_status: InboxStatus,
+        expected_apply_state: InboxApplyState,
+        result: &InboxApplyResult,
+        applied_at: &str,
+    ) -> Result<StoredInboxItem, InboxRepositoryError> {
+        let connection = self.connection().map_err(InboxRepositoryError::internal)?;
+        let changed = connection
+            .execute(
+                "UPDATE inbox_items
+                 SET apply_state = ?1, applied_at = ?2, apply_error = ?3,
+                     result_path = ?4, result_url = ?5
+                 WHERE id = ?6 AND status = ?7 AND apply_state = ?8",
+                params![
+                    result.state.as_str(),
+                    applied_at,
+                    result.error,
+                    result.result_path,
+                    result.result_url,
+                    id,
+                    expected_status.as_str(),
+                    expected_apply_state.as_str(),
+                ],
+            )
+            .map_err(InboxRepositoryError::internal)?;
+        if changed == 0 {
+            return Err(InboxRepositoryError::StateMismatch);
+        }
+        connection
+            .query_row(
+                &inbox_item_select("id = ?1", None),
+                [id],
+                inbox_item_from_row,
+            )
+            .map_err(InboxRepositoryError::internal)
+    }
+
+    fn inbox_summary(&self) -> Result<Vec<InboxSourceSummary>, InboxRepositoryError> {
+        let connection = self.connection().map_err(InboxRepositoryError::internal)?;
+        let mut statement = connection
+            .prepare(
+                "SELECT r.source, r.date, r.received_at, r.item_count,
+                    COALESCE(SUM(CASE WHEN i.status = 'open' AND i.kind = 'approve' THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN i.status = 'open' AND i.kind = 'choose' THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN i.status = 'open' AND i.kind = 'read' THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN i.status = 'open' AND i.kind = 'alert' THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN i.apply_state = 'failed' THEN 1 ELSE 0 END), 0)
+                 FROM inbox_receipts r
+                 LEFT JOIN inbox_items i ON i.source = r.source
+                 WHERE NOT EXISTS (
+                    SELECT 1 FROM inbox_receipts newer
+                    WHERE newer.source = r.source
+                      AND (newer.date > r.date
+                           OR (newer.date = r.date AND newer.received_at > r.received_at))
+                 )
+                 GROUP BY r.source, r.date, r.received_at, r.item_count
+                 ORDER BY r.source ASC",
+            )
+            .map_err(InboxRepositoryError::internal)?;
+        statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, i64>(4)?,
+                    row.get::<_, i64>(5)?,
+                    row.get::<_, i64>(6)?,
+                    row.get::<_, i64>(7)?,
+                    row.get::<_, i64>(8)?,
+                ))
+            })
+            .map_err(InboxRepositoryError::internal)?
+            .map(|row| {
+                let (
+                    source,
+                    latest_date,
+                    latest_received_at,
+                    item_count,
+                    approve,
+                    choose,
+                    read,
+                    alert,
+                    failed_count,
+                ) = row.map_err(InboxRepositoryError::internal)?;
+                Ok(InboxSourceSummary {
+                    source,
+                    latest_date,
+                    latest_received_at,
+                    latest_item_count: stored_count(item_count)?,
+                    open_count: InboxOpenCount {
+                        approve: stored_count(approve)?,
+                        choose: stored_count(choose)?,
+                        read: stored_count(read)?,
+                        alert: stored_count(alert)?,
+                    },
+                    failed_count: stored_count(failed_count)?,
+                })
+            })
+            .collect()
+    }
+}
+
+impl SqliteTaskRepository {
+    fn list_inbox_items<P: rusqlite::Params>(
+        &self,
+        condition: &str,
+        order: &str,
+        parameters: P,
+    ) -> Result<Vec<StoredInboxItem>, InboxRepositoryError> {
+        let connection = self.connection().map_err(InboxRepositoryError::internal)?;
+        let mut statement = connection
+            .prepare(&inbox_item_select(condition, Some(order)))
+            .map_err(InboxRepositoryError::internal)?;
+        statement
+            .query_map(parameters, inbox_item_from_row)
+            .map_err(InboxRepositoryError::internal)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(InboxRepositoryError::internal)
+    }
+}
+
+fn inbox_item_select(condition: &str, order: Option<&str>) -> String {
+    format!(
+        "SELECT id, source, date, slug, kind, title, body_md, options_json, ref_path, payload_json,
+                expires_at, status, choice, decided_at, apply_state, applied_at, apply_error,
+                result_path, result_url, received_at
+         FROM inbox_items WHERE {condition}{}",
+        order
+            .map(|value| format!(" ORDER BY {value}"))
+            .unwrap_or_default()
+    )
+}
+
+fn inbox_options_json(options: &[InboxOption]) -> Result<String, InboxRepositoryError> {
+    serde_json::to_string(
+        &options
+            .iter()
+            .map(|option| serde_json::json!({ "id": option.id, "label": option.label }))
+            .collect::<Vec<_>>(),
+    )
+    .map_err(InboxRepositoryError::internal)
+}
+
+fn inbox_item_from_row(row: &Row<'_>) -> rusqlite::Result<StoredInboxItem> {
+    let kind = row.get::<_, String>(4)?;
+    let options_json = row.get::<_, Option<String>>(7)?;
+    let payload_json = row.get::<_, Option<String>>(9)?;
+    let status = row.get::<_, String>(11)?;
+    let apply_state = row.get::<_, String>(14)?;
+    Ok(StoredInboxItem {
+        id: row.get(0)?,
+        source: row.get(1)?,
+        date: row.get(2)?,
+        slug: row.get(3)?,
+        kind: inbox_kind_from_stored(4, kind)?,
+        title: row.get(5)?,
+        body_md: row.get(6)?,
+        options: options_json
+            .map(|value| inbox_options_from_json(7, value))
+            .transpose()?,
+        ref_path: row.get(8)?,
+        payload: payload_json
+            .map(|value| {
+                serde_json::from_str(&value)
+                    .map_err(|_| invalid_inbox_value(9, "payload_json", value))
+            })
+            .transpose()?,
+        expires_at: row.get(10)?,
+        status: inbox_status_from_stored(11, status)?,
+        choice: row.get(12)?,
+        decided_at: row.get(13)?,
+        apply_state: inbox_apply_state_from_stored(14, apply_state)?,
+        applied_at: row.get(15)?,
+        apply_error: row.get(16)?,
+        result_path: row.get(17)?,
+        result_url: row.get(18)?,
+        received_at: row.get(19)?,
+    })
+}
+
+fn inbox_options_from_json(index: usize, value: String) -> rusqlite::Result<Vec<InboxOption>> {
+    let values: Vec<serde_json::Value> = serde_json::from_str(&value)
+        .map_err(|_| invalid_inbox_value(index, "options_json", value.clone()))?;
+    values
+        .into_iter()
+        .map(|option| {
+            let Some(id) = option.get("id").and_then(serde_json::Value::as_str) else {
+                return Err(invalid_inbox_value(index, "options_json", value.clone()));
+            };
+            let Some(label) = option.get("label").and_then(serde_json::Value::as_str) else {
+                return Err(invalid_inbox_value(index, "options_json", value.clone()));
+            };
+            Ok(InboxOption {
+                id: id.to_owned(),
+                label: label.to_owned(),
+            })
+        })
+        .collect()
+}
+
+fn inbox_kind_from_stored(index: usize, value: String) -> rusqlite::Result<InboxKind> {
+    match value.as_str() {
+        "approve" => Ok(InboxKind::Approve),
+        "choose" => Ok(InboxKind::Choose),
+        "read" => Ok(InboxKind::Read),
+        "alert" => Ok(InboxKind::Alert),
+        _ => Err(invalid_inbox_value(index, "kind", value)),
+    }
+}
+
+fn inbox_status_from_stored(index: usize, value: String) -> rusqlite::Result<InboxStatus> {
+    match value.as_str() {
+        "open" => Ok(InboxStatus::Open),
+        "approved" => Ok(InboxStatus::Approved),
+        "rejected" => Ok(InboxStatus::Rejected),
+        "chosen" => Ok(InboxStatus::Chosen),
+        "read" => Ok(InboxStatus::Read),
+        "acknowledged" => Ok(InboxStatus::Acknowledged),
+        _ => Err(invalid_inbox_value(index, "status", value)),
+    }
+}
+
+fn inbox_apply_state_from_stored(index: usize, value: String) -> rusqlite::Result<InboxApplyState> {
+    match value.as_str() {
+        "none" => Ok(InboxApplyState::None),
+        "pending" => Ok(InboxApplyState::Pending),
+        "applied" => Ok(InboxApplyState::Applied),
+        "failed" => Ok(InboxApplyState::Failed),
+        _ => Err(invalid_inbox_value(index, "apply_state", value)),
+    }
+}
+
+fn invalid_inbox_value(index: usize, column: &'static str, value: String) -> rusqlite::Error {
+    rusqlite::Error::FromSqlConversionFailure(
+        index,
+        Type::Text,
+        Box::new(SqliteRepositoryError::InvalidStoredInboxValue { column, value }),
+    )
+}
+
+fn stored_count(value: i64) -> Result<usize, InboxRepositoryError> {
+    usize::try_from(value).map_err(|_| {
+        InboxRepositoryError::internal(SqliteRepositoryError::InvalidStoredCount(value))
+    })
+}
+
 #[derive(Debug, Error)]
 pub enum SqliteRepositoryError {
     #[error("failed to open SQLite database at {}", path.display())]
@@ -1152,6 +1792,10 @@ pub enum SqliteRepositoryError {
     InvalidStoredCount(i64),
     #[error("stored harness {column} value is invalid: {value}")]
     InvalidStoredHarnessValue { column: &'static str, value: String },
+    #[error("stored intake {column} value is invalid: {value}")]
+    InvalidStoredIntakeValue { column: &'static str, value: String },
+    #[error("stored inbox {column} value is invalid: {value}")]
+    InvalidStoredInboxValue { column: &'static str, value: String },
 }
 
 #[cfg(test)]
@@ -1159,7 +1803,10 @@ mod tests {
     use chrono::{DateTime, FixedOffset};
     use rusqlite::{Connection, params};
 
-    use super::{MIGRATION_V1, MIGRATION_V2, MIGRATION_V3, MIGRATION_V4, SqliteTaskRepository};
+    use super::{
+        MIGRATION_V1, MIGRATION_V2, MIGRATION_V3, MIGRATION_V4, MIGRATION_V5, MIGRATION_V6,
+        SqliteTaskRepository,
+    };
     use crate::{
         domain::{
             day::SummaryDay,
@@ -1167,11 +1814,17 @@ mod tests {
                 ApplyResult, ApplyState, ChallengeVerdict, HarnessKind, HarnessProposal,
                 HarnessProposalBatch, HarnessStatus, HarnessVerdict,
             },
+            inbox::{
+                InboxApplyResult, InboxApplyState, InboxBatch, InboxItem, InboxKind, InboxOption,
+                InboxStatus,
+            },
+            intake::{IntakeBatch, IntakeItem, IntakeLane},
             routine::{Routine, RoutineFields},
             task::{CheckedTask, Task},
         },
         usecase::ports::{
-            HarnessRepository, HarnessRepositoryError, RoutineRepository, RoutineRepositoryError,
+            HarnessRepository, HarnessRepositoryError, InboxRepository, InboxRepositoryError,
+            IntakeRepository, IntakeRepositoryError, RoutineRepository, RoutineRepositoryError,
             TaskRepository,
         },
     };
@@ -1217,6 +1870,61 @@ mod tests {
         }
     }
 
+    fn intake_batch(date: &str, slugs: &[&str]) -> IntakeBatch {
+        IntakeBatch {
+            date: date.to_owned(),
+            source_path: format!("90_Meta/daily_intake/{date}.md"),
+            source_note: None,
+            items: slugs
+                .iter()
+                .map(|slug| IntakeItem {
+                    slug: (*slug).to_owned(),
+                    lane: IntakeLane::Thought,
+                    text: format!("text-{slug}"),
+                    note: None,
+                    line_no: None,
+                })
+                .collect(),
+        }
+    }
+
+    fn inbox_item(slug: &str, kind: InboxKind) -> InboxItem {
+        InboxItem {
+            slug: slug.to_owned(),
+            kind,
+            title: format!("title-{slug}"),
+            body_md: None,
+            options: (kind == InboxKind::Choose).then(|| {
+                vec![
+                    InboxOption {
+                        id: "one".to_owned(),
+                        label: "One".to_owned(),
+                    },
+                    InboxOption {
+                        id: "two".to_owned(),
+                        label: "Two".to_owned(),
+                    },
+                ]
+            }),
+            ref_path: None,
+            payload: None,
+            expires_at: None,
+            status: InboxStatus::Open,
+            apply_state: match kind {
+                InboxKind::Approve | InboxKind::Choose => InboxApplyState::Pending,
+                InboxKind::Read | InboxKind::Alert => InboxApplyState::None,
+            },
+        }
+    }
+
+    fn inbox_batch(source: &str, date: &str, items: Vec<InboxItem>) -> InboxBatch {
+        InboxBatch {
+            source: source.to_owned(),
+            date: date.to_owned(),
+            items,
+        }
+    }
+
     fn checked_at(value: &str) -> DateTime<FixedOffset> {
         DateTime::parse_from_rfc3339(value).expect("test timestamp should be RFC 3339")
     }
@@ -1237,7 +1945,7 @@ mod tests {
                      FROM sqlite_master
                      WHERE type = 'table'
                        AND name IN (
-                         'digests', 'harness_proposals', 'learning_results', 'learning_sets',
+                         'digests', 'harness_proposals', 'inbox_items', 'inbox_receipts', 'intake_candidates', 'intake_days', 'learning_results', 'learning_sets',
                          'routines', 'task_days', 'task_checks'
                        )
                      ORDER BY name",
@@ -1261,12 +1969,16 @@ mod tests {
             )
             .expect("routine index should be queryable");
 
-        assert_eq!(version, 5);
+        assert_eq!(version, 7);
         assert_eq!(
             tables,
             vec![
                 "digests",
                 "harness_proposals",
+                "inbox_items",
+                "inbox_receipts",
+                "intake_candidates",
+                "intake_days",
                 "learning_results",
                 "learning_sets",
                 "routines",
@@ -1348,7 +2060,7 @@ mod tests {
             )
             .expect("learning tables should be queryable");
 
-        assert_eq!(version, 5);
+        assert_eq!(version, 7);
         assert_eq!(existing_digest, "existing digest");
         assert_eq!(learning_rows, 2);
     }
@@ -1430,9 +2142,179 @@ mod tests {
             })
             .expect("harness proposals should be queryable");
 
-        assert_eq!(version, 5);
+        assert_eq!(version, 7);
         assert_eq!(learning_raw, r#"{"theme":"existing learning set"}"#);
         assert_eq!(proposal_count, 1);
+    }
+
+    #[test]
+    fn migrates_version_five_database_through_intake_to_inbox_schema() {
+        let connection = Connection::open_in_memory().unwrap();
+        for migration in [
+            MIGRATION_V1,
+            MIGRATION_V2,
+            MIGRATION_V3,
+            MIGRATION_V4,
+            MIGRATION_V5,
+        ] {
+            connection.execute_batch(migration).unwrap();
+        }
+        let version_before: i64 = connection
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .unwrap();
+        assert_eq!(version_before, 5);
+        let repository = SqliteTaskRepository::from_connection(connection).unwrap();
+        let connection = repository.connection().unwrap();
+        let version_after: i64 = connection
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .unwrap();
+        assert_eq!(version_after, 7);
+        for table in [
+            "intake_days",
+            "intake_candidates",
+            "inbox_receipts",
+            "inbox_items",
+        ] {
+            let exists: bool = connection
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1)",
+                    [table],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert!(exists);
+        }
+    }
+
+    #[test]
+    fn rejects_duplicate_intake_date_and_slug() {
+        let repository = repository();
+        let connection = repository.connection().unwrap();
+        connection.execute("INSERT INTO intake_days(date,source_path,item_count,received_at) VALUES('2026-08-28','opaque',2,'2026-08-29T00:41:00+09:00')",[]).unwrap();
+        connection.execute("INSERT INTO intake_candidates(date,slug,lane,text,status,apply_state,received_at) VALUES('2026-08-28','same','todo','one','proposed','pending','now')",[]).unwrap();
+        let duplicate=connection.execute("INSERT INTO intake_candidates(date,slug,lane,text,status,apply_state,received_at) VALUES('2026-08-28','same','tone','two','proposed','pending','now')",[]);
+        assert!(matches!(
+            duplicate,
+            Err(rusqlite::Error::SqliteFailure(_, _))
+        ));
+    }
+
+    #[test]
+    fn migrates_version_six_database_to_inbox_schema() {
+        let connection = Connection::open_in_memory().unwrap();
+        for migration in [
+            MIGRATION_V1,
+            MIGRATION_V2,
+            MIGRATION_V3,
+            MIGRATION_V4,
+            MIGRATION_V5,
+            MIGRATION_V6,
+        ] {
+            connection.execute_batch(migration).unwrap();
+        }
+        let version_before: i64 = connection
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .unwrap();
+        assert_eq!(version_before, 6);
+
+        let repository = SqliteTaskRepository::from_connection(connection).unwrap();
+        let connection = repository.connection().unwrap();
+        let version_after: i64 = connection
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .unwrap();
+
+        assert_eq!(version_after, 7);
+    }
+
+    #[test]
+    fn rejects_duplicate_inbox_source_date_and_slug() {
+        let repository = repository();
+        let connection = repository.connection().unwrap();
+        connection
+            .execute(
+                "INSERT INTO inbox_items (source, date, slug, kind, title, status, apply_state, received_at) \
+                 VALUES ('night-harness', '2026-09-02', 'same', 'approve', 'one', 'open', 'pending', 'now')",
+                [],
+            )
+            .unwrap();
+        let duplicate = connection.execute(
+            "INSERT INTO inbox_items (source, date, slug, kind, title, status, apply_state, received_at) \
+             VALUES ('night-harness', '2026-09-02', 'same', 'alert', 'two', 'open', 'none', 'now')",
+            [],
+        );
+
+        assert!(matches!(
+            duplicate,
+            Err(rusqlite::Error::SqliteFailure(_, _))
+        ));
+    }
+
+    #[test]
+    fn rejects_duplicate_inbox_receipt_source_and_date() {
+        let repository = repository();
+        let connection = repository.connection().unwrap();
+        connection
+            .execute(
+                "INSERT INTO inbox_receipts (source, date, received_at, item_count) \
+                 VALUES ('night-harness', '2026-09-02', 'now', 1)",
+                [],
+            )
+            .unwrap();
+        let duplicate = connection.execute(
+            "INSERT INTO inbox_receipts (source, date, received_at, item_count) \
+             VALUES ('night-harness', '2026-09-02', 'later', 2)",
+            [],
+        );
+
+        assert!(matches!(
+            duplicate,
+            Err(rusqlite::Error::SqliteFailure(_, _))
+        ));
+    }
+
+    #[test]
+    fn failed_intake_replacement_rolls_back_parent_and_candidates() {
+        let repository = repository();
+        repository
+            .replace_intake_candidates(
+                &intake_batch("2026-08-28", &["original"]),
+                "2026-08-29T00:41:00+09:00",
+            )
+            .unwrap();
+        repository.connection().unwrap().execute_batch("CREATE TRIGGER reject_intake BEFORE INSERT ON intake_candidates WHEN NEW.slug='explode' BEGIN SELECT RAISE(ABORT,'explode'); END;").unwrap();
+        assert!(matches!(
+            repository.replace_intake_candidates(
+                &intake_batch("2026-08-28", &["partial", "explode"]),
+                "2026-08-30T00:41:00+09:00"
+            ),
+            Err(IntakeRepositoryError::Internal { .. })
+        ));
+        let rows = repository.list_proposed_intake().unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].slug, "original");
+        let receipt = repository.latest_intake_receipt().unwrap().unwrap();
+        assert_eq!(receipt.received_at, "2026-08-29T00:41:00+09:00");
+        assert_eq!(receipt.item_count, 1);
+    }
+
+    #[test]
+    fn non_pending_intake_row_blocks_replacement() {
+        let repository = repository();
+        repository
+            .replace_intake_candidates(&intake_batch("2026-08-28", &["one"]), "now")
+            .unwrap();
+        repository
+            .connection()
+            .unwrap()
+            .execute(
+                "UPDATE intake_candidates SET apply_state='failed' WHERE date='2026-08-28'",
+                [],
+            )
+            .unwrap();
+        assert!(matches!(
+            repository.replace_intake_candidates(&intake_batch("2026-08-28", &["two"]), "later"),
+            Err(IntakeRepositoryError::Conflict)
+        ));
     }
 
     #[test]
@@ -1875,7 +2757,7 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM routines", [], |row| row.get(0))
             .expect("routines should be queryable");
 
-        assert_eq!(version, 5);
+        assert_eq!(version, 7);
         assert_eq!(
             stored,
             (
@@ -1887,7 +2769,7 @@ mod tests {
         );
         assert_eq!(routine_count, 0);
         println!(
-            "migration v1→v5: user_version={version}, existing_task_days=1, \
+            "migration v1→v7: user_version={version}, existing_task_days=1, \
              existing_task_checks=1, routines={routine_count}"
         );
     }
@@ -2245,5 +3127,341 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn inbox_replacement_is_atomic_and_protects_human_and_apply_states() {
+        let repository = repository();
+        let first = inbox_batch(
+            "night-harness",
+            "2026-09-02",
+            vec![inbox_item("first", InboxKind::Approve)],
+        );
+        repository
+            .replace_inbox_batch(&first, "2026-09-02T06:00:00+09:00")
+            .unwrap();
+        repository
+            .replace_inbox_batch(
+                &inbox_batch(
+                    "night-harness",
+                    "2026-09-02",
+                    vec![inbox_item("replacement-a", InboxKind::Approve)],
+                ),
+                "2026-09-02T07:00:00+09:00",
+            )
+            .unwrap();
+        let replacement = repository
+            .list_open_inbox_items("2026-09-02T08:00:00+09:00")
+            .unwrap();
+        assert_eq!(
+            replacement
+                .iter()
+                .map(|item| item.slug.as_str())
+                .collect::<Vec<_>>(),
+            ["replacement-a"]
+        );
+
+        let id = replacement[0].id;
+        repository
+            .save_inbox_decision(
+                id,
+                InboxStatus::Open,
+                InboxApplyState::Pending,
+                InboxStatus::Approved,
+                None,
+                "2026-09-02T08:10:00+09:00",
+            )
+            .unwrap();
+        assert!(matches!(
+            repository.replace_inbox_batch(&first, "2026-09-02T08:11:00+09:00"),
+            Err(InboxRepositoryError::Conflict)
+        ));
+        assert_eq!(
+            repository.get_inbox_item(id).unwrap().unwrap().status,
+            InboxStatus::Approved
+        );
+
+        for (date, kind, status) in [
+            ("2026-09-03", InboxKind::Approve, InboxStatus::Rejected),
+            ("2026-09-04", InboxKind::Choose, InboxStatus::Chosen),
+        ] {
+            let batch = inbox_batch("night-harness", date, vec![inbox_item("item", kind)]);
+            repository
+                .replace_inbox_batch(&batch, "2026-09-04T06:00:00+09:00")
+                .unwrap();
+            let item = repository
+                .list_open_inbox_items("2026-09-05T00:00:00+09:00")
+                .unwrap()
+                .into_iter()
+                .find(|item| item.date == date)
+                .unwrap();
+            repository
+                .save_inbox_decision(
+                    item.id,
+                    InboxStatus::Open,
+                    InboxApplyState::Pending,
+                    status,
+                    (status == InboxStatus::Chosen).then_some("one"),
+                    "2026-09-04T06:10:00+09:00",
+                )
+                .unwrap();
+            assert!(matches!(
+                repository.replace_inbox_batch(&batch, "2026-09-04T06:11:00+09:00"),
+                Err(InboxRepositoryError::Conflict)
+            ));
+        }
+
+        let batch = inbox_batch(
+            "night-harness",
+            "2026-09-05",
+            vec![inbox_item("apply", InboxKind::Approve)],
+        );
+        repository
+            .replace_inbox_batch(&batch, "2026-09-05T06:00:00+09:00")
+            .unwrap();
+        let item = repository
+            .list_open_inbox_items("2026-09-05T07:00:00+09:00")
+            .unwrap()
+            .into_iter()
+            .find(|item| item.date == "2026-09-05")
+            .unwrap();
+        let decided = repository
+            .save_inbox_decision(
+                item.id,
+                InboxStatus::Open,
+                InboxApplyState::Pending,
+                InboxStatus::Approved,
+                None,
+                "2026-09-05T07:01:00+09:00",
+            )
+            .unwrap();
+        repository
+            .save_inbox_apply_result(
+                decided.id,
+                InboxStatus::Approved,
+                InboxApplyState::Pending,
+                &InboxApplyResult {
+                    state: InboxApplyState::Failed,
+                    result_path: None,
+                    result_url: None,
+                    error: Some("temporary failure".to_owned()),
+                },
+                "2026-09-05T07:02:00+09:00",
+            )
+            .unwrap();
+        assert!(matches!(
+            repository.replace_inbox_batch(&batch, "2026-09-05T07:03:00+09:00"),
+            Err(InboxRepositoryError::Conflict)
+        ));
+    }
+
+    #[test]
+    fn inbox_read_and_alert_replacement_reopens_and_empty_batches_keep_receipts() {
+        let repository = repository();
+        let batch = inbox_batch(
+            "routine_watchdog",
+            "2026-09-02",
+            vec![
+                inbox_item("report", InboxKind::Read),
+                inbox_item("warning", InboxKind::Alert),
+            ],
+        );
+        repository
+            .replace_inbox_batch(&batch, "2026-09-02T06:00:00+09:00")
+            .unwrap();
+        let items = repository
+            .list_open_inbox_items("2026-09-02T06:01:00+09:00")
+            .unwrap();
+        for item in items {
+            let status = match item.kind {
+                InboxKind::Read => InboxStatus::Read,
+                InboxKind::Alert => InboxStatus::Acknowledged,
+                _ => unreachable!(),
+            };
+            repository
+                .save_inbox_decision(
+                    item.id,
+                    InboxStatus::Open,
+                    InboxApplyState::None,
+                    status,
+                    None,
+                    "2026-09-02T06:02:00+09:00",
+                )
+                .unwrap();
+        }
+        repository
+            .replace_inbox_batch(&batch, "2026-09-02T06:03:00+09:00")
+            .unwrap();
+        let reopened = repository
+            .list_open_inbox_items("2026-09-02T06:04:00+09:00")
+            .unwrap();
+        assert_eq!(reopened.len(), 2);
+        assert!(reopened.iter().all(|item| item.status == InboxStatus::Open));
+
+        repository
+            .replace_inbox_batch(
+                &inbox_batch("routine_watchdog", "2026-09-02", vec![]),
+                "2026-09-02T06:05:00+09:00",
+            )
+            .unwrap();
+        assert!(
+            repository
+                .list_open_inbox_items("2026-09-02T06:06:00+09:00")
+                .unwrap()
+                .is_empty()
+        );
+        let summary = repository.inbox_summary().unwrap();
+        assert_eq!(summary.len(), 1);
+        assert_eq!(summary[0].latest_item_count, 0);
+        assert_eq!(summary[0].latest_received_at, "2026-09-02T06:05:00+09:00");
+    }
+
+    #[test]
+    fn inbox_queries_and_summary_follow_specified_ordering_and_counts() {
+        let repository = repository();
+        let mut expired = inbox_item("expired", InboxKind::Alert);
+        expired.expires_at = Some("2026-09-02T06:00:00+09:00".to_owned());
+        repository
+            .replace_inbox_batch(
+                &inbox_batch("sender-a", "2026-09-01", vec![expired]),
+                "2026-09-01T06:00:00+09:00",
+            )
+            .unwrap();
+        repository
+            .replace_inbox_batch(
+                &inbox_batch(
+                    "sender-b",
+                    "2026-09-04",
+                    vec![inbox_item("other-newer", InboxKind::Approve)],
+                ),
+                "2026-09-04T06:00:00+09:00",
+            )
+            .unwrap();
+        repository
+            .replace_inbox_batch(
+                &inbox_batch(
+                    "sender-a",
+                    "2026-09-03",
+                    vec![
+                        inbox_item("newest", InboxKind::Read),
+                        inbox_item("approve", InboxKind::Approve),
+                    ],
+                ),
+                "2026-09-03T06:00:00+09:00",
+            )
+            .unwrap();
+        repository
+            .replace_inbox_batch(
+                &inbox_batch(
+                    "sender-b",
+                    "2026-09-02",
+                    vec![inbox_item("other", InboxKind::Choose)],
+                ),
+                "2026-09-02T06:00:00+09:00",
+            )
+            .unwrap();
+
+        let open = repository
+            .list_open_inbox_items("2026-09-02T07:00:00+09:00")
+            .unwrap();
+        assert_eq!(
+            open.iter()
+                .map(|item| item.slug.as_str())
+                .collect::<Vec<_>>(),
+            ["other-newer", "approve", "newest", "other"]
+        );
+
+        let approve = open.iter().find(|item| item.slug == "approve").unwrap();
+        let approved = repository
+            .save_inbox_decision(
+                approve.id,
+                InboxStatus::Open,
+                InboxApplyState::Pending,
+                InboxStatus::Approved,
+                None,
+                "2026-09-03T07:00:00+09:00",
+            )
+            .unwrap();
+        let other = open.iter().find(|item| item.slug == "other").unwrap();
+        repository
+            .save_inbox_decision(
+                other.id,
+                InboxStatus::Open,
+                InboxApplyState::Pending,
+                InboxStatus::Chosen,
+                Some("one"),
+                "2026-09-02T07:00:00+09:00",
+            )
+            .unwrap();
+        repository
+            .save_inbox_apply_result(
+                approved.id,
+                InboxStatus::Approved,
+                InboxApplyState::Pending,
+                &InboxApplyResult {
+                    state: InboxApplyState::Failed,
+                    result_path: None,
+                    result_url: None,
+                    error: Some("failed".to_owned()),
+                },
+                "2026-09-03T08:00:00+09:00",
+            )
+            .unwrap();
+
+        repository
+            .replace_inbox_batch(
+                &inbox_batch(
+                    "sender-a",
+                    "2026-09-04",
+                    vec![inbox_item("sender-a-decided", InboxKind::Approve)],
+                ),
+                "2026-09-04T06:00:00+09:00",
+            )
+            .unwrap();
+        for (slug, status, choice) in [
+            ("sender-a-decided", InboxStatus::Approved, None),
+            ("other-newer", InboxStatus::Approved, None),
+        ] {
+            let item = repository
+                .list_open_inbox_items("2026-09-04T07:00:00+09:00")
+                .unwrap()
+                .into_iter()
+                .find(|item| item.slug == slug)
+                .unwrap();
+            repository
+                .save_inbox_decision(
+                    item.id,
+                    InboxStatus::Open,
+                    InboxApplyState::Pending,
+                    status,
+                    choice,
+                    "2026-09-04T07:00:00+09:00",
+                )
+                .unwrap();
+        }
+
+        let decided = repository.list_decided_inbox_items("sender-b").unwrap();
+        assert_eq!(
+            decided
+                .iter()
+                .map(|item| (item.slug.as_str(), item.date.as_str()))
+                .collect::<Vec<_>>(),
+            [("other", "2026-09-02"), ("other-newer", "2026-09-04")]
+        );
+        assert_eq!(
+            repository.list_failed_inbox_items().unwrap()[0].slug,
+            "approve"
+        );
+
+        let summary = repository.inbox_summary().unwrap();
+        assert_eq!(summary.len(), 2);
+        assert_eq!(summary[0].source, "sender-a");
+        assert_eq!(summary[0].latest_date, "2026-09-04");
+        assert_eq!(summary[0].latest_item_count, 1);
+        assert_eq!(summary[0].open_count.read, 1);
+        assert_eq!(summary[0].failed_count, 1);
+        assert_eq!(summary[1].source, "sender-b");
+        assert_eq!(summary[1].open_count.choose, 0);
+        assert_eq!(summary[1].failed_count, 0);
     }
 }

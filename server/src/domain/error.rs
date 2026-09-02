@@ -8,4 +8,12 @@ pub enum DomainError {
     InvalidHarnessProposal(String),
     #[error("invalid harness state transition: {0}")]
     InvalidHarnessTransition(String),
+    #[error("invalid intake candidate: {0}")]
+    InvalidIntakeCandidate(String),
+    #[error("invalid intake state transition: {0}")]
+    InvalidIntakeTransition(String),
+    #[error("invalid inbox item: {0}")]
+    InvalidInboxItem(String),
+    #[error("invalid inbox state transition: {0}")]
+    InvalidInboxTransition(String),
 }
