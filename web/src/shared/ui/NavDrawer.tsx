@@ -33,18 +33,33 @@ function brainHref(): string {
   if (window.location.protocol === 'https:') return BRAIN_HTTPS_PATH;
   return 'http://' + window.location.hostname + ':' + BRAIN_PORT;
 }
+/** バッジを出す1項目（docs/specs/25-web-inbox.md §3.5）。他項目にバッジは持たせない */
+const WAITING_HREF = '/waiting';
+
 const NAV_ITEMS: { href: string; label: string; external?: boolean }[] = [
   { href: '/', label: '今日' },
   { href: '/history', label: '履歴' },
   { href: '/routines', label: 'ルーティン' },
-  { href: '/waiting', label: 'あなた待ち' },
+  { href: WAITING_HREF, label: 'あなた待ち' },
   { href: '/harness', label: 'ハーネス' },
   { href: '/dev', label: '開発' },
   { href: '/office', label: 'オフィス' },
   { href: BRAIN_HTTPS_PATH, label: 'brain', external: true },
 ];
 
-export function NavDrawer() {
+export type NavDrawerProps = {
+  /**
+   * 「あなた待ち」の**未決の総件数**（docs/specs/25-web-inbox.md §3.5）。
+   *
+   * 取得は app 層（`app/AppHud.tsx` の `useInboxSummary`）が行う——ドロワーは
+   * `shared/ui` にあり feature を import しない（docs/specs/16-web-navigation.md §5・
+   * AGENTS.md ルール5）ので、件数は**外から渡される数値**として受け取る。
+   * `undefined`（まだ取れていない・取得に失敗した）と 0 はどちらもバッジを出さない。
+   */
+  waitingCount?: number;
+};
+
+export function NavDrawer({ waitingCount }: NavDrawerProps) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
@@ -98,7 +113,7 @@ export function NavDrawer() {
               }
               // 判定は旧 TabBar と同じ前方一致（`/` のみ完全一致・docs/specs/16 §3.5）
               const active = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
-              return (
+              const link = (
                 <Link
                   key={item.href}
                   href={item.href}
@@ -109,6 +124,20 @@ export function NavDrawer() {
                 >
                   {item.label}
                 </Link>
+              );
+              // 未決バッジは「あなた待ち」だけ・0 と未取得では出さない（§3.5）
+              const badge = item.href === WAITING_HREF ? waitingCount : undefined;
+              if (badge === undefined || badge <= 0) return link;
+              // バッジは**リンクの外**に置く（項目の文字列に件数を混ぜない）。項目名で掴む
+              // 既存の判定（`aria-current` のアクティブ表示・項目一覧の検証）を壊さないため。
+              // 見た目は項目の枠内に重ね、pointer-events を殺して 44px のタップ面を保つ
+              return (
+                <div className="drawer__row" key={item.href}>
+                  {link}
+                  <span className="mono drawer__badge" role="img" aria-label={'未決 ' + badge + ' 件'}>
+                    {badge}
+                  </span>
+                </div>
               );
             })}
           </nav>

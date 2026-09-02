@@ -27,3 +27,9 @@ export type { InboxSummaryStripProps } from './components/InboxSummaryStrip';
 export { missingSources } from './lib/missing';
 /** 赤点の条件（同 §3.1）。`alert` の未決・未着・`applyState=failed` のいずれか */
 export { hasInboxAlert } from './lib/summary';
+/**
+ * ドロワーの「あなた待ち」バッジの件数（同 §3.5）。集計だけを公開し、**ドロワー自身は
+ * inbox を import しない**（`shared/ui` はナビゲーションのみ・docs/specs/16 §5）——
+ * 取得と受け渡しは app 層（`app/AppHud.tsx`）が行う。
+ */
+export { openTotal } from './lib/summary';

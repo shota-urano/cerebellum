@@ -26,7 +26,9 @@
 └ .drawer__panel（<nav>・width:min(280px,82vw)・height:100%・surface 背景・左辺 border 1px
    ・padding 18px 16px calc(22px + env(safe-area-inset-bottom))・縦 flex gap:8px・overflow-y:auto）
    ├ .drawer__title（`NAVIGATION`・mono label・padding 0 2px 6px）
-   └ .drawer__item ×4
+   └ .drawer__item ×7 ＋ 外部リンク1（brain）
+      └ 「あなた待ち」だけ .drawer__row（position:relative）で包み、
+         .drawer__badge（未決の総件数）を項目の枠内右端に重ねる（未決0件では出さない）
 ```
 
 - 常時ダーク（`color-scheme: dark`）。背景 `--bg`・文字 `--text`
@@ -47,8 +49,14 @@
 | ドロワー項目（`.drawer__item`） | `今日` / `履歴` / `ルーティン` / `ハーネス` / `開発` / `オフィス` / `brain` | min-height 46px・padding 13px 14px・12.5px・letter-spacing .14em・border 1px `--border`・radius-sm・背景 `--bg`・文字 `--muted` |
 | 　同 active（`--active`） | 現在画面の1件 | accent 枠＋accent 文字＋`rgba(56,229,255,.06)` 背景＋グロー `glowShadow(9,.2)`（インライン）。`aria-current="page"` |
 | 　同 hover | — | 枠・文字が accent |
+| 未決バッジ（`.drawer__badge`） | 未決の総件数（数字のみ・例 `8`） | 「あなた待ち」の項目**のみ**。0 件と未取得では出さない。項目枠内の右端（`right:12px`・上下中央）に重ねるアウトラインバッジ（border 1px `--border`・radius-sm・`--surface` 背景・`--text` 文字・10.5px・等幅・tabular-nums）。accent は使わない（完了・進捗・フォーカス限定）。`pointer-events:none` で項目全体のタップ面を保つ。`role="img"` ＋ `aria-label="未決 {n} 件"` |
 
 - 遷移先と順序は specs 16 §3.3 の7項目。追加は `NavDrawer.tsx` の `NAV_ITEMS` 1箇所で完結させる
+- 未決バッジの件数は `GET /api/inbox/summary` の未決件数の総和（`../specs/25-web-inbox.md` §3.5）。
+  ドロワーは feature を import しないので、取得と集計は app 層（`app/AppHud.tsx`）が行い
+  `NavDrawer` は数値を prop で受け取る。バッジは**リンクの外側**の要素として置く
+  （項目名の文字列に件数を混ぜない＝項目名で掴む判定・E2E を壊さないため）
+- バッジ付きの実物: `screenshots/cerebellum-hn6.4-drawer.png`
 - ダイジェスト（`/digest`）・夜勤（`/nightshift`）はドロワーに置かない（2026-07-29 夕方改訂・specs 16 §3.6）。入口は今日画面のタスク行（detailRef）で、過去の run は「開発」（specs 19）から辿る
 - アクティブ判定はパス前方一致（`/` のみ完全一致）＝旧タブと同じ
 - `prefers-reduced-motion: reduce` では HUD ドットの点滅とドロワー active のグローを止める

@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { JetBrains_Mono, Noto_Sans_JP } from 'next/font/google';
-import { HudStatus } from '@/shared/ui';
+import { AppHud } from './AppHud';
 import './globals.css';
 
 const mono = JetBrains_Mono({ subsets: ['latin'], weight: ['400', '500', '700'], variable: '--font-jetbrains-mono' });
@@ -31,7 +31,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <div className="shell">
           <div className="col">
-            <HudStatus />
+            {/* HUD 行（ドロワー同居）。未決バッジの件数を渡すため app 層で包む
+                （docs/specs/25-web-inbox.md §3.5） */}
+            <AppHud />
             {children}
           </div>
         </div>

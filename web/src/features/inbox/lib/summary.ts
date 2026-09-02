@@ -48,6 +48,20 @@ export function openCounts(
 }
 
 /**
+ * ドロワーの「あなた待ち」に出す**未決の総件数**（§3.5）。
+ *
+ * kind を問わず全部足す——ドロワーは「片付けるものが残っているか」だけを伝える場所で、
+ * 種類の内訳は「今日」第3段（§3.1）と「あなた待ち」（§3.2）が持つ。
+ * `undefined`（まだ取れていない・取得に失敗した）は 0 に潰さない。バッジは 0 で消える表示
+ * （§3.5）なので、取得前の `undefined` を 0 と書くと「片付け済み」と嘘をつくことになる。
+ */
+export function openTotal(sources: InboxSourceSummaryDto[] | undefined): number | undefined {
+  const counts = openCounts(sources);
+  if (!counts) return undefined;
+  return counts.alert + counts.approve + counts.choose + counts.read;
+}
+
+/**
  * ヘッダの赤点を出すか（§3.1「第3段の異常が1件でもあれば ProgressHeader の右端に赤い点」）。
  *
  * 異常は3つだけ——`alert` の未決・未着の送信元・`applyState = failed`。

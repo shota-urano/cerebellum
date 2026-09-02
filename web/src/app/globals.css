@@ -145,6 +145,14 @@ a:hover { color: #8FF2FF; }
 .drawer__item { display: flex; align-items: center; min-height: 46px; padding: 13px 14px; font-size: 12.5px; letter-spacing: .14em; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); color: var(--muted); }
 .drawer__item:hover { border-color: var(--accent); color: var(--accent); }
 .drawer__item--active { border-color: var(--accent); color: var(--accent); background: rgba(56, 229, 255, .06); }
+/* 未決バッジ（docs/specs/25-web-inbox.md §3.5）。「あなた待ち」だけに出る件数で、0 は出さない。
+   DOM 上は項目（リンク）の**兄弟**——項目の文字列に件数を混ぜないため（項目名で掴む判定を
+   壊さない）。見た目は項目の枠内へ重ね、pointer-events を殺して行全体のタップ面を保つ。
+   様式は読み取り専用バッジ（docs/design/system/02-components.md）に合わせたアウトライン。
+   accent は使わない（完了・進捗・フォーカス限定・docs/design/system/01-tokens.md） */
+.drawer__row { position: relative; display: flex; }
+.drawer__row .drawer__item { flex: 1; padding-right: 54px; }
+.drawer__badge { position: absolute; top: 50%; right: 12px; transform: translateY(-50%); padding: 2px 6px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); font-size: 10.5px; letter-spacing: .08em; font-variant-numeric: tabular-nums; pointer-events: none; }
 
 /* ---- routines（マスタ編集。docs/specs/10-web-routines.md）
    既存トークン（--surface / --border / --accent / --muted / --error / --radius*）のみで組む。
