@@ -3330,6 +3330,16 @@ mod tests {
         repository
             .replace_inbox_batch(
                 &inbox_batch(
+                    "sender-b",
+                    "2026-09-04",
+                    vec![inbox_item("other-newer", InboxKind::Approve)],
+                ),
+                "2026-09-04T06:00:00+09:00",
+            )
+            .unwrap();
+        repository
+            .replace_inbox_batch(
+                &inbox_batch(
                     "sender-a",
                     "2026-09-03",
                     vec![
@@ -3358,7 +3368,7 @@ mod tests {
             open.iter()
                 .map(|item| item.slug.as_str())
                 .collect::<Vec<_>>(),
-            ["approve", "newest", "other"]
+            ["other-newer", "approve", "newest", "other"]
         );
 
         let approve = open.iter().find(|item| item.slug == "approve").unwrap();
@@ -3408,19 +3418,9 @@ mod tests {
                 "2026-09-04T06:00:00+09:00",
             )
             .unwrap();
-        repository
-            .replace_inbox_batch(
-                &inbox_batch(
-                    "sender-b",
-                    "2026-09-04",
-                    vec![inbox_item("other-newer", InboxKind::Choose)],
-                ),
-                "2026-09-04T06:00:00+09:00",
-            )
-            .unwrap();
         for (slug, status, choice) in [
             ("sender-a-decided", InboxStatus::Approved, None),
-            ("other-newer", InboxStatus::Chosen, Some("one")),
+            ("other-newer", InboxStatus::Approved, None),
         ] {
             let item = repository
                 .list_open_inbox_items("2026-09-04T07:00:00+09:00")

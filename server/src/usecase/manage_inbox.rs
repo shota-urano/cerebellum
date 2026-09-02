@@ -630,13 +630,13 @@ mod tests {
             .unwrap();
         manage
             .save_inbox_batch(
-                batch("sender-a", "2026-08-30", vec![item("oldest", "approve")]),
+                batch("sender-a", "2026-09-01", vec![item("middle", "approve")]),
                 1,
             )
             .unwrap();
         manage
             .save_inbox_batch(
-                batch("sender-a", "2026-09-01", vec![item("middle", "approve")]),
+                batch("sender-a", "2026-08-30", vec![item("oldest", "approve")]),
                 1,
             )
             .unwrap();
