@@ -1744,6 +1744,64 @@ async fn inbox_http_round_trip_supports_approve_and_choose() {
     assert_eq!(chosen["item"]["status"], "chosen");
     assert_eq!(chosen["item"]["choice"], "two");
 
+    // These rows must not leak into the decided/pending extraction below:
+    // one belongs to another source, and one was already applied for this source.
+    let other_source = call_json(
+        app.clone(),
+        "POST",
+        "/api/inbox/batches",
+        inbox_batch(
+            "other-sender",
+            "2026-07-24",
+            json!([{"slug":"other","kind":"approve","title":"other source"}]),
+        ),
+    )
+    .await;
+    assert_eq!(other_source.status(), StatusCode::OK);
+    let other_open =
+        json_body(call(app.clone(), "GET", "/api/inbox/items?status=open").await).await;
+    let other_id = other_open["items"][0]["id"].as_i64().unwrap();
+    let other_decided = call_json(
+        app.clone(),
+        "POST",
+        &format!("/api/inbox/items/{other_id}/decision"),
+        json!({"status":"approved"}),
+    )
+    .await;
+    assert_eq!(other_decided.status(), StatusCode::OK);
+
+    let already_applied = call_json(
+        app.clone(),
+        "POST",
+        "/api/inbox/batches",
+        inbox_batch(
+            "sender",
+            "2026-07-23",
+            json!([{"slug":"applied","kind":"approve","title":"already applied"}]),
+        ),
+    )
+    .await;
+    assert_eq!(already_applied.status(), StatusCode::OK);
+    let applied_open =
+        json_body(call(app.clone(), "GET", "/api/inbox/items?status=open").await).await;
+    let applied_id = applied_open["items"][0]["id"].as_i64().unwrap();
+    let applied_decided = call_json(
+        app.clone(),
+        "POST",
+        &format!("/api/inbox/items/{applied_id}/decision"),
+        json!({"status":"approved"}),
+    )
+    .await;
+    assert_eq!(applied_decided.status(), StatusCode::OK);
+    let applied_result = call_json(
+        app.clone(),
+        "POST",
+        &format!("/api/inbox/items/{applied_id}/apply-result"),
+        json!({"state":"applied","resultPath":"opaque/already-applied.md"}),
+    )
+    .await;
+    assert_eq!(applied_result.status(), StatusCode::OK);
+
     let decided = json_body(
         call(
             app.clone(),
@@ -1754,10 +1812,15 @@ async fn inbox_http_round_trip_supports_approve_and_choose() {
     )
     .await;
     assert_eq!(
-        decided["items"][0]["id"], approve_id,
-        "decided list is oldest first"
+        decided["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|item| item["id"].as_i64().unwrap())
+            .collect::<Vec<_>>(),
+        vec![approve_id, choose_id],
+        "decided extraction contains only sender's pending items, oldest first"
     );
-    assert_eq!(decided["items"][1]["id"], choose_id);
     for id in [approve_id, choose_id] {
         let result = call_json(
             app.clone(),
