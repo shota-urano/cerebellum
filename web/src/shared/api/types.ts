@@ -389,6 +389,98 @@ export interface IntakeIngestResponse {
   items: IntakeCandidateDto[];
 }
 
+/** 03-api.md §3: 人間待ち項目の種類（4値・24-inbox.md §3.1） */
+export type InboxKind = 'approve' | 'choose' | 'read' | 'alert';
+
+/**
+ * 03-api.md §3: 項目の `status`（人間の意思）。
+ * kind ごとに許される値が違う（24-inbox.md §3.3-1）ので、型は合併のまま持つ
+ */
+export type InboxStatus =
+  | 'open'
+  | 'approved'
+  | 'rejected'
+  | 'chosen'
+  | 'read'
+  | 'acknowledged';
+
+/**
+ * 03-api.md §3: 項目の `applyState`（機械の結果）。
+ * `read` / `alert` は読み戻しが無いので `none` のまま動かない
+ */
+export type InboxApplyState = 'none' | 'pending' | 'applied' | 'failed';
+
+/** 03-api.md §3: `choose` の選択肢（2〜10件） */
+export interface InboxOptionDto {
+  id: string;
+  label: string;
+}
+
+/** 03-api.md §3: `items[]` の要素（一覧 / decision / apply-result で同じ形） */
+export interface InboxItemDto {
+  id: number;
+  source: string;
+  date: string;
+  slug: string;
+  kind: InboxKind;
+  title: string;
+  bodyMd: string | null;
+  options: InboxOptionDto[] | null;
+  refPath: string | null;
+  /** 送信元が自分で読み戻すための不透明 JSON。画面は中身を解釈しない（24 §3.1） */
+  payload: unknown;
+  expiresAt: string | null;
+  status: InboxStatus;
+  choice: string | null;
+  decidedAt: string | null;
+  applyState: InboxApplyState;
+  appliedAt: string | null;
+  error: string | null;
+  resultPath: string | null;
+  resultUrl: string | null;
+  receivedAt: string;
+}
+
+/** 03-api.md §3: 一覧 GET の封筒（`?status=open` ／ `?applyState=failed` ほかで共通） */
+export interface InboxItemsResponse {
+  items: InboxItemDto[];
+}
+
+/** 03-api.md §3: `POST /api/inbox/items/{id}/decision` と `.../apply-result` のレスポンス */
+export interface InboxItemResponse {
+  item: InboxItemDto;
+}
+
+/** 03-api.md §3: `POST /api/inbox/items/{id}/decision` のリクエストボディ */
+export interface InboxDecisionInput {
+  status: InboxStatus;
+  /** `chosen` のときだけ必須（`options[].id` のいずれか） */
+  choice?: string | null;
+}
+
+/** 03-api.md §3: `GET /api/inbox/summary` の kind 別未決件数 */
+export interface InboxOpenCountDto {
+  approve: number;
+  choose: number;
+  read: number;
+  alert: number;
+}
+
+/** 03-api.md §3: `GET /api/inbox/summary` の送信元1件（受信が1件も無い送信元は出ない） */
+export interface InboxSourceSummaryDto {
+  source: string;
+  latestDate: string;
+  latestReceivedAt: string;
+  latestItemCount: number;
+  openCount: InboxOpenCountDto;
+  failedCount: number;
+}
+
+/** 03-api.md §3: `GET /api/inbox/summary` */
+export interface InboxSummaryResponse {
+  sources: InboxSourceSummaryDto[];
+}
+
 /** 03-api.md §3: health の各フィールド */
 export type HealthStatus = 'ok' | 'ng';
 

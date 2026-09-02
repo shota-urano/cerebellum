@@ -5,47 +5,48 @@ import type { KeyedMutator } from 'swr';
 import {
   ApiError,
   apiPost,
-  type IntakeCandidateResponse,
-  type IntakeCandidatesResponse,
-  type IntakeDecisionInput,
+  type InboxDecisionInput,
+  type InboxItemResponse,
+  type InboxItemsResponse,
 } from '@/shared/api';
-import { withCandidate, withStatus } from '../lib/candidate';
+import { withDecision, withItem } from '../lib/item';
 
-/** `POST /api/intake/candidates/{id}/decision`（docs/specs/03-api.md §3） */
+/** `POST /api/inbox/items/{id}/decision`（docs/specs/03-api.md §3） */
 function decisionKey(id: number) {
-  return '/api/intake/candidates/' + id + '/decision';
+  return '/api/inbox/items/' + id + '/decision';
 }
 
 /** 失敗した decision。**同じ内容をそのまま再送する**ためにパラメータごと保持する。 */
 type Failure = {
   id: number;
-  status: IntakeDecisionInput['status'];
+  decision: InboxDecisionInput;
   message: string;
 };
 
 /**
- * 承認の記録（docs/specs/23-web-waiting.md §3.2）。
+ * 決定の記録（docs/specs/25-web-inbox.md §3.2・§6）。
  *
  * optimistic update で即時反映し、POST が失敗したらロールバックして再検証する
  * （既存 `useToggleCheck`・ハーネス承認と同じ作法）。POST 自体は直列化する——同じ SWR キーへ
  * 複数の mutation を並行実行すると、後発開始後に完了した先発応答を SWR が破棄するため。
  *
- * 失敗は握りつぶさず `failure` として返し、画面はトーストで**再試行**を出す（同 §4）。
- * 巻き戻しただけで終わると、✅したつもりの候補が今晩反映されない事故になる。
+ * 失敗は握りつぶさず `failure` として返し、画面はトーストで**再試行**を出す（§6）。
+ * 巻き戻しただけで終わると、✅したつもりの行が次の勤務で適用されない事故になる。
+ * 400（適用済み行への取り消し等）・404（他端末で置換された）も同じ経路で理由を出す。
  */
-export function useIntakeDecision(
-  list: IntakeCandidatesResponse | undefined,
-  mutate: KeyedMutator<IntakeCandidatesResponse>,
+export function useInboxDecision(
+  list: InboxItemsResponse | undefined,
+  mutate: KeyedMutator<InboxItemsResponse>,
 ) {
   const [failure, setFailure] = useState<Failure | null>(null);
   const requestQueue = useRef<Promise<void>>(Promise.resolve());
 
   const decide = useCallback(
-    async (id: number, status: IntakeDecisionInput['status']) => {
+    async (id: number, decision: InboxDecisionInput) => {
       if (!list) return;
       setFailure(null);
 
-      const send = () => apiPost<IntakeCandidateResponse>(decisionKey(id), { status });
+      const send = () => apiPost<InboxItemResponse>(decisionKey(id), decision);
       const request = requestQueue.current.then(send, send);
       requestQueue.current = request.then(
         () => undefined,
@@ -56,23 +57,23 @@ export function useIntakeDecision(
         await mutate(
           async (current) => {
             const { item } = await request;
-            return withCandidate(current ?? list, item);
+            return withItem(current ?? list, item);
           },
           {
             // 連続タップ時は、前の optimistic 表示を含む最新表示へ次の変更を重ねる
             optimisticData: (committed, displayed) =>
-              withStatus(displayed ?? committed ?? list, id, status),
+              withDecision(displayed ?? committed ?? list, id, decision),
             rollbackOnError: true,
             populateCache: true,
             // POST が更新後の1件を返すので、成功時は追加の GET を投げない
-            // （再取得すると `?status=proposed` から決着行が落ち、取り消し路が消える）
+            // （再取得すると `?status=open` から決着行が落ち、取り消し路が消える）
             revalidate: false,
           },
         );
       } catch (cause) {
         const error = cause instanceof ApiError ? cause : new ApiError(0, null, String(cause));
-        setFailure({ id, status, message: error.message });
-        // 巻き戻した表示をサーバーの実状態に合わせ直す
+        setFailure({ id, decision, message: error.message });
+        // 巻き戻した表示をサーバーの実状態に合わせ直す（404 の再検証もここ）
         void mutate();
       }
     },
@@ -82,7 +83,7 @@ export function useIntakeDecision(
   /** トーストの「再試行」。失敗した decision をそのまま再送する。 */
   const retry = useCallback(async () => {
     if (!failure) return;
-    await decide(failure.id, failure.status);
+    await decide(failure.id, failure.decision);
   }, [decide, failure]);
 
   const dismiss = useCallback(() => setFailure(null), []);

@@ -514,38 +514,46 @@ a.of__ml-node:hover { border-color: var(--accent); color: var(--text); }
 .hn__copyerr { flex: 1 0 100%; font-size: 10.5px; line-height: 1.6; color: var(--error); }
 .hn__foot { margin: 16px 0 0; padding: 10px 12px; border: 1px dashed var(--border); border-radius: var(--radius-sm); font-size: 11.5px; line-height: 1.6; color: var(--muted); text-align: center; }
 
-/* あなた待ち（docs/specs/23-web-waiting.md）。panel dg 様式の上に載せる最小限の追加。
+/* あなた待ち（docs/specs/25-web-inbox.md）。panel dg 様式の上に載せる最小限の追加。
    ハーネス承認（hn__）と役割は近いが、feature 間でクラスを共有しない（別 feature・別文脈） */
 .wt__head { margin: 2px 0 12px; font-size: 15px; font-weight: 500; letter-spacing: .04em; }
 .wt__group { margin: 0 0 4px; font-size: 10px; letter-spacing: .16em; color: var(--error); }
-.wt__group--lane { display: flex; align-items: center; gap: 8px; margin-top: 22px; font-size: 12px; letter-spacing: .1em; color: var(--text); }
+.wt__group--kind { display: flex; align-items: center; gap: 8px; margin-top: 22px; font-size: 12px; letter-spacing: .1em; color: var(--text); }
 .wt__count { font-size: 10px; letter-spacing: .08em; color: var(--muted); }
-/* そのレーンの✅が何を起こすか（§3.1）。見出しの直下に必ず出す */
+/* そこで押すと何が起きるか（§3.2）。kind ごとに固定の1行を見出しの直下に必ず出す */
 .wt__effect { margin: 0 0 10px; font-size: 10.5px; line-height: 1.6; letter-spacing: .04em; color: var(--muted); }
-.wt__missing { margin-bottom: 12px; }
-/* 決着した行は**消さずに淡色へ**（§3.2）。再タップで proposed に戻せる誤タップの救済路 */
-.wt__card--decided { opacity: .5; }
-/* 原文はカード内で最も大きい文字（§3.2）。要約は存在しないので判断材料は原文そのもの */
-.wt__text { margin-top: 2px; padding-left: 10px; border-left: 2px solid var(--border); font-size: 15.5px; font-weight: 500; line-height: 1.6; color: var(--text); word-break: break-word; text-wrap: pretty; }
-.wt__note { margin-top: 8px; font-size: 11.5px; line-height: 1.65; color: var(--muted); word-break: break-word; }
+/* 決定済みの行は**消さずに淡色へ**（§3.2）。取り消しで open へ戻せる誤タップの救済路 */
+.wt__card--decided { opacity: .6; }
+/* 送信元・業務日の行。名簿の name は本文色、名簿に無い source は等幅（§3.2・§3.4） */
+.wt__from { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 11px; letter-spacing: .06em; color: var(--muted); }
+.wt__from__name { color: var(--text); }
+.wt__from__id { color: var(--muted); word-break: break-all; }
+/* 「SKILL.md frontmatter に office: を書け」の催促（§3.4）。受信自体は正常に扱う */
+.wt__badge { padding: 1px 5px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 9.5px; letter-spacing: .1em; color: var(--muted); }
+.wt__date { margin-left: auto; font-size: 10px; letter-spacing: .06em; color: var(--muted); }
+/* title はカード内で最も大きい文字。bodyMd があるときは行タップで展開する（§3.2） */
+.wt__title { display: block; width: 100%; min-height: 44px; margin-top: 6px; padding: 0 0 0 10px; border: 0; border-left: 2px solid var(--border); background: transparent; color: var(--text); font: inherit; font-size: 15.5px; font-weight: 500; line-height: 1.6; text-align: left; word-break: break-word; text-wrap: pretty; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.wt__title[aria-expanded="true"] { border-left-color: var(--accent); }
+.wt__title--flat { min-height: 0; cursor: default; }
+.wt__body { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+/* refPath は表示のみ・リンクにしない（§3.2）。cerebellum は Vault を参照しない */
+.wt__ref { margin-top: 8px; font-size: 10.5px; letter-spacing: .04em; color: var(--muted); word-break: break-all; }
 .wt__acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; }
 .wt__check { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); font: inherit; font-size: 12.5px; letter-spacing: .06em; cursor: pointer; -webkit-tap-highlight-color: transparent; }
-.wt__check--on { border-color: var(--accent); color: var(--accent); background: rgba(56, 229, 255, .06); }
-/* 反映が動いた行は押せないが**見えたまま**にする（§4「無効化」＝非表示ではない） */
-.wt__check:disabled, .wt__reject:disabled { opacity: .55; cursor: default; }
-.wt__reject--on { border-color: var(--error); color: var(--error); }
-.wt__date { margin-left: auto; font-size: 10px; letter-spacing: .06em; color: var(--muted); }
-.wt__more { min-height: 32px; padding: 6px 10px; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; color: var(--muted); font: inherit; font-size: 10.5px; letter-spacing: .08em; cursor: pointer; }
-.wt__more:hover { border-color: var(--border); color: var(--accent); }
-.wt__src { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+.wt__check:hover { border-color: var(--accent); color: var(--accent); }
+.wt__reject:hover { border-color: var(--error); color: var(--error); }
+/* choose の選択肢（§3.2）。選んだ時点で chosen＋choice を送るのでボタンを持たない */
+.wt__opts { display: flex; flex-direction: column; gap: 4px; margin-top: 12px; }
+.wt__opt { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 4px; font-size: 13px; line-height: 1.6; color: var(--text); cursor: pointer; }
+/* ラジオは素の UA 描画（ベージュの丸）だと HUD から浮くので、チェックリングと同じ様式へ寄せる */
+.wt__opt input { appearance: none; -webkit-appearance: none; flex: none; width: 18px; height: 18px; margin: 0; border: 1px solid var(--border); border-radius: 50%; background: transparent; cursor: pointer; }
+.wt__opt:hover input { border-color: var(--accent); }
+.wt__opt input:checked { border-color: var(--accent); background: var(--accent); box-shadow: inset 0 0 0 3px var(--surface), 0 0 8px rgba(56, 229, 255, .45); }
+/* 何を決めたか（畳んだ行の要約）と、取り消せない理由（§3.2） */
+.wt__verdict { font-size: 11.5px; letter-spacing: .08em; color: var(--accent); }
+.wt__frozen { font-size: 11px; line-height: 1.6; color: var(--muted); }
 .wt__result { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 12px; padding: 10px 12px; border: 1px solid var(--border); border-left: 3px solid var(--error); border-radius: var(--radius-sm); background: var(--bg); }
 .wt__result__tag { flex: none; font-size: 13px; line-height: 1.7; }
 .wt__result__body { flex: 1; min-width: 0; }
-/* 失敗理由は全文（原文が編集されて行が見つからない等・§3.4）。切ると手で直せない */
+/* apply_error は等幅で全文（§3.2）。切ると手で直せない */
 .wt__err { margin-top: 6px; font-size: 11.5px; line-height: 1.6; color: var(--error); white-space: pre-wrap; word-break: break-word; }
-.wt__path { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
-.wt__pathtext { flex: 1; min-width: 0; font-size: 10.5px; letter-spacing: .04em; color: var(--muted); word-break: break-all; }
-.wt__copy { flex: none; min-height: 32px; padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: transparent; color: var(--muted); font: inherit; font-size: 10.5px; letter-spacing: .08em; cursor: pointer; }
-.wt__copy:hover { border-color: var(--accent); color: var(--accent); }
-.wt__copyerr { flex: 1 0 100%; font-size: 10.5px; line-height: 1.6; color: var(--error); }
-.wt__foot { margin: 18px 0 0; padding: 10px 12px; border: 1px dashed var(--border); border-radius: var(--radius-sm); font-size: 11.5px; line-height: 1.7; color: var(--muted); text-align: center; }
