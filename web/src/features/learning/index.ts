@@ -7,3 +7,9 @@
  */
 export { LearningSession } from './components/LearningSession';
 export type { LearningSessionProps } from './components/LearningSession';
+/**
+ * 「今日」第2段の状態1行（docs/specs/25-web-inbox.md §3.1・§5）。
+ * `features/day` からは import せず、`app/page.tsx` が3段を並べる（features 間 import 禁止）。
+ */
+export { LearningTodayLine } from './components/LearningTodayLine';
+export type { LearningTodayLineProps } from './components/LearningTodayLine';
