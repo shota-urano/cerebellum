@@ -61,6 +61,7 @@ Phase 2.0 = 人間待ち項目の汎用化（[24](./24-inbox.md)・[25](./25-web
 | 23 | [`23-web-waiting.md`](./23-web-waiting.md) | 「あなた待ち」画面（daily取り込みの承認・レーン別タップ）**superseded → 25** | Frontend |
 | 24 | [`24-inbox.md`](./24-inbox.md) | 人間待ち項目（汎用）の受け入れ・決定記録・summary（domain/usecase/API） | Backend |
 | 25 | [`25-web-inbox.md`](./25-web-inbox.md) | 「今日」の3種集約（日課・学習・確認待ち）と「あなた待ち」汎用画面 | Frontend |
+| 26 | [`26-web-office-company.md`](./26-web-office-company.md) | オフィスの会社案内追補（所属部署・人間確認の印・会社案内シート。20/21 の増分）**draft** | Frontend |
 
 ## 4. 確定済みの初期値（横断・変更禁止）
 
