@@ -3,6 +3,7 @@ pub mod digest;
 pub mod due;
 pub mod error;
 pub mod harness;
+pub mod inbox;
 pub mod intake;
 pub mod learning;
 pub mod routine;
