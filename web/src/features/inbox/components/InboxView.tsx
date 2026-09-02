@@ -1,7 +1,8 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
-import type { InboxItemDto } from '@/shared/api';
+import type { InboxItemDto, InboxKind } from '@/shared/api';
 import { ErrorBanner, Toast } from '@/shared/ui';
 import { useInboxDecision } from '../hooks/useInboxDecision';
 import { useFailedInboxItems, useInboxItems } from '../hooks/useInboxItems';
@@ -38,6 +39,16 @@ export type InboxViewProps = {
    * 分からず、諦めた旨の1行（§3.3 末尾）を出す時機を誤る。
    */
   rosterUnavailable?: boolean;
+  /**
+   * 1種類だけを表示する（docs/specs/25-web-inbox.md §3.1 のタップ先
+   * 「`/waiting`（kind でフィルタした状態で開く）」）。「今日」第3段の件数から入ると、
+   * その種類だけが並んだ状態で開く。
+   *
+   * **絞るのは未決のグループだけ**——未着（§3.3）と未処理の失敗（§3.2）は種類を問わず
+   * 出し続ける。気づくための枠を絞り込みで隠すと、枠の存在理由（沈黙・見落とし対策）が消える。
+   * 読むのは `?kind=` クエリで、**渡すのは app 層**（§5・useSearchParams は app 層の仕事）。
+   */
+  kind?: InboxKind;
 };
 
 function Skeleton() {
@@ -63,7 +74,7 @@ function Skeleton() {
  * **kind でグループし、文言は kind で固定する**。送信元ごとの文言・専用コンポーネントを
  * 作らない——作った時点でハーネスごとの専用画面が再発する（同 §4・docs/specs/24-inbox.md §1）。
  */
-export function InboxView({ roster, shiftRoster, rosterUnavailable }: InboxViewProps) {
+export function InboxView({ roster, shiftRoster, rosterUnavailable, kind }: InboxViewProps) {
   const { list, error, isLoading, mutate } = useInboxItems();
   const { failed: failedAcrossDates, failedError } = useFailedInboxItems();
   // 未着判定の受信側の根拠（§3.3-2）。受信の事実はサーバしか持たない（24 §3.5）
@@ -87,6 +98,9 @@ export function InboxView({ roster, shiftRoster, rosterUnavailable }: InboxViewP
   const today = localToday();
   const { failed, pending, decided } = partition(list.items, failedAcrossDates);
   const groups = groupByKind(pending);
+  // 絞り込みは表示だけの話。空表示（下部）の判定は絞る前の `groups` で行う
+  // ——「承認が0件」を「確認待ちはありません」と書くと、他の種類が残っているのに嘘になる
+  const shown = kind ? groups.filter((group) => group.kind === kind) : groups;
   // 名簿 × 勤務帯 × 受信の突合（§3.3）。0件の受信も「届いた」なので未着にはならない
   const missing = missingSources(shiftRoster, summary?.sources);
 
@@ -107,6 +121,16 @@ export function InboxView({ roster, shiftRoster, rosterUnavailable }: InboxViewP
   return (
     <>
       <h1 className="wt__head">あなた待ち</h1>
+
+      {/* 絞り込み中は必ず抜け道を出す（何が隠れているか分からない画面を作らない） */}
+      {kind && (
+        <p className="wt__filter">
+          <span>{kindLabel(kind)} だけを表示中</span>
+          <Link className="mono wt__filter__all" href="/waiting">
+            すべて表示
+          </Link>
+        </p>
+      )}
 
       {error && <ErrorBanner message={error.message} />}
 
@@ -135,7 +159,7 @@ export function InboxView({ roster, shiftRoster, rosterUnavailable }: InboxViewP
         </section>
       )}
 
-      {groups.map((group) => (
+      {shown.map((group) => (
         <section className="wt__kind" key={group.kind} aria-label={kindLabel(group.kind)}>
           <p className="mono wt__group wt__group--kind">
             {kindLabel(group.kind)}

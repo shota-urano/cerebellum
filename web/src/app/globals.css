@@ -67,6 +67,8 @@ a:hover { color: #8FF2FF; }
 .hdr__date { font-size: 17px; font-weight: 500; letter-spacing: .02em; }
 .hdr__count { font-size: 22px; font-weight: 500; line-height: 1; color: var(--accent); }
 .hdr__foot { display: flex; justify-content: space-between; margin-top: 9px; font-size: 10px; letter-spacing: .12em; color: var(--muted); }
+/* 第3段の異常の赤点（docs/specs/25-web-inbox.md §3.1）。計器盤の右端＝CLEARED ラベルの行末 */
+.hdr__alert { display: inline-block; width: 7px; height: 7px; margin-left: 7px; border-radius: 50%; background: var(--error); box-shadow: 0 0 8px var(--error); vertical-align: middle; }
 
 /* ---- segment bar ---- */
 .segbar { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; }
@@ -563,3 +565,32 @@ a.of__ml-node:hover { border-color: var(--accent); color: var(--text); }
 .wt__nomatch { margin: 0 0 12px; font-size: 10.5px; line-height: 1.6; letter-spacing: .04em; color: var(--muted); }
 /* apply_error は等幅で全文（§3.2）。切ると手で直せない */
 .wt__err { margin-top: 6px; font-size: 11.5px; line-height: 1.6; color: var(--error); white-space: pre-wrap; word-break: break-word; }
+
+/* 「今日」の第2段・第3段（docs/specs/25-web-inbox.md §3.1）。
+   第1段（.hdr / .list）はそのままで、下に2段だけ足す。パネル様式は第1段と同じ
+   ——同じ画面で様式を割ると「別の画面が下に生えている」ように見える */
+.lx__today { margin-top: 18px; }
+.lx__todayrow { border-top: 0; text-decoration: none; }
+.lx__todayrow:hover .row__chev { color: var(--accent); }
+.lx__todaystate { font-size: 14px; letter-spacing: .06em; }
+/* 未着は異常様式（§3.1）。届いていないのは night-study 側の失敗か休みで、画面から出来ることは無い
+   ——それでも合図は出す（黙って消えるのが最悪。docs/specs/24-inbox.md §9 と同じ姿勢） */
+.lx__todayrow--bad { border-left: 3px solid var(--error); }
+.lx__todayrow--bad .lx__todaystate { color: var(--error); }
+.wt__strip { margin-top: 12px; }
+.wt__strip__banner { padding: 12px 14px 0; }
+/* kind 別の件数4つ（§3.1）。390px で4列＝1列 88px ほど。潰れないよう文字を小さくする */
+.wt__counts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.wt__chip { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; min-height: 66px; padding: 10px 4px; border-left: 1px solid var(--border); color: var(--text); text-decoration: none; -webkit-tap-highlight-color: transparent; }
+.wt__chip:first-child { border-left: 0; }
+.wt__chip:hover { background: rgba(56, 229, 255, .05); }
+.wt__chip:hover .wt__chip__label { color: var(--accent); }
+.wt__chip__label { font-size: 10.5px; letter-spacing: .06em; color: var(--muted); white-space: nowrap; }
+.wt__chip__n { font-size: 19px; font-weight: 500; line-height: 1; color: var(--accent); }
+/* 0 は薄く出す（§3.1）。消すと「その種類が0件」なのか「件数が出ていない」のか分からない */
+.wt__chip--zero .wt__chip__n { color: var(--muted); opacity: .6; }
+.wt__strip .wt__missing { margin: 0; padding: 12px 14px 2px; }
+.wt__strip .wt__nomatch { margin: 0; padding: 12px 14px; }
+/* 1種類だけを表示中の合図と抜け道（§3.1 のタップ先から入ったとき） */
+.wt__filter { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 12px; font-size: 11px; letter-spacing: .06em; color: var(--muted); }
+.wt__filter__all { min-height: 44px; display: inline-flex; align-items: center; color: var(--accent); font-size: 11px; letter-spacing: .08em; }
