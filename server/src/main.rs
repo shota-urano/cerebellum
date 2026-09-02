@@ -18,10 +18,11 @@ use infra::api::AppState;
 use usecase::import_routines::ImportRoutines;
 use usecase::{
     get_day::GetDay, get_summary::GetSummary, manage_digest::ManageDigest,
-    manage_harness::ManageHarness, manage_intake::ManageIntake, manage_learning::ManageLearning,
-    manage_routines::ManageRoutines, ports::Clock, ports::DigestRepository,
-    ports::HarnessRepository, ports::IntakeRepository, ports::LearningRepository,
-    ports::RoutineRepository, ports::TaskRepository, ports::VaultReader, toggle_check::ToggleCheck,
+    manage_harness::ManageHarness, manage_inbox::ManageInbox, manage_intake::ManageIntake,
+    manage_learning::ManageLearning, manage_routines::ManageRoutines, ports::Clock,
+    ports::DigestRepository, ports::HarnessRepository, ports::InboxRepository,
+    ports::IntakeRepository, ports::LearningRepository, ports::RoutineRepository,
+    ports::TaskRepository, ports::VaultReader, toggle_check::ToggleCheck,
 };
 
 #[tokio::main]
@@ -113,6 +114,7 @@ async fn serve(port: u16) -> Result<()> {
     let digest_repository: Arc<dyn DigestRepository> = repository.clone();
     let learning_repository: Arc<dyn LearningRepository> = repository.clone();
     let harness_repository: Arc<dyn HarnessRepository> = repository.clone();
+    let inbox_repository: Arc<dyn InboxRepository> = repository.clone();
     let intake_repository: Arc<dyn IntakeRepository> = repository.clone();
     let task_repository: Arc<dyn TaskRepository> = repository;
     let clock: Arc<dyn Clock> = Arc::new(SystemClock);
@@ -138,7 +140,8 @@ async fn serve(port: u16) -> Result<()> {
     let manage_digest = Arc::new(ManageDigest::new(digest_repository, Arc::clone(&clock)));
     let manage_learning = Arc::new(ManageLearning::new(learning_repository, Arc::clone(&clock)));
     let manage_harness = Arc::new(ManageHarness::new(harness_repository, Arc::clone(&clock)));
-    let manage_intake = Arc::new(ManageIntake::new(intake_repository, clock));
+    let manage_intake = Arc::new(ManageIntake::new(intake_repository, Arc::clone(&clock)));
+    let manage_inbox = Arc::new(ManageInbox::new(inbox_repository, Arc::clone(&clock)));
 
     let state = Arc::new(AppState {
         get_day,
@@ -149,6 +152,7 @@ async fn serve(port: u16) -> Result<()> {
         manage_learning,
         manage_harness,
         manage_intake,
+        manage_inbox,
         routine_repository,
         task_repository,
         config: Arc::clone(&config),

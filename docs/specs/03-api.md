@@ -40,6 +40,13 @@ Rust（axum）と Next.js（`shared/api/types.ts` に手動同期）が共有す
 | GET | `/api/intake/candidates?applyState=failed` | 日付を問わず反映失敗の候補を新しい順で取得 | [22](./22-daily-intake.md) |
 | POST | `/api/intake/candidates/{id}/decision` | daily取り込み候補への承認意思を記録 | [22](./22-daily-intake.md) |
 | POST | `/api/intake/candidates/{id}/apply-result` | daily取り込み候補の反映結果を書き戻す | [22](./22-daily-intake.md) |
+| POST | `/api/inbox/batches` | 人間待ち項目を送信元・業務日単位で取り込む（0件の日も送る） | [24](./24-inbox.md) |
+| GET | `/api/inbox/items?status=open` | 未決の人間待ち項目を日付問わず新しい順で取得 | [24](./24-inbox.md) |
+| GET | `/api/inbox/items?source={source}&status=decided&applyState=pending` | 送信元の決定済み・未適用項目を古い順で取得 | [24](./24-inbox.md) |
+| GET | `/api/inbox/items?applyState=failed` | 適用失敗の項目を日付問わず新しい順で取得 | [24](./24-inbox.md) |
+| GET | `/api/inbox/summary` | 送信元ごとの最終受信・未決数・失敗数を取得 | [24](./24-inbox.md) |
+| POST | `/api/inbox/items/{id}/decision` | 人間待ち項目への意思を記録 | [24](./24-inbox.md) |
+| POST | `/api/inbox/items/{id}/apply-result` | 人間待ち項目の適用結果を書き戻す | [24](./24-inbox.md) |
 | GET | `/api/health` | 自己診断（DB 可否・マスタ件数） | [06](./06-cli-serve.md) |
 | GET | 上記以外 | 静的アセット配信＋SPA フォールバック | [06](./06-cli-serve.md) |
 
@@ -302,6 +309,75 @@ Rust（axum）と Next.js（`shared/api/types.ts` に手動同期）が共有す
 // failed のとき: { "state": "failed", "error": "候補ファイルに一致する原文が無い" }
 // → 200
 { "item": { /* 上記 item と同形 */ } }
+
+// POST /api/inbox/batches
+{
+  "source": "night-harness",
+  "date": "2026-09-02",             // "today" も可
+  "items": [                          // 0〜100件。空配列可
+    {
+      "slug": "review-harness",
+      "kind": "choose",              // approve | choose | read | alert
+      "title": "実験結果を選ぶ",
+      "bodyMd": "詳細本文",           // 任意
+      "options": [                     // choose のみ必須。2〜10件
+        { "id": "adopt", "label": "採用" },
+        { "id": "hold", "label": "保留" }
+      ],
+      "refPath": "40_Projects/harness/result.md", // 任意。Vault 相対パス
+      "payload": { "opaque": true }, // 任意。不透明 JSON
+      "expiresAt": "2026-09-03T00:00:00+09:00" // 任意
+    }
+  ]
+}
+// → 200
+{ "source": "night-harness", "date": "2026-09-02", "receivedAt": "2026-09-02T08:01:00+09:00", "itemCount": 1 }
+
+// GET /api/inbox/items?status=open
+// GET /api/inbox/items?source=night-harness&status=decided&applyState=pending
+// GET /api/inbox/items?applyState=failed
+// → 200（受信ゼロなら { "items": [] }）
+{
+  "items": [
+    {
+      "id": 1, "source": "night-harness", "date": "2026-09-02", "slug": "review-harness",
+      "kind": "choose", "title": "実験結果を選ぶ", "bodyMd": "詳細本文",
+      "options": [{ "id": "adopt", "label": "採用" }, { "id": "hold", "label": "保留" }],
+      "refPath": "40_Projects/harness/result.md", "payload": { "opaque": true },
+      "expiresAt": null, "status": "open", "choice": null, "decidedAt": null,
+      "applyState": "pending", "appliedAt": null, "error": null,
+      "resultPath": null, "resultUrl": null, "receivedAt": "2026-09-02T08:01:00+09:00"
+    }
+  ]
+}
+// status=open は未決・期限切れを除き日付降順、同日内 id 降順。
+// status=decided は approved と chosen の合成クエリ値（保存しない）。source と applyState=pending が必須で日付昇順、同日内 id 昇順。
+// applyState=failed は日付降順、同日内 id 降順。上記3形以外は 400。
+
+// GET /api/inbox/summary
+// → 200（受信ゼロなら { "sources": [] }）
+{
+  "sources": [
+    {
+      "source": "night-harness", "latestDate": "2026-09-02",
+      "latestReceivedAt": "2026-09-02T08:01:00+09:00", "latestItemCount": 1,
+      "openCount": { "approve": 0, "choose": 1, "read": 0, "alert": 0 }, "failedCount": 0
+    }
+  ]
+}
+
+// POST /api/inbox/items/{id}/decision
+{ "status": "chosen", "choice": "adopt" }
+// kind ごとの status: approve は approved | rejected | open、choose は chosen | rejected | open、
+// read は read | open、alert は acknowledged | open。chosen の choice は options[].id のいずれかで必須。
+// → 200
+{ "item": { /* GET /api/inbox/items の item と同形 */ } }
+
+// POST /api/inbox/items/{id}/apply-result
+{ "state": "applied", "resultPath": "40_Projects/harness/archive/" }
+// failed のとき: { "state": "failed", "error": "失敗理由", "resultUrl": null }
+// → 200
+{ "item": { /* GET /api/inbox/items の item と同形 */ } }
 
 // GET /api/health
 { "db": "ok", "routines": 13, "version": "0.1.0" }
