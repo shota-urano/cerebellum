@@ -555,5 +555,11 @@ a.of__ml-node:hover { border-color: var(--accent); color: var(--text); }
 .wt__result { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 12px; padding: 10px 12px; border: 1px solid var(--border); border-left: 3px solid var(--error); border-radius: var(--radius-sm); background: var(--bg); }
 .wt__result__tag { flex: none; font-size: 13px; line-height: 1.7; }
 .wt__result__body { flex: 1; min-width: 0; }
+/* 未着（§3.3）。名簿と summary の突合結果で、押す操作を持たない1行。
+   失敗枠より上に置くので、詰まって見えないよう下に余白だけ取る */
+.wt__missing { margin-bottom: 12px; }
+.wt__missing .dg__warn:first-child { margin-top: 0; }
+/* 名簿が読めず未着判定を諦めたことの通知（§3.3 末尾）。エラーバナーにしない */
+.wt__nomatch { margin: 0 0 12px; font-size: 10.5px; line-height: 1.6; letter-spacing: .04em; color: var(--muted); }
 /* apply_error は等幅で全文（§3.2）。切ると手で直せない */
 .wt__err { margin-top: 6px; font-size: 11.5px; line-height: 1.6; color: var(--error); white-space: pre-wrap; word-break: break-word; }

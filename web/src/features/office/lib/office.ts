@@ -41,8 +41,26 @@ export interface OfficeProfile {
   upstream?: string[] | null;
   /** 直後のノード（1-hop）。`place:` ノードが「確認する場所」になる（21 §3.6-5） */
   downstream?: string[] | null;
+  /**
+   * 人間確認の契約（docs/specs/24-inbox.md §9）。`kinds` はその skill が送る kind、
+   * `cadence` は `shift`（勤務帯どおりに毎回届くべき）か `adhoc`（不定期）。
+   * **`cadence: shift` の社員だけが「あなた待ち」の未着判定の対象**になる
+   * （docs/specs/25-web-inbox.md §3.3）。生成側（`build_office.py`）の対応前は
+   * 届かないので optional——欠落を `shift` と読み替えない。
+   */
+  review?: OfficeReview | null;
   /** 名簿の正本の在処（例 `.claude/skills/x-post/SKILL.md`）。リンクにしない（21 §3.2-4） */
   doc: string | null;
+}
+
+/**
+ * 人間確認の契約（docs/specs/24-inbox.md §9）。値の正本は各 skill の `SKILL.md` frontmatter で、
+ * cerebellum は受け取って使うだけ（21 §4・**対応表を持たない**）。
+ * 未知の `cadence` 値も届き得るので `string` で受ける（落とさない・20 §6 と同じ姿勢）。
+ */
+export interface OfficeReview {
+  kinds?: string[] | null;
+  cadence?: string | null;
 }
 
 /** 1社員 = 1 automation。並びは勤務開始時刻の昇順で返る（§2） */
