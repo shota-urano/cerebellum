@@ -13,7 +13,7 @@ Phase 1.6 = 朝ダイジェストの取り込みと詳細ビュー（Slack 停�
 Phase 1.7 = 学習セッション（[14](./14-learning.md)・[15](./15-web-learning.md)）とハーネス承認（[17](./17-harness-approval.md)・[18](./18-web-harness.md)）。いずれも second-brain の夜間ハーネスが push し、画面での入力を翌日の自動処理が読み戻す双方向ループ。
 Phase 1.8 = 「オフィス」画面（[20](./20-web-office.md)・[21](./21-web-office-roster.md)）。Orca automation の勤務帯・直近報告・社員名簿の表示。Frontend のみで、cerebellum のスキーマ・API は無変更。
 Phase 1.9 = 「あなた待ち」画面（[22](./22-daily-intake.md)・[23](./23-web-waiting.md)）。daily取り込み候補（ToDo・考え・口調）の承認を Obsidian のチェックから画面のタップへ移す。17/18 と同じ「Vault が正本・cerebellum は人間の意思だけ持つ」双方向ループ。**→ 出荷せず Phase 2.0 に畳む（2026-09-02 決定）**。
-Phase 2.0 = 人間待ち項目の汎用化（[24](./24-inbox.md)・[25](./25-web-inbox.md)）。ハーネスごとに専用 API・画面を作る二重工事をやめ、「承認・選択・読む・異常」の4種類を1つの口で受ける。second-brain 側で社員カードに `review` を書けば枠が自動で立つ。Slack 通知の全廃止先でもある。cerebellum に載るものは「人間の日課」「学習」「AI からの確認待ち」の3種類と整理し、「今日」画面でこの3種を1枚に集約する。学習は固有の構造を持つため専用のまま残す唯一の例外。
+Phase 2.0 = 人間待ち項目の汎用化（[24](./24-inbox.md)・[25](./25-web-inbox.md)）。ハーネスごとに専用 API・画面を作る二重工事をやめ、「承認・選択・読む・異常」の4種類を1つの口で受ける。second-brain 側で社員カードに `review` を書けば枠が自動で立つ。Slack 通知の全廃止先でもある。cerebellum に載るものは「人間の日課」「学習」「AI からの確認待ち」の3種類と整理し、「今日」画面でこの3種を1枚に集約する。学習は固有の構造を持つため専用のまま残す唯一の例外。あわせてオフィスへの会社案内追補（[26](./26-web-office-company.md)）を同 Phase の Frontend 増分として含む（20・21 と同じくスキーマ・API は無変更）。
 
 ## 2. システム全体像
 
@@ -61,7 +61,7 @@ Phase 2.0 = 人間待ち項目の汎用化（[24](./24-inbox.md)・[25](./25-web
 | 23 | [`23-web-waiting.md`](./23-web-waiting.md) | 「あなた待ち」画面（daily取り込みの承認・レーン別タップ）**superseded → 25** | Frontend |
 | 24 | [`24-inbox.md`](./24-inbox.md) | 人間待ち項目（汎用）の受け入れ・決定記録・summary（domain/usecase/API） | Backend |
 | 25 | [`25-web-inbox.md`](./25-web-inbox.md) | 「今日」の3種集約（日課・学習・確認待ち）と「あなた待ち」汎用画面 | Frontend |
-| 26 | [`26-web-office-company.md`](./26-web-office-company.md) | オフィスの会社案内追補（所属部署・人間確認の印・会社案内シート。20/21 の増分）**draft** | Frontend |
+| 26 | [`26-web-office-company.md`](./26-web-office-company.md) | オフィスの会社案内追補（所属部署・人間確認の印・会社案内シート。20/21 の増分） | Frontend |
 
 ## 4. 確定済みの初期値（横断・変更禁止）
 
