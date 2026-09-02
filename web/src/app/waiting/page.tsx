@@ -1,25 +1,18 @@
-'use client';
-
-import Link from 'next/link';
-import { WaitingView } from '@/features/waiting';
+import { Suspense } from 'react';
+import { WaitingScreen } from './WaitingScreen';
 
 /**
- * 「あなた待ち」画面（docs/specs/23-web-waiting.md）。
+ * 「あなた待ち」画面（docs/specs/25-web-inbox.md §3.2）。
  *
- * ハーネス承認と違い `?date=` を取らない——一覧は日付ではなく状態（`?status=proposed`）で
- * 引くため（docs/specs/22-daily-intake.md §3.5）。`useSearchParams` を使わないので
- * Suspense 境界も要らない。
+ * `?kind=` を読む `useSearchParams` は静的 export では Suspense 境界が必要なので、
+ * 合成本体を分けて包む（`app/learning/page.tsx` と同じ構図）。
+ * 一覧そのものは `?date=` を取らない——日付ではなく状態（`?status=open`）で引く画面
+ * （docs/specs/24-inbox.md §3.4）。
  */
 export default function WaitingPage() {
   return (
-    <main>
-      <div className="dg__bar">
-        <Link className="mono btn" href="/">
-          ◀ 今日へ
-        </Link>
-      </div>
-
-      <WaitingView />
-    </main>
+    <Suspense>
+      <WaitingScreen />
+    </Suspense>
   );
 }

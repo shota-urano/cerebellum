@@ -1,8 +1,10 @@
 export { CheckRing } from './CheckRing';
 export { ErrorBanner } from './ErrorBanner';
 export { HudStatus } from './HudStatus';
+export type { HudStatusProps } from './HudStatus';
 export { Markdown } from './Markdown';
 export { NavDrawer } from './NavDrawer';
+export type { NavDrawerProps } from './NavDrawer';
 export { Toast } from './Toast';
 export type { ToastProps } from './Toast';
 export { RunCard } from './RunCard';
