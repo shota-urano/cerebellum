@@ -255,8 +255,12 @@ test('部署ヘッダに在籍の内訳が出る', async ({ page }) => {
   await mockOffice(page);
   await page.goto('/office?room=library');
 
-  // 勤務形態の内訳は全景に出さず部署内で読む（§3.4-3・§3.5-1）
-  await expect(page.locator('.of3__room-breakdown')).toHaveText('勤務帯 2名・手動 2名・停止中 1名');
+  // 勤務形態の内訳は全景に出さず部署内で読む（§3.4-3・§3.5-1）。
+  // 名簿未記載（`profile` が無い a-legacy・a-retired）は docs/specs/26-web-office-company.md
+  // §3.2-2 の増分。**未記載を隠さない**ので、この部屋では 2名として同じ行に出る
+  await expect(page.locator('.of3__room-breakdown')).toHaveText(
+    '勤務帯 2名・手動 2名・停止中 1名・名簿未記載 2名',
+  );
 
   await page.goto('/office?room=market');
   // 0名のブロックは書かない

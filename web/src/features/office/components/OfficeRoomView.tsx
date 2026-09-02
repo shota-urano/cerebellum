@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import {
   actionCountOf,
+  hasReview,
   lastRunOf,
   lineBlocksOf,
   lineLabelOf,
@@ -125,11 +126,19 @@ export function OfficeRoomView({
     (count, employee) => count + actionCountOf(lastRunOf(runs, employee.automation_id)),
     0,
   );
-  // 在籍の内訳（21 §3.4-3）。0名のブロックは書かない
+  // 内訳（21 §3.4-3 ＋ docs/specs/26-web-office-company.md §3.2）。0名の項は書かない。
+  // 人間確認・名簿未記載は**このフロアに出ている社員全員**（停止中を含む）で数える——
+  // 名簿の設定漏れは在籍状態と独立に潰す対象なので、停止中を外すと漏れが隠れる（26 §3.2-2）。
+  const members = [...blocks.scheduled, ...blocks.manual, ...blocks.stopped];
+  const reviewers = members.filter(hasReview).length;
+  const unlisted = members.filter((employee) => rosterOf(employee).missing).length;
   const breakdown = [
     `勤務帯 ${blocks.scheduled.length}名`,
     blocks.manual.length > 0 ? `手動 ${blocks.manual.length}名` : null,
     blocks.stopped.length > 0 ? `停止中 ${blocks.stopped.length}名` : null,
+    reviewers > 0 ? `人間確認あり ${reviewers}名` : null,
+    // 「カードが書けない一体は編成に載せない」を画面で可視化する。隠さない（26 §3.2-2）
+    unlisted > 0 ? `名簿未記載 ${unlisted}名` : null,
   ].filter((part): part is string => part !== null);
 
   const station = (employee: OfficeEmployee, isStopped: boolean) => {

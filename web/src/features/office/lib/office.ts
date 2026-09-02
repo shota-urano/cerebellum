@@ -49,6 +49,13 @@ export interface OfficeProfile {
    * 届かないので optional——欠落を `shift` と読み替えない。
    */
   review?: OfficeReview | null;
+  /**
+   * 所属部署（docs/specs/26-web-office-company.md §3.1。値域は同 §4 の8部署 id）。
+   * 正本は各 skill の `SKILL.md` frontmatter で、**cerebellum に対応表を持たない**——
+   * 画面は値域を検査も翻訳もしない（未知の値も文字列のまま出す・26 §6）。
+   * 生成側の対応前は届かないので optional。**`line` や skill 名から推測して埋めない**（26 §9）。
+   */
+  dept?: string | null;
   /** 名簿の正本の在処（例 `.claude/skills/x-post/SKILL.md`）。リンクにしない（21 §3.2-4） */
   doc: string | null;
 }
@@ -176,6 +183,13 @@ export interface RosterEntry {
   line: string | null;
   upstream: string[];
   downstream: string[];
+  /** 所属部署。未記載は null（26 §3.1-3。skill 名や `line` から推測して埋めない） */
+  dept: string | null;
+  /**
+   * 人間確認の契約（26 §3.1-1）。`null` は**欠損ではなく「人間確認なし」という正常な状態**
+   * （24 §9）なので、`missing` と同じ「未記載」様式に寄せない。
+   */
+  review: OfficeReview | null;
   doc: string | null;
   /** `profile` が無い／`job` が空。画面は「名簿 未記載」を出す */
   missing: boolean;
@@ -202,9 +216,43 @@ export function rosterOf(employee: OfficeEmployee): RosterEntry {
     line: text(profile?.line),
     upstream: list(profile?.upstream),
     downstream: list(profile?.downstream),
+    dept: text(profile?.dept),
+    // `review` は形をそのまま持ち回る（値域の検査は生成側の責務・26 §4）
+    review: profile?.review ?? null,
     doc: text(profile?.doc),
     missing: job === null,
   };
+}
+
+/** `cadence` の表示語（26 §3.1-1）。未知の値はそのまま出す（落とさない・20 §6 と同じ姿勢） */
+function cadenceLabelOf(cadence: string): string {
+  if (cadence === 'shift') return '勤務帯どおり毎回';
+  if (cadence === 'adhoc') return '不定期';
+  return cadence;
+}
+
+/**
+ * 社員カード・会社案内に出す「人間確認」の1行（docs/specs/26-web-office-company.md §3.1-1）。
+ *
+ * `review` から**機械的に**決める。`kinds` は画面で翻訳しない（`approve` / `choose` / `read` /
+ * `alert` のまま出す・§3.1-2）——「あなた待ち」（25）と語を揃えるため。
+ * `null` は「人間確認: なし」で、**欠損ではなく正常な状態**（24 §9）なので
+ * 21 §3.2-3 の「未記載」様式に寄せない（§3.1-1）。
+ */
+export function reviewLabelOf(review: OfficeReview | null | undefined): string {
+  if (!review) return '人間確認: なし';
+  const kinds = Array.isArray(review.kinds)
+    ? review.kinds.filter((kind): kind is string => typeof kind === 'string' && kind.trim() !== '')
+    : [];
+  const cadence = typeof review.cadence === 'string' && review.cadence.trim() !== '' ? review.cadence : null;
+  // `alert` のみ＝人間の判断を求めず異常だけ知らせる契約。ここだけ言い換える（§3.1-1）
+  const body = kinds.length === 0 ? 'あり' : kinds.length === 1 && kinds[0] === 'alert' ? '異常のみ通知' : kinds.join('・');
+  return '人間確認: ' + body + (cadence === null ? '' : '（' + cadenceLabelOf(cadence) + '）');
+}
+
+/** `review` を持つ社員（26 §3.2-1 の「人間確認あり n名」）。値の中身は問わない */
+export function hasReview(employee: OfficeEmployee): boolean {
+  return rosterOf(employee).review !== null;
 }
 
 /** ライン（`profile.line`）の日本語ラベル（21 §3.7-2）。識別子→表示語彙の対応で、名簿の値ではない */

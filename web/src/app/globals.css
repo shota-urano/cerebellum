@@ -366,7 +366,9 @@ a:hover { color: #8FF2FF; }
 .of3__room-action-copy, .of3__room-quiet-copy { margin: 5px 0 0; font-size: 11px; color: #ffc34d; }
 .of3__room-quiet-copy { color: var(--muted); }
 /* 在籍の内訳（21 §3.4-3）。勤務形態は全景に出さず部署内で読む */
-.of3__room-breakdown { margin: 4px 0 0; font-size: 8.5px; letter-spacing: .1em; color: var(--muted); opacity: .7; }
+/* 内訳は項目が5つまで増える（26 §3.2）。`keep-all` で「人間確認/あり」のような
+   語中改行を止め、折り返しは項目区切りの「・」の後だけにする */
+.of3__room-breakdown { margin: 4px 0 0; font-size: 8.5px; letter-spacing: .1em; color: var(--muted); opacity: .7; word-break: keep-all; }
 .of3__room-floor { position: relative; min-height: 660px; margin: 0 -16px; background: #050b1a url('/images/office/room-floor.png') center top / 100% 100% no-repeat; overflow: hidden; }
 .of3__room-floor--crowded { background-size: 100% 128%; }
 /* 席は 勤務帯 → 手動起動 → 停止中 の3ブロック（docs/specs/21-web-office-roster.md §3.4） */
@@ -461,8 +463,13 @@ a:hover { color: #8FF2FF; }
 .of__card-job--missing { color: var(--muted); }
 .of__card-doc { display: block; margin-top: 6px; font-size: 10px; letter-spacing: .04em; color: var(--muted); overflow-wrap: anywhere; }
 .of__card-doc--foot { margin: 14px 0 0; opacity: .6; }
-/* 勤務・起動・AGENT・SKILL の4項目。390px で4列は潰れるので2×2にする */
+/* 勤務・起動・AGENT・SKILL・部署の5項目。390px で横並びは潰れるので2列にする */
 .of__card-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 8px; }
+/* 部署 id（`second-brain-harness` など）は半列に収まらないので1行使う（26 §3.1） */
+.of__card-meta-wide { grid-column: 1 / -1; }
+/* 人間確認の1行（docs/specs/26-web-office-company.md §3.1-1）。「なし」も同じ様式で出す
+   ——欠損ではなく正常な状態なので、未記載の muted 表示に寄せない */
+.of__card-review { margin: 12px 0 0; font-size: 11px; line-height: 1.55; letter-spacing: .04em; color: var(--text); overflow-wrap: anywhere; }
 /* ミニライン（docs/specs/21-web-office-roster.md §3.6）。SVG も図形ライブラリも使わない（§5） */
 .of__ml { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); text-align: center; }
 .of__ml-head { margin: 0 0 10px; text-align: left; }
