@@ -128,11 +128,11 @@ optimistic update と SWR `revalidateOnFocus` は [`08`](./08-web-today.md) §3 
 
 ## 実装単位
 
-- [ ] [Frontend] `features/inbox/`（旧 `features/waiting/` を作り替え）: 一覧・kind 別グループと固定文言・決定ボタン・取り消し・失敗枠・`bodyMd` 展開
+- [x] [Frontend] `features/inbox/`（旧 `features/waiting/` を作り替え）: 一覧・kind 別グループと固定文言・決定ボタン・取り消し・失敗枠・`bodyMd` 展開（2026-09-02 完了）
   - 受け入れ基準: E2E で、4 kind が固定順で出る・未決0のグループが消える・approve の ✅/❌/取り消し・choose のラジオ選択が `chosen`＋`choice` を送る・alert の「確認」・read の「読んだ」・failed 行が最上部に日をまたいで出る・名簿未登録バッジが出ることを検証。`make verify` PASS
-- [ ] [Frontend] 未着判定（§3.3）: `office.json` の `review.cadence=shift` × `shift` due × `summary` 突合
+- [x] [Frontend] 未着判定（§3.3）: `office.json` の `review.cadence=shift` × `shift` due × `summary` 突合（2026-09-02 完了）
   - 受け入れ基準: E2E（office.json はフィクスチャ）で、due かつ未受信の送信元が未着として出る・adhoc は出ない・時刻前は出ない・office.json 取得失敗時は判定を諦めて1行通知することを検証。`make verify` PASS
-- [ ] [Frontend] 「今日」の3段構成（§3.1）: LEARNING 状態1行・WAITING 件数4つ＋未着行・ヘッダの赤点
+- [x] [Frontend] 「今日」の3段構成（§3.1）: LEARNING 状態1行・WAITING 件数4つ＋未着行・ヘッダの赤点（2026-09-02 完了）
   - 受け入れ基準: E2E で、学習の未着/未回答/済の3状態・kind 別件数・未着行・赤点の有無（異常0件で消える）・第1段の ALL CLEAR が第3段の異常に影響されないことを検証。`make verify` PASS
-- [ ] [Frontend] ドロワー: 「あなた待ち」に未決バッジ。「ハーネス」項目の削除は night-harness 移行完了時に別タスクで行う
+- [x] [Frontend] ドロワー: 「あなた待ち」に未決バッジ。「ハーネス」項目の削除は night-harness 移行完了時に別タスクで行う（2026-09-02 完了）
   - 受け入れ基準: E2E でバッジの件数と 0 件非表示を検証。`make verify` PASS

@@ -170,11 +170,11 @@ JSON 契約の正本は [`03-api.md`](./03-api.md) §3。ここには検証規�
 
 ## 実装単位
 
-- [ ] [Backend] migration `007_inbox.sql`（`inbox_receipts` / `inbox_items`・`user_version=7`）＋ `02-data-model.md` への追記（§6 語彙 `inbox.items` を含む）
+- [x] [Backend] migration `007_inbox.sql`（`inbox_receipts` / `inbox_items`・`user_version=7`）＋ `02-data-model.md` への追記（§6 語彙 `inbox.items` を含む）（2026-09-02 完了・PR #25）
   - 受け入れ基準: ハーネス migration 適用済みの DB（user_version=5）に適用できるテストと、`UNIQUE(source, date, slug)`・`PRIMARY KEY(source, date)` 違反が検知されるテストが通る。`make verify` PASS
-- [ ] [Backend] `domain/inbox.rs`（項目・kind 別の状態遷移の検証。I/O 依存ゼロ）
+- [x] [Backend] `domain/inbox.rs`（項目・kind 別の状態遷移の検証。I/O 依存ゼロ）（2026-09-02 完了・PR #25）
   - 受け入れ基準: 検証ルールのテストが通る——必須欠落・kind 不正・101件以上・slug 重複・サイズ超過の拒否、**空配列の受理**、`choose` 以外への `options` 拒否、`choice` が options 外の拒否、kind ごとの許可 status 表（§3.3-1）の全組み合わせ、`apply_state ≠ pending` 行への decision 拒否、`apply_state = none` 行への apply-result 拒否。`make verify` PASS
-- [ ] [Backend] `usecase/manage_inbox.rs`（取り込み・決定記録・決定済み抽出・結果書き戻し・summary）
+- [x] [Backend] `usecase/manage_inbox.rs`（取り込み・決定記録・決定済み抽出・結果書き戻し・summary）（2026-09-02 完了・PR #25）
   - 受け入れ基準: テストが通る——同一 `(source, date)` 再送の一括置換（1トランザクション）／approved・rejected・chosen・`apply_state≠pending` を含む日への再送 409／**read・acknowledged のみの日は置換成功して open に戻る**／items 空でも `inbox_receipts` に行が作られる／未決抽出が日付を問わず新しい順で `expiresAt` 超過を既定で除外／決定済み抽出が source で絞れて古い順／summary が送信元ごとに最終受信と kind 別未決件数を返す。`make verify` PASS
-- [ ] [Backend] `infra/api` に6エンドポイント追加＋ `03-api.md` への追記
+- [x] [Backend] `infra/api` に6エンドポイント追加＋ `03-api.md` への追記（2026-09-02 完了・PR #25）
   - 受け入れ基準: HTTP 契約の結合テストが通る——batch→未決一覧→decision→決定済み抽出→apply-result の一連（approve と choose の両方）、alert の acknowledged→再送で open に戻る、エラー表（400/404/409）、受信ゼロでの一覧・summary が 200 で空。`make verify` PASS
