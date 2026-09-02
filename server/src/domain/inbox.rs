@@ -210,8 +210,11 @@ pub fn validate_decision(
     options: Option<&[InboxOption]>,
     input: InboxDecisionInput,
 ) -> Result<InboxDecision, DomainError> {
-    if apply_state != InboxApplyState::Pending {
-        return transition_error("a decision requires apply_state pending");
+    if matches!(
+        apply_state,
+        InboxApplyState::Applied | InboxApplyState::Failed
+    ) {
+        return transition_error("a decision is not allowed after the apply result");
     }
 
     let requested = required_transition(input.status, "status")?;
@@ -590,7 +593,7 @@ mod tests {
     }
 
     #[test]
-    fn decisions_require_a_pending_item_and_valid_choice() {
+    fn decisions_reject_applied_or_failed_items_but_allow_read_and_alert_without_apply() {
         assert!(
             validate_decision(
                 InboxKind::Approve,
@@ -603,6 +606,36 @@ mod tests {
             )
             .is_err()
         );
+        assert!(
+            validate_decision(
+                InboxKind::Choose,
+                InboxApplyState::Failed,
+                Some(&valid_options()),
+                InboxDecisionInput {
+                    status: Some("open".to_owned()),
+                    choice: None,
+                },
+            )
+            .is_err()
+        );
+        for (kind, status) in [
+            (InboxKind::Read, "read"),
+            (InboxKind::Alert, "acknowledged"),
+        ] {
+            assert!(
+                validate_decision(
+                    kind,
+                    InboxApplyState::None,
+                    None,
+                    InboxDecisionInput {
+                        status: Some(status.to_owned()),
+                        choice: None,
+                    },
+                )
+                .is_ok(),
+                "{kind:?} should be decidable without apply"
+            );
+        }
         assert!(
             validate_decision(
                 InboxKind::Choose,

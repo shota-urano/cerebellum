@@ -3398,10 +3398,56 @@ mod tests {
             )
             .unwrap();
 
+        repository
+            .replace_inbox_batch(
+                &inbox_batch(
+                    "sender-a",
+                    "2026-09-04",
+                    vec![inbox_item("sender-a-decided", InboxKind::Approve)],
+                ),
+                "2026-09-04T06:00:00+09:00",
+            )
+            .unwrap();
+        repository
+            .replace_inbox_batch(
+                &inbox_batch(
+                    "sender-b",
+                    "2026-09-04",
+                    vec![inbox_item("other-newer", InboxKind::Choose)],
+                ),
+                "2026-09-04T06:00:00+09:00",
+            )
+            .unwrap();
+        for (slug, status, choice) in [
+            ("sender-a-decided", InboxStatus::Approved, None),
+            ("other-newer", InboxStatus::Chosen, Some("one")),
+        ] {
+            let item = repository
+                .list_open_inbox_items("2026-09-04T07:00:00+09:00")
+                .unwrap()
+                .into_iter()
+                .find(|item| item.slug == slug)
+                .unwrap();
+            repository
+                .save_inbox_decision(
+                    item.id,
+                    InboxStatus::Open,
+                    InboxApplyState::Pending,
+                    status,
+                    choice,
+                    "2026-09-04T07:00:00+09:00",
+                )
+                .unwrap();
+        }
+
         let decided = repository.list_decided_inbox_items("sender-b").unwrap();
-        assert_eq!(decided.len(), 1);
-        assert_eq!(decided[0].slug, "other");
-        assert_eq!(decided[0].date, "2026-09-02");
+        assert_eq!(
+            decided
+                .iter()
+                .map(|item| (item.slug.as_str(), item.date.as_str()))
+                .collect::<Vec<_>>(),
+            [("other", "2026-09-02"), ("other-newer", "2026-09-04")]
+        );
         assert_eq!(
             repository.list_failed_inbox_items().unwrap()[0].slug,
             "approve"
@@ -3410,8 +3456,8 @@ mod tests {
         let summary = repository.inbox_summary().unwrap();
         assert_eq!(summary.len(), 2);
         assert_eq!(summary[0].source, "sender-a");
-        assert_eq!(summary[0].latest_date, "2026-09-03");
-        assert_eq!(summary[0].latest_item_count, 2);
+        assert_eq!(summary[0].latest_date, "2026-09-04");
+        assert_eq!(summary[0].latest_item_count, 1);
         assert_eq!(summary[0].open_count.read, 1);
         assert_eq!(summary[0].failed_count, 1);
         assert_eq!(summary[1].source, "sender-b");

@@ -62,7 +62,7 @@ JSON 契約の正本は [`03-api.md`](./03-api.md) §3。ここには検証規�
 
 1. `date` 不正・必須欠落・`kind` 不正・`items` 101件以上・`slug` 重複・サイズ超過（body 全体 1MiB／`bodyMd` 1件 128KiB／`payload` 1件 16KiB）は `bad_request`。**崩れた入力は保存しない**（[`14`](./14-learning.md) §3.2・[`17`](./17-harness-approval.md) §3.2 と同じ判断）
 2. 受信の記録を `inbox_receipts`（source・date・received_at・item_count）に UPSERT する。**items が空でもこの行は必ず作る**（§3.5 の未着判定の根拠）
-3. 同じ `(source, date)` への再送は**その送信元・その日の項目をまとめて置換**（DELETE→INSERT を1トランザクション）。ただし **人間の意思が付いた行（`status` が `approved` / `rejected` / `chosen`）または適用が動いた行（`apply_state ≠ pending`）が1件でもあれば `conflict`（409）**。守るのは人間の判断と機械の適用結果だけ（[`17`](./17-harness-approval.md) §3.2 の「killed は保護しない」と同じ考え）
+3. 同じ `(source, date)` への再送は**その送信元・その日の項目をまとめて置換**（DELETE→INSERT を1トランザクション）。ただし **人間の意思が付いた行（`status` が `approved` / `rejected` / `chosen`）または適用が動いた行（`apply_state` が `applied` / `failed`）が1件でもあれば `conflict`（409）**。守るのは人間の判断と機械の適用結果だけ（[`17`](./17-harness-approval.md) §3.2 の「killed は保護しない」と同じ考え）
 4. **例外: `read` と `alert` の既読・確認済み（`status = read` / `acknowledged`）は保護しない**。置換されて再び未決として現れる。異常が翌日も鳴っているなら再び目に入るのが正しく、週報が再生成されたなら読み直すのが正しい
 5. 取り込み時の初期状態: 全行 `status = "open"`。`apply_state` は `approve` / `choose` が `pending`、`read` / `alert` が `none`
 6. `received_at` は `Clock`
@@ -75,7 +75,7 @@ JSON 契約の正本は [`03-api.md`](./03-api.md) §3。ここには検証規�
    - `read`: `read` | `open`
    - `alert`: `acknowledged` | `open`
    - それ以外の組み合わせは `bad_request`
-2. `apply_state` が `pending` 以外の行への decision は `bad_request`（適用済みを後から未決には戻せない）
+2. `apply_state` が `applied` / `failed` の行への decision は `bad_request`。`read` / `alert` は `apply_state = none` のまま決定できる（読み戻しが無いため本ガードの対象外）
 3. `decided_at` は `Clock`。上書きのたびに更新する
 
 ### 3.4 適用ループとの接続
@@ -118,7 +118,7 @@ JSON 契約の正本は [`03-api.md`](./03-api.md) §3。ここには検証規�
 | 事象 | 応答 |
 |---|---|
 | date 不正・body 検証 NG・kind と status の不整合・`choose` 以外への `options`・`choice` が options に無い | 400 `bad_request`（理由文字列つき） |
-| 人間の判断（approved / rejected / chosen）または `apply_state ≠ pending` の行がある `(source, date)` への再 POST | 409 `conflict` |
+| 人間の判断（approved / rejected / chosen）または `apply_state` が `applied` / `failed` の行がある `(source, date)` への再 POST | 409 `conflict` |
 | 存在しない id への decision / apply-result | 404 `not_found` |
 | 受信ゼロでの一覧・summary GET | **200**（空配列。§3.5） |
 
