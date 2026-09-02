@@ -11,6 +11,7 @@ use axum::{
 use serde::Deserialize;
 
 use crate::domain::harness::MAX_PROPOSAL_BODY_BYTES;
+use crate::domain::intake::MAX_INTAKE_BODY_BYTES;
 use crate::domain::learning::MAX_LEARNING_SET_BYTES;
 
 use super::{
@@ -18,9 +19,11 @@ use super::{
     dto::{
         DayDto, DigestDto, DigestInputDto, DigestStoredDto, HarnessApplyResultInputDto,
         HarnessDecisionInputDto, HarnessProposalBatchInputDto, HarnessProposalListDto,
-        HarnessProposalResponseDto, HarnessProposalsDto, HealthDto, LearningInputDto,
-        LearningResultDto, LearningResultInputDto, LearningSetDto, LearningStoredDto,
-        RoutineInputDto, RoutineResponseDto, RoutinesDto, SummaryDto,
+        HarnessProposalResponseDto, HarnessProposalsDto, HealthDto, IntakeApplyResultInputDto,
+        IntakeBatchInputDto, IntakeDecisionInputDto, IntakeListDto, IntakeResponseDto,
+        IntakeSavedDto, LearningInputDto, LearningResultDto, LearningResultInputDto,
+        LearningSetDto, LearningStoredDto, RoutineInputDto, RoutineResponseDto, RoutinesDto,
+        SummaryDto,
     },
     error::ApiError,
 };
@@ -315,6 +318,78 @@ pub(super) async fn save_harness_apply_result(
     Ok(Json(proposal.into()))
 }
 
+pub(super) async fn save_intake_candidates(
+    State(state): State<Arc<AppState>>,
+    request: Request,
+) -> Result<Json<IntakeSavedDto>, ApiError> {
+    let body = to_bytes(request.into_body(), MAX_INTAKE_BODY_BYTES + 1)
+        .await
+        .map_err(|e| ApiError::bad_request(e.to_string()))?;
+    let input = serde_json::from_slice::<IntakeBatchInputDto>(&body)
+        .map_err(|e| ApiError::bad_request(e.to_string()))?;
+    let size = body.len();
+    let usecase = Arc::clone(&state.manage_intake);
+    let saved = tokio::task::spawn_blocking(move || usecase.save_candidates(input.into(), size))
+        .await
+        .map_err(ApiError::from_join)??;
+    Ok(Json(saved.into()))
+}
+
+pub(super) async fn get_intake_candidates(
+    State(state): State<Arc<AppState>>,
+    query: Result<Query<IntakeQuery>, QueryRejection>,
+) -> Result<Json<IntakeListDto>, ApiError> {
+    let Query(query) = query.map_err(|e| ApiError::bad_request(e.to_string()))?;
+    let usecase = Arc::clone(&state.manage_intake);
+    let list = match (query.status.as_deref(), query.apply_state.as_deref()) {
+        (Some("proposed"), None) => tokio::task::spawn_blocking(move || usecase.proposed())
+            .await
+            .map_err(ApiError::from_join)??,
+        (Some("approved"), Some("pending")) => {
+            tokio::task::spawn_blocking(move || usecase.pending_approved())
+                .await
+                .map_err(ApiError::from_join)??
+        }
+        (None, Some("failed")) => tokio::task::spawn_blocking(move || usecase.failed())
+            .await
+            .map_err(ApiError::from_join)??,
+        _ => {
+            return Err(ApiError::bad_request(
+                "query must be status=proposed, status=approved&applyState=pending, or applyState=failed",
+            ));
+        }
+    };
+    Ok(Json(list.into()))
+}
+
+pub(super) async fn save_intake_decision(
+    State(state): State<Arc<AppState>>,
+    path: Result<Path<i64>, PathRejection>,
+    body: Result<Json<IntakeDecisionInputDto>, JsonRejection>,
+) -> Result<Json<IntakeResponseDto>, ApiError> {
+    let Path(id) = path.map_err(|e| ApiError::bad_request(e.to_string()))?;
+    let Json(input) = body.map_err(|e| ApiError::bad_request(e.to_string()))?;
+    let usecase = Arc::clone(&state.manage_intake);
+    let item = tokio::task::spawn_blocking(move || usecase.save_decision(id, &input.status))
+        .await
+        .map_err(ApiError::from_join)??;
+    Ok(Json(item.into()))
+}
+
+pub(super) async fn save_intake_apply_result(
+    State(state): State<Arc<AppState>>,
+    path: Result<Path<i64>, PathRejection>,
+    body: Result<Json<IntakeApplyResultInputDto>, JsonRejection>,
+) -> Result<Json<IntakeResponseDto>, ApiError> {
+    let Path(id) = path.map_err(|e| ApiError::bad_request(e.to_string()))?;
+    let Json(input) = body.map_err(|e| ApiError::bad_request(e.to_string()))?;
+    let usecase = Arc::clone(&state.manage_intake);
+    let item = tokio::task::spawn_blocking(move || usecase.save_apply_result(id, input.into()))
+        .await
+        .map_err(ApiError::from_join)??;
+    Ok(Json(item.into()))
+}
+
 async fn read_harness_body(body: Body) -> Result<axum::body::Bytes, ApiError> {
     to_bytes(body, MAX_PROPOSAL_BODY_BYTES + 1)
         .await
@@ -340,6 +415,13 @@ pub(super) struct RoutinesQuery {
 #[serde(default, rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct HarnessProposalsQuery {
     date: Option<String>,
+    status: Option<String>,
+    apply_state: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default, rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct IntakeQuery {
     status: Option<String>,
     apply_state: Option<String>,
 }

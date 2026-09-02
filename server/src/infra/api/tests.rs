@@ -23,11 +23,12 @@ use crate::{
         get_summary::GetSummary,
         manage_digest::ManageDigest,
         manage_harness::ManageHarness,
+        manage_intake::ManageIntake,
         manage_learning::ManageLearning,
         manage_routines::ManageRoutines,
         ports::{
-            Clock, DigestRepository, HarnessRepository, LearningRepository, RoutineRepository,
-            TaskRepository,
+            Clock, DigestRepository, HarnessRepository, IntakeRepository, LearningRepository,
+            RoutineRepository, TaskRepository,
         },
         toggle_check::ToggleCheck,
     },
@@ -79,6 +80,7 @@ fn test_app_with_routines(seed_routines: bool) -> axum::Router {
     let digest_repository: Arc<dyn DigestRepository> = repository.clone();
     let learning_repository: Arc<dyn LearningRepository> = repository.clone();
     let harness_repository: Arc<dyn HarnessRepository> = repository.clone();
+    let intake_repository: Arc<dyn IntakeRepository> = repository.clone();
     let task_repository: Arc<dyn TaskRepository> = repository;
     let clock: Arc<dyn Clock> = Arc::new(FakeClock);
     let manage_routines = Arc::new(ManageRoutines::new(
@@ -88,6 +90,7 @@ fn test_app_with_routines(seed_routines: bool) -> axum::Router {
     let manage_digest = Arc::new(ManageDigest::new(digest_repository, Arc::clone(&clock)));
     let manage_learning = Arc::new(ManageLearning::new(learning_repository, Arc::clone(&clock)));
     let manage_harness = Arc::new(ManageHarness::new(harness_repository, Arc::clone(&clock)));
+    let manage_intake = Arc::new(ManageIntake::new(intake_repository, Arc::clone(&clock)));
 
     router(Arc::new(AppState {
         get_day: Arc::new(GetDay::new(
@@ -108,6 +111,7 @@ fn test_app_with_routines(seed_routines: bool) -> axum::Router {
         manage_digest,
         manage_learning,
         manage_harness,
+        manage_intake,
         routine_repository,
         task_repository,
         config: Arc::new(Config {
@@ -1429,6 +1433,216 @@ async fn harness_missing_day_and_error_table_are_mapped_at_http_boundary() {
     assert_eq!(
         json_body(invalid_transition).await["error"]["code"],
         "bad_request"
+    );
+}
+
+fn intake_batch(date: &str, items: Value) -> Value {
+    json!({"date":date,"sourcePath":format!("90_Meta/daily_intake/{date}.md"),"sourceNote":format!("01_Daily/{date}.md"),"items":items})
+}
+
+#[tokio::test]
+async fn intake_round_trip_empty_receipt_ordering_and_apply_retry() {
+    let app = test_app();
+    let initial = call(app.clone(), "GET", "/api/intake/candidates?status=proposed").await;
+    assert_eq!(initial.status(), StatusCode::OK);
+    let initial = json_body(initial).await;
+    assert_eq!(
+        initial,
+        json!({"items":[],"latestDate":null,"latestReceivedAt":null,"latestItemCount":null})
+    );
+
+    let empty = call_json(
+        app.clone(),
+        "POST",
+        "/api/intake/candidates",
+        intake_batch("2026-08-27", json!([])),
+    )
+    .await;
+    assert_eq!(empty.status(), StatusCode::OK);
+    assert_eq!(json_body(empty).await["itemCount"], 0);
+    let after_empty =
+        json_body(call(app.clone(), "GET", "/api/intake/candidates?status=proposed").await).await;
+    assert_eq!(after_empty["latestDate"], "2026-08-27");
+    assert_eq!(after_empty["latestItemCount"], 0);
+
+    let older = call_json(
+        app.clone(),
+        "POST",
+        "/api/intake/candidates",
+        intake_batch(
+            "2026-08-28",
+            json!([{"lane":"thought","text":"older thought","note":"opaque note","lineNo":12}]),
+        ),
+    )
+    .await;
+    assert_eq!(older.status(), StatusCode::OK);
+    let older = json_body(older).await;
+    let older_id = older["items"][0]["id"].as_i64().unwrap();
+    assert_eq!(
+        older["items"][0]["slug"],
+        crate::domain::intake::compute_slug(
+            "2026-08-28",
+            crate::domain::intake::IntakeLane::Thought,
+            "older thought"
+        )
+    );
+    assert_eq!(
+        older["items"][0]["sourcePath"],
+        "90_Meta/daily_intake/2026-08-28.md"
+    );
+    let newer = call_json(
+        app.clone(),
+        "POST",
+        "/api/intake/candidates",
+        intake_batch("2026-08-29", json!([{"lane":"todo","text":"newer todo"}])),
+    )
+    .await;
+    let newer_id = json_body(newer).await["items"][0]["id"].as_i64().unwrap();
+    let proposed =
+        json_body(call(app.clone(), "GET", "/api/intake/candidates?status=proposed").await).await;
+    assert_eq!(proposed["items"][0]["id"], newer_id);
+    assert_eq!(proposed["items"][1]["id"], older_id);
+
+    for id in [newer_id, older_id] {
+        let response = call_json(
+            app.clone(),
+            "POST",
+            &format!("/api/intake/candidates/{id}/decision"),
+            json!({"status":"approved"}),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+    let pending = json_body(
+        call(
+            app.clone(),
+            "GET",
+            "/api/intake/candidates?status=approved&applyState=pending",
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(pending["items"][0]["id"], older_id);
+    assert_eq!(pending["items"][1]["id"], newer_id);
+    let failed=call_json(app.clone(),"POST",&format!("/api/intake/candidates/{older_id}/apply-result"),json!({"state":"failed","error":"not found","resultPath":"opaque/path.md","resultUrl":"https://linear.example/ABC-1"})).await;
+    assert_eq!(failed.status(), StatusCode::OK);
+    let failed = json_body(failed).await;
+    assert_eq!(failed["item"]["applyState"], "failed");
+    assert_eq!(failed["item"]["resultUrl"], "https://linear.example/ABC-1");
+    let failed_list = json_body(
+        call(
+            app.clone(),
+            "GET",
+            "/api/intake/candidates?applyState=failed",
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(failed_list["items"][0]["id"], older_id);
+    let applied = call_json(
+        app.clone(),
+        "POST",
+        &format!("/api/intake/candidates/{older_id}/apply-result"),
+        json!({"state":"applied","resultPath":"opaque/final.md"}),
+    )
+    .await;
+    assert_eq!(applied.status(), StatusCode::OK);
+    let applied = json_body(applied).await;
+    assert_eq!(applied["item"]["applyState"], "applied");
+    assert_eq!(applied["item"]["error"], Value::Null);
+    assert!(json_body(call(app,"GET","/api/intake/candidates?applyState=failed").await).await["items"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn intake_replacement_guards_and_http_errors() {
+    let app = test_app();
+    let first = call_json(
+        app.clone(),
+        "POST",
+        "/api/intake/candidates",
+        intake_batch("today", json!([{"lane":"tone","text":"one"}])),
+    )
+    .await;
+    let _original_id = json_body(first).await["items"][0]["id"].as_i64().unwrap();
+    let replacement = call_json(
+        app.clone(),
+        "POST",
+        "/api/intake/candidates",
+        intake_batch("today", json!([{"lane":"tone","text":"two"}])),
+    )
+    .await;
+    assert_eq!(replacement.status(), StatusCode::OK);
+    let id = json_body(replacement).await["items"][0]["id"]
+        .as_i64()
+        .unwrap();
+    assert_ne!(id, 0);
+    assert_eq!(
+        call_json(
+            app.clone(),
+            "POST",
+            &format!("/api/intake/candidates/{id}/decision"),
+            json!({"status":"rejected"})
+        )
+        .await
+        .status(),
+        StatusCode::OK
+    );
+    assert_eq!(
+        call_json(
+            app.clone(),
+            "POST",
+            "/api/intake/candidates",
+            intake_batch("today", json!([]))
+        )
+        .await
+        .status(),
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        call_json(
+            app.clone(),
+            "POST",
+            "/api/intake/candidates/99999/decision",
+            json!({"status":"approved"})
+        )
+        .await
+        .status(),
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        call_json(
+            app.clone(),
+            "POST",
+            &format!("/api/intake/candidates/{id}/apply-result"),
+            json!({"state":"applied"})
+        )
+        .await
+        .status(),
+        StatusCode::BAD_REQUEST
+    );
+    for uri in [
+        "/api/intake/candidates",
+        "/api/intake/candidates?date=today",
+        "/api/intake/candidates?status=approved",
+        "/api/intake/candidates?applyState=pending",
+        "/api/intake/candidates?status=bad",
+    ] {
+        assert_eq!(
+            call(app.clone(), "GET", uri).await.status(),
+            StatusCode::BAD_REQUEST,
+            "{uri}"
+        );
+    }
+    assert_eq!(
+        call_json(
+            app,
+            "POST",
+            "/api/intake/candidates",
+            intake_batch("bad", json!([]))
+        )
+        .await
+        .status(),
+        StatusCode::BAD_REQUEST
     );
 }
 

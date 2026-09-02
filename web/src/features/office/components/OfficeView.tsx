@@ -3,11 +3,12 @@
 import { useEffect, useState } from 'react';
 import { ErrorBanner } from '@/shared/ui';
 import { useOffice } from '../hooks/useOffice';
-import { isOfficeRoomId, localDate, splitByEnabled, staleHours } from '../lib/office';
+import { isOfficeRoomId, lastRunOf, localDate, splitByEnabled, staleHours } from '../lib/office';
 import { OfficeDeskSheet } from './OfficeDeskSheet';
+import { OfficeEmployeeSheet } from './OfficeEmployeeSheet';
 import { OfficeOverview } from './OfficeOverview';
 import { OfficeReportSheet } from './OfficeReportSheet';
-import { OfficeRoomView } from './OfficeRoomView';
+import { OfficeRoomView, type OfficeFloorScope } from './OfficeRoomView';
 
 function Skeleton() {
   return (
@@ -36,10 +37,14 @@ export function OfficeView({
   runId,
   roomId,
   deskOpen,
+  employeeId,
+  lineId,
 }: {
   runId: string | null;
   roomId: string | null;
   deskOpen: boolean;
+  employeeId: string | null;
+  lineId: string | null;
 }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -62,6 +67,29 @@ export function OfficeView({
     ? employees.find((employee) => employee.automation_id === selectedRun.automation_id)
     : undefined;
 
+  // 名簿は在籍状態と独立に読める（停止中社員も開ける・21 §3.1-6）ので employees 全体から引く
+  const cardEmployee =
+    employeeId === null ? undefined : employees.find((employee) => employee.automation_id === employeeId);
+  const cardRun = cardEmployee ? lastRunOf(runs, cardEmployee.automation_id) : undefined;
+  // `room` と `line` が同時に来たら `room` を優先する（部屋が主・ラインが従・21 §3.7-7）
+  const scope: OfficeFloorScope | null = selectedRoomId
+    ? { kind: 'room', roomId: selectedRoomId }
+    : lineId !== null
+      ? { kind: 'line', lineId }
+      : null;
+  const roomHref =
+    scope === null
+      ? '/office'
+      : scope.kind === 'room'
+        ? `/office?room=${scope.roomId}`
+        : `/office?line=${encodeURIComponent(scope.lineId)}`;
+  // 報告シートの戻り先は、社員カード経由で来たときだけカードへ返す（21 §3.1-4）。
+  // `?run=` 単独・MY DESK 経由の既存 deep link の戻り先は 20 §3.5-4 のまま変えない。
+  const cardHref =
+    employeeId === null
+      ? null
+      : `${roomHref}${roomHref.includes('?') ? '&' : '?'}employee=${encodeURIComponent(employeeId)}`;
+
   return (
     <>
       {stale !== null && (
@@ -74,14 +102,15 @@ export function OfficeView({
 
       {employees.length === 0 ? (
         <div className="empty">登録されている automation がありません</div>
-      ) : selectedRoomId ? (
+      ) : scope !== null ? (
         <OfficeRoomView
-          roomId={selectedRoomId}
+          scope={scope}
           employees={onDuty}
           runs={runs}
           stopped={stopped}
           today={localDate(now)}
           selectedRunId={runId}
+          selectedEmployeeId={employeeId}
         />
       ) : (
         <OfficeOverview
@@ -94,14 +123,33 @@ export function OfficeView({
 
       {deskOpen && <OfficeDeskSheet employees={onDuty} runs={runs} />}
 
-      {runId !== null && (
+      {/* シートは常に1枚。`run` と `employee` が同時に来たら報告を優先する（21 §3.1-4） */}
+      {runId !== null ? (
         <OfficeReportSheet
           key={runId}
           employee={selectedEmployee}
           run={selectedRun}
           requestedRunId={runId}
-          returnHref={selectedRoomId ? `/office?room=${selectedRoomId}` : deskOpen ? '/office?desk=1' : '/office'}
+          returnHref={cardHref ?? (scope !== null ? roomHref : deskOpen ? '/office?desk=1' : '/office')}
         />
+      ) : (
+        employeeId !== null && (
+          <OfficeEmployeeSheet
+            key={employeeId}
+            employee={cardEmployee}
+            run={cardRun}
+            requestedId={employeeId}
+            today={localDate(now)}
+            returnHref={roomHref}
+            employees={employees}
+            scopeHref={roomHref}
+            reportHref={
+              cardRun
+                ? `${cardHref}&run=${encodeURIComponent(cardRun.run_id)}`
+                : null
+            }
+          />
+        )
       )}
     </>
   );

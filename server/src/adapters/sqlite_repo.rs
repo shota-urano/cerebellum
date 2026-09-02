@@ -13,14 +13,16 @@ use crate::domain::{
         ApplyResult, ApplyState, ChallengeVerdict, HarnessKind, HarnessProposalBatch,
         HarnessStatus, HarnessVerdict,
     },
+    intake::{IntakeApplyResult, IntakeApplyState, IntakeBatch, IntakeLane, IntakeStatus},
     routine::{Routine, RoutineFields},
     task::{CheckedTask, Task},
 };
 use crate::usecase::ports::{
-    DigestRepository, HarnessRepository, HarnessRepositoryError, LearningRepository,
-    RepositoryError, RoutineImportRepository, RoutineImportRepositoryError, RoutineRepository,
-    RoutineRepositoryError, StoredDigest, StoredHarnessProposal, StoredLearningResult,
-    StoredLearningSet, TaskRepository,
+    DigestRepository, HarnessRepository, HarnessRepositoryError, IntakeReceipt, IntakeRepository,
+    IntakeRepositoryError, LearningRepository, RepositoryError, RoutineImportRepository,
+    RoutineImportRepositoryError, RoutineRepository, RoutineRepositoryError, StoredDigest,
+    StoredHarnessProposal, StoredIntakeCandidate, StoredLearningResult, StoredLearningSet,
+    TaskRepository,
 };
 
 const MIGRATION_V1: &str = include_str!("migrations/001_init.sql");
@@ -28,7 +30,8 @@ const MIGRATION_V2: &str = include_str!("migrations/002_routines.sql");
 const MIGRATION_V3: &str = include_str!("migrations/003_digests.sql");
 const MIGRATION_V4: &str = include_str!("migrations/004_learning.sql");
 const MIGRATION_V5: &str = include_str!("migrations/005_harness.sql");
-const LATEST_SCHEMA_VERSION: i64 = 5;
+const MIGRATION_V6: &str = include_str!("migrations/006_intake.sql");
+const LATEST_SCHEMA_VERSION: i64 = 6;
 
 pub struct SqliteTaskRepository {
     connection: Mutex<Connection>,
@@ -67,11 +70,19 @@ impl SqliteTaskRepository {
                 MIGRATION_V3,
                 MIGRATION_V4,
                 MIGRATION_V5,
+                MIGRATION_V6,
             ][..],
-            1 => &[MIGRATION_V2, MIGRATION_V3, MIGRATION_V4, MIGRATION_V5][..],
-            2 => &[MIGRATION_V3, MIGRATION_V4, MIGRATION_V5][..],
-            3 => &[MIGRATION_V4, MIGRATION_V5][..],
-            4 => &[MIGRATION_V5][..],
+            1 => &[
+                MIGRATION_V2,
+                MIGRATION_V3,
+                MIGRATION_V4,
+                MIGRATION_V5,
+                MIGRATION_V6,
+            ][..],
+            2 => &[MIGRATION_V3, MIGRATION_V4, MIGRATION_V5, MIGRATION_V6][..],
+            3 => &[MIGRATION_V4, MIGRATION_V5, MIGRATION_V6][..],
+            4 => &[MIGRATION_V5, MIGRATION_V6][..],
+            5 => &[MIGRATION_V6][..],
             LATEST_SCHEMA_VERSION => return Ok(()),
             version => return Err(SqliteRepositoryError::UnsupportedSchemaVersion(version)),
         };
@@ -1124,6 +1135,207 @@ fn invalid_harness_value(index: usize, column: &'static str, value: String) -> r
     )
 }
 
+impl IntakeRepository for SqliteTaskRepository {
+    fn replace_intake_candidates(
+        &self,
+        batch: &IntakeBatch,
+        received_at: &str,
+    ) -> Result<(), IntakeRepositoryError> {
+        let mut connection = self.connection().map_err(IntakeRepositoryError::internal)?;
+        let transaction = connection
+            .transaction()
+            .map_err(IntakeRepositoryError::internal)?;
+        let protected: bool = transaction.query_row(
+            "SELECT EXISTS(SELECT 1 FROM intake_candidates WHERE date=?1 AND (status IN ('approved','rejected') OR apply_state<>'pending'))",
+            [&batch.date], |row| row.get(0)).map_err(IntakeRepositoryError::internal)?;
+        if protected {
+            return Err(IntakeRepositoryError::Conflict);
+        }
+        transaction
+            .execute("DELETE FROM intake_candidates WHERE date=?1", [&batch.date])
+            .map_err(IntakeRepositoryError::internal)?;
+        let item_count =
+            i64::try_from(batch.items.len()).map_err(IntakeRepositoryError::internal)?;
+        transaction.execute(
+            "INSERT INTO intake_days(date,source_path,source_note,item_count,received_at) VALUES(?1,?2,?3,?4,?5)
+             ON CONFLICT(date) DO UPDATE SET source_path=excluded.source_path,source_note=excluded.source_note,item_count=excluded.item_count,received_at=excluded.received_at",
+            params![batch.date, batch.source_path, batch.source_note, item_count, received_at]
+        ).map_err(IntakeRepositoryError::internal)?;
+        {
+            let mut statement = transaction.prepare(
+                "INSERT INTO intake_candidates(date,slug,lane,text,note,line_no,status,apply_state,received_at) VALUES(?1,?2,?3,?4,?5,?6,'proposed','pending',?7)"
+            ).map_err(IntakeRepositoryError::internal)?;
+            for item in &batch.items {
+                statement
+                    .execute(params![
+                        batch.date,
+                        item.slug,
+                        item.lane.as_str(),
+                        item.text,
+                        item.note,
+                        item.line_no,
+                        received_at
+                    ])
+                    .map_err(IntakeRepositoryError::internal)?;
+            }
+        }
+        transaction
+            .commit()
+            .map_err(IntakeRepositoryError::internal)
+    }
+
+    fn list_proposed_intake(&self) -> Result<Vec<StoredIntakeCandidate>, IntakeRepositoryError> {
+        self.list_intake_where("c.status='proposed'", "c.date DESC, c.id ASC")
+    }
+    fn list_pending_approved_intake(
+        &self,
+    ) -> Result<Vec<StoredIntakeCandidate>, IntakeRepositoryError> {
+        self.list_intake_where(
+            "c.status='approved' AND c.apply_state='pending'",
+            "c.date ASC, c.id ASC",
+        )
+    }
+    fn list_failed_intake(&self) -> Result<Vec<StoredIntakeCandidate>, IntakeRepositoryError> {
+        self.list_intake_where("c.apply_state='failed'", "c.date DESC, c.id ASC")
+    }
+
+    fn latest_intake_receipt(&self) -> Result<Option<IntakeReceipt>, IntakeRepositoryError> {
+        self.connection().map_err(IntakeRepositoryError::internal)?.query_row(
+            "SELECT date,received_at,item_count FROM intake_days ORDER BY received_at DESC, date DESC LIMIT 1", [],
+            |row| Ok((row.get::<_, String>(0)?,row.get::<_, String>(1)?,row.get::<_, i64>(2)?))
+        ).optional().map_err(IntakeRepositoryError::internal)?.map(|(date,received_at,count)| Ok(IntakeReceipt { date, received_at, item_count: usize::try_from(count).map_err(IntakeRepositoryError::internal)? })).transpose()
+    }
+
+    fn get_intake_candidate(
+        &self,
+        id: i64,
+    ) -> Result<Option<StoredIntakeCandidate>, IntakeRepositoryError> {
+        self.connection()
+            .map_err(IntakeRepositoryError::internal)?
+            .query_row(
+                &intake_select("c.id=?1", None),
+                [id],
+                intake_candidate_from_row,
+            )
+            .optional()
+            .map_err(IntakeRepositoryError::internal)
+    }
+
+    fn save_intake_decision(
+        &self,
+        id: i64,
+        expected_status: IntakeStatus,
+        status: IntakeStatus,
+        decided_at: &str,
+    ) -> Result<StoredIntakeCandidate, IntakeRepositoryError> {
+        let connection = self.connection().map_err(IntakeRepositoryError::internal)?;
+        let changed=connection.execute("UPDATE intake_candidates SET status=?1,decided_at=?2 WHERE id=?3 AND status=?4 AND apply_state='pending'",params![status.as_str(),decided_at,id,expected_status.as_str()]).map_err(IntakeRepositoryError::internal)?;
+        if changed == 0 {
+            return Err(IntakeRepositoryError::StateMismatch);
+        }
+        connection
+            .query_row(
+                &intake_select("c.id=?1", None),
+                [id],
+                intake_candidate_from_row,
+            )
+            .map_err(IntakeRepositoryError::internal)
+    }
+
+    fn save_intake_apply_result(
+        &self,
+        id: i64,
+        result: &IntakeApplyResult,
+        applied_at: &str,
+    ) -> Result<StoredIntakeCandidate, IntakeRepositoryError> {
+        let connection = self.connection().map_err(IntakeRepositoryError::internal)?;
+        let changed=connection.execute("UPDATE intake_candidates SET apply_state=?1,applied_at=?2,apply_error=?3,result_path=?4,result_url=?5 WHERE id=?6 AND status='approved'",params![result.state.as_str(),applied_at,result.error,result.result_path,result.result_url,id]).map_err(IntakeRepositoryError::internal)?;
+        if changed == 0 {
+            return Err(IntakeRepositoryError::StateMismatch);
+        }
+        connection
+            .query_row(
+                &intake_select("c.id=?1", None),
+                [id],
+                intake_candidate_from_row,
+            )
+            .map_err(IntakeRepositoryError::internal)
+    }
+}
+
+impl SqliteTaskRepository {
+    fn list_intake_where(
+        &self,
+        condition: &str,
+        order: &str,
+    ) -> Result<Vec<StoredIntakeCandidate>, IntakeRepositoryError> {
+        let connection = self.connection().map_err(IntakeRepositoryError::internal)?;
+        let sql = intake_select(condition, Some(order));
+        let mut statement = connection
+            .prepare(&sql)
+            .map_err(IntakeRepositoryError::internal)?;
+        statement
+            .query_map([], intake_candidate_from_row)
+            .map_err(IntakeRepositoryError::internal)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(IntakeRepositoryError::internal)
+    }
+}
+
+fn intake_select(condition: &str, order: Option<&str>) -> String {
+    format!(
+        "SELECT c.id,c.date,c.slug,c.lane,c.text,c.note,c.line_no,d.source_path,d.source_note,c.status,c.decided_at,c.apply_state,c.applied_at,c.apply_error,c.result_path,c.result_url,c.received_at FROM intake_candidates c JOIN intake_days d ON d.date=c.date WHERE {condition}{}",
+        order.map(|v| format!(" ORDER BY {v}")).unwrap_or_default()
+    )
+}
+
+fn intake_candidate_from_row(row: &Row<'_>) -> rusqlite::Result<StoredIntakeCandidate> {
+    let lane: String = row.get(3)?;
+    let status: String = row.get(9)?;
+    let apply: String = row.get(11)?;
+    Ok(StoredIntakeCandidate {
+        id: row.get(0)?,
+        date: row.get(1)?,
+        slug: row.get(2)?,
+        lane: match lane.as_str() {
+            "todo" => IntakeLane::Todo,
+            "thought" => IntakeLane::Thought,
+            "tone" => IntakeLane::Tone,
+            _ => return Err(invalid_intake_value(3, "lane", lane)),
+        },
+        text: row.get(4)?,
+        note: row.get(5)?,
+        line_no: row.get(6)?,
+        source_path: row.get(7)?,
+        source_note: row.get(8)?,
+        status: match status.as_str() {
+            "proposed" => IntakeStatus::Proposed,
+            "approved" => IntakeStatus::Approved,
+            "rejected" => IntakeStatus::Rejected,
+            _ => return Err(invalid_intake_value(9, "status", status)),
+        },
+        decided_at: row.get(10)?,
+        apply_state: match apply.as_str() {
+            "pending" => IntakeApplyState::Pending,
+            "applied" => IntakeApplyState::Applied,
+            "failed" => IntakeApplyState::Failed,
+            _ => return Err(invalid_intake_value(11, "apply_state", apply)),
+        },
+        applied_at: row.get(12)?,
+        apply_error: row.get(13)?,
+        result_path: row.get(14)?,
+        result_url: row.get(15)?,
+        received_at: row.get(16)?,
+    })
+}
+fn invalid_intake_value(index: usize, column: &'static str, value: String) -> rusqlite::Error {
+    rusqlite::Error::FromSqlConversionFailure(
+        index,
+        Type::Text,
+        Box::new(SqliteRepositoryError::InvalidStoredIntakeValue { column, value }),
+    )
+}
+
 #[derive(Debug, Error)]
 pub enum SqliteRepositoryError {
     #[error("failed to open SQLite database at {}", path.display())]
@@ -1152,6 +1364,8 @@ pub enum SqliteRepositoryError {
     InvalidStoredCount(i64),
     #[error("stored harness {column} value is invalid: {value}")]
     InvalidStoredHarnessValue { column: &'static str, value: String },
+    #[error("stored intake {column} value is invalid: {value}")]
+    InvalidStoredIntakeValue { column: &'static str, value: String },
 }
 
 #[cfg(test)]
@@ -1159,7 +1373,9 @@ mod tests {
     use chrono::{DateTime, FixedOffset};
     use rusqlite::{Connection, params};
 
-    use super::{MIGRATION_V1, MIGRATION_V2, MIGRATION_V3, MIGRATION_V4, SqliteTaskRepository};
+    use super::{
+        MIGRATION_V1, MIGRATION_V2, MIGRATION_V3, MIGRATION_V4, MIGRATION_V5, SqliteTaskRepository,
+    };
     use crate::{
         domain::{
             day::SummaryDay,
@@ -1167,12 +1383,13 @@ mod tests {
                 ApplyResult, ApplyState, ChallengeVerdict, HarnessKind, HarnessProposal,
                 HarnessProposalBatch, HarnessStatus, HarnessVerdict,
             },
+            intake::{IntakeBatch, IntakeItem, IntakeLane},
             routine::{Routine, RoutineFields},
             task::{CheckedTask, Task},
         },
         usecase::ports::{
-            HarnessRepository, HarnessRepositoryError, RoutineRepository, RoutineRepositoryError,
-            TaskRepository,
+            HarnessRepository, HarnessRepositoryError, IntakeRepository, IntakeRepositoryError,
+            RoutineRepository, RoutineRepositoryError, TaskRepository,
         },
     };
 
@@ -1217,6 +1434,24 @@ mod tests {
         }
     }
 
+    fn intake_batch(date: &str, slugs: &[&str]) -> IntakeBatch {
+        IntakeBatch {
+            date: date.to_owned(),
+            source_path: format!("90_Meta/daily_intake/{date}.md"),
+            source_note: None,
+            items: slugs
+                .iter()
+                .map(|slug| IntakeItem {
+                    slug: (*slug).to_owned(),
+                    lane: IntakeLane::Thought,
+                    text: format!("text-{slug}"),
+                    note: None,
+                    line_no: None,
+                })
+                .collect(),
+        }
+    }
+
     fn checked_at(value: &str) -> DateTime<FixedOffset> {
         DateTime::parse_from_rfc3339(value).expect("test timestamp should be RFC 3339")
     }
@@ -1237,7 +1472,7 @@ mod tests {
                      FROM sqlite_master
                      WHERE type = 'table'
                        AND name IN (
-                         'digests', 'harness_proposals', 'learning_results', 'learning_sets',
+                         'digests', 'harness_proposals', 'intake_candidates', 'intake_days', 'learning_results', 'learning_sets',
                          'routines', 'task_days', 'task_checks'
                        )
                      ORDER BY name",
@@ -1261,12 +1496,14 @@ mod tests {
             )
             .expect("routine index should be queryable");
 
-        assert_eq!(version, 5);
+        assert_eq!(version, 6);
         assert_eq!(
             tables,
             vec![
                 "digests",
                 "harness_proposals",
+                "intake_candidates",
+                "intake_days",
                 "learning_results",
                 "learning_sets",
                 "routines",
@@ -1348,7 +1585,7 @@ mod tests {
             )
             .expect("learning tables should be queryable");
 
-        assert_eq!(version, 5);
+        assert_eq!(version, 6);
         assert_eq!(existing_digest, "existing digest");
         assert_eq!(learning_rows, 2);
     }
@@ -1430,9 +1667,101 @@ mod tests {
             })
             .expect("harness proposals should be queryable");
 
-        assert_eq!(version, 5);
+        assert_eq!(version, 6);
         assert_eq!(learning_raw, r#"{"theme":"existing learning set"}"#);
         assert_eq!(proposal_count, 1);
+    }
+
+    #[test]
+    fn migrates_version_five_database_to_intake_schema() {
+        let connection = Connection::open_in_memory().unwrap();
+        for migration in [
+            MIGRATION_V1,
+            MIGRATION_V2,
+            MIGRATION_V3,
+            MIGRATION_V4,
+            MIGRATION_V5,
+        ] {
+            connection.execute_batch(migration).unwrap();
+        }
+        let version_before: i64 = connection
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .unwrap();
+        assert_eq!(version_before, 5);
+        let repository = SqliteTaskRepository::from_connection(connection).unwrap();
+        let connection = repository.connection().unwrap();
+        let version_after: i64 = connection
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .unwrap();
+        assert_eq!(version_after, 6);
+        for table in ["intake_days", "intake_candidates"] {
+            let exists: bool = connection
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1)",
+                    [table],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert!(exists);
+        }
+    }
+
+    #[test]
+    fn rejects_duplicate_intake_date_and_slug() {
+        let repository = repository();
+        let connection = repository.connection().unwrap();
+        connection.execute("INSERT INTO intake_days(date,source_path,item_count,received_at) VALUES('2026-08-28','opaque',2,'2026-08-29T00:41:00+09:00')",[]).unwrap();
+        connection.execute("INSERT INTO intake_candidates(date,slug,lane,text,status,apply_state,received_at) VALUES('2026-08-28','same','todo','one','proposed','pending','now')",[]).unwrap();
+        let duplicate=connection.execute("INSERT INTO intake_candidates(date,slug,lane,text,status,apply_state,received_at) VALUES('2026-08-28','same','tone','two','proposed','pending','now')",[]);
+        assert!(matches!(
+            duplicate,
+            Err(rusqlite::Error::SqliteFailure(_, _))
+        ));
+    }
+
+    #[test]
+    fn failed_intake_replacement_rolls_back_parent_and_candidates() {
+        let repository = repository();
+        repository
+            .replace_intake_candidates(
+                &intake_batch("2026-08-28", &["original"]),
+                "2026-08-29T00:41:00+09:00",
+            )
+            .unwrap();
+        repository.connection().unwrap().execute_batch("CREATE TRIGGER reject_intake BEFORE INSERT ON intake_candidates WHEN NEW.slug='explode' BEGIN SELECT RAISE(ABORT,'explode'); END;").unwrap();
+        assert!(matches!(
+            repository.replace_intake_candidates(
+                &intake_batch("2026-08-28", &["partial", "explode"]),
+                "2026-08-30T00:41:00+09:00"
+            ),
+            Err(IntakeRepositoryError::Internal { .. })
+        ));
+        let rows = repository.list_proposed_intake().unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].slug, "original");
+        let receipt = repository.latest_intake_receipt().unwrap().unwrap();
+        assert_eq!(receipt.received_at, "2026-08-29T00:41:00+09:00");
+        assert_eq!(receipt.item_count, 1);
+    }
+
+    #[test]
+    fn non_pending_intake_row_blocks_replacement() {
+        let repository = repository();
+        repository
+            .replace_intake_candidates(&intake_batch("2026-08-28", &["one"]), "now")
+            .unwrap();
+        repository
+            .connection()
+            .unwrap()
+            .execute(
+                "UPDATE intake_candidates SET apply_state='failed' WHERE date='2026-08-28'",
+                [],
+            )
+            .unwrap();
+        assert!(matches!(
+            repository.replace_intake_candidates(&intake_batch("2026-08-28", &["two"]), "later"),
+            Err(IntakeRepositoryError::Conflict)
+        ));
     }
 
     #[test]
@@ -1875,7 +2204,7 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM routines", [], |row| row.get(0))
             .expect("routines should be queryable");
 
-        assert_eq!(version, 5);
+        assert_eq!(version, 6);
         assert_eq!(
             stored,
             (
@@ -1887,7 +2216,7 @@ mod tests {
         );
         assert_eq!(routine_count, 0);
         println!(
-            "migration v1→v5: user_version={version}, existing_task_days=1, \
+            "migration v1→v6: user_version={version}, existing_task_days=1, \
              existing_task_checks=1, routines={routine_count}"
         );
     }

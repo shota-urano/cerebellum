@@ -14,6 +14,7 @@ use crate::{
         get_summary::GetSummary,
         manage_digest::ManageDigest,
         manage_harness::ManageHarness,
+        manage_intake::ManageIntake,
         manage_learning::ManageLearning,
         manage_routines::ManageRoutines,
         ports::{RoutineRepository, TaskRepository},
@@ -33,6 +34,7 @@ pub struct AppState {
     pub manage_digest: Arc<ManageDigest>,
     pub manage_learning: Arc<ManageLearning>,
     pub manage_harness: Arc<ManageHarness>,
+    pub manage_intake: Arc<ManageIntake>,
     pub routine_repository: Arc<dyn RoutineRepository>,
     pub task_repository: Arc<dyn TaskRepository>,
     pub config: Arc<Config>,
@@ -66,6 +68,18 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route(
             "/harness/proposals/{id}/apply-result",
             post(handlers::save_harness_apply_result),
+        )
+        .route(
+            "/intake/candidates",
+            get(handlers::get_intake_candidates).post(handlers::save_intake_candidates),
+        )
+        .route(
+            "/intake/candidates/{id}/decision",
+            post(handlers::save_intake_decision),
+        )
+        .route(
+            "/intake/candidates/{id}/apply-result",
+            post(handlers::save_intake_apply_result),
         )
         .route(
             "/routines",

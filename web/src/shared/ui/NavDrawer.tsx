@@ -16,8 +16,9 @@ import { glowShadow } from '@/shared/lib';
  * ダイジェスト・夜勤・学習は**常設ナビに置かない**（2026-07-29 夕方改訂・docs/specs/16 §3.6）。
  * いずれもタスク起点の詳細ビューで、入口は「今日」のタスク行（detailRef）。過去の run を
  * 後から見る入口は「開発」（docs/specs/19-web-dev-history.md）。
- * ハーネス（`/harness`・docs/specs/18-web-harness.md）だけは例外として常設する——毎朝の
- * 承認**操作**であり、読むだけの詳細ビューとは性質が違う（docs/specs/16 §3.6）。
+ * ハーネス（`/harness`・docs/specs/18-web-harness.md）と あなた待ち（`/waiting`・
+ * docs/specs/23-web-waiting.md）だけは例外として常設する——いずれも毎朝の承認**操作**であり、
+ * 読むだけの詳細ビューとは性質が違う（docs/specs/16 §3.6）。承認2画面は隣に並べる。
  *
  * brain（脳ビュー）は cerebellum の画面ではなく、Tailscale Serve の path マウント
  * （`/brain`→:48320・second-brain の build_brain.py が生成）で配信される外部ページ。
@@ -36,6 +37,7 @@ const NAV_ITEMS: { href: string; label: string; external?: boolean }[] = [
   { href: '/', label: '今日' },
   { href: '/history', label: '履歴' },
   { href: '/routines', label: 'ルーティン' },
+  { href: '/waiting', label: 'あなた待ち' },
   { href: '/harness', label: 'ハーネス' },
   { href: '/dev', label: '開発' },
   { href: '/office', label: 'オフィス' },

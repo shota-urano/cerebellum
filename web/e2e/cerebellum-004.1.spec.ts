@@ -3,7 +3,8 @@ import { expect, test, type Page } from '@playwright/test';
 // cerebellum-004.1 [Frontend] office.json 取得フックと2D「オフィス」画面（/office）
 // 受け入れ基準（docs/specs/20-web-office.md §3.1・§3.2・§6）:
 //   全景は4部屋＋MY DESKだけ / 部署内で社員が返却順に出る /
-//   MY DESKは機械可読な承認待ちだけ / 席タップで headline と報告全文が出る /
+//   MY DESKは機械可読な承認待ちだけ / 席タップ→社員名簿→報告全文が出る
+//   （席タップの行き先は 21 §3.1-1 で社員名簿へ変わった。報告シート自体は 20 §3.5 のまま）/
 //   enabled:false は所属部署内だけに出る /
 //   当日 run が無い社員に直近実行日が出る
 //   / generated_at が24時間以上前のとき鮮度警告が出る
@@ -366,7 +367,7 @@ const EXPECTED = [
   { name: '情報収集（collect）', headline: '収集を実行しています。' },
   { name: 'つながり発見：daily-digest', headline: '新しいつながりは見つかりませんでした。' },
   { name: 'X週次PDCA（x-pdca）', headline: '週次の振り返りを追記しました。' },
-  // 直近 run 無し＝報告シートへのリンクを持たない席
+  // 直近 run 無し＝名簿は開けるが「報告を見る」を持たない席（21 §3.1-3）
   { name: 'セルフRT見張り（x-auto-plug）', headline: null },
 ];
 
@@ -455,9 +456,14 @@ test('部署へ入ると所属社員だけが返却順で現れ、席から報�
   await expect(room).toContainText('失敗');
   await expect(room).not.toContainText('夜勤（night-shift）');
 
-  await page.getByRole('link', { name: /候補仕入れ.*直近報告を開く/ }).click();
-  await expect(page).toHaveURL(/\/office\?room=market&run=r-market-intake-today/);
-  const sheet = page.getByRole('dialog', { name: '候補仕入れ（market-intake）' });
+  // 席タップは社員名簿へ行き、報告はそこから開く（docs/specs/21-web-office-roster.md §3.1-1）
+  await page.getByRole('link', { name: /候補仕入れ.*名簿を開く/ }).click();
+  await expect(page).toHaveURL(/\/office\?room=market&employee=a-market-intake/);
+  const card = page.getByRole('dialog', { name: '候補仕入れ（market-intake）の名簿' });
+  await card.getByRole('link', { name: '報告を見る' }).click();
+  await expect(page).toHaveURL(/\/office\?room=market&employee=a-market-intake&run=r-market-intake-today/);
+  // `exact` を付ける。既定の部分一致では名簿カード（「…の名簿」）にも当たる
+  const sheet = page.getByRole('dialog', { name: '候補仕入れ（market-intake）', exact: true });
   await expect(sheet).toBeVisible();
   await expect(sheet.locator('.of2__headline')).toHaveText('仕入れに失敗しました（レート制限）。');
   await expect(sheet).toContainText('RUN');
@@ -471,9 +477,42 @@ test('部署へ入ると所属社員だけが返却順で現れ、席から報�
   await expect(sheet).toContainText('仕入れに失敗しました（レート制限）。');
   await expect(sheet.getByRole('button', { name: '報告を閉じる' })).toHaveAttribute('aria-expanded', 'true');
 
+  // 名簿経由で開いた報告は名簿へ返す（21 §3.1-4）
   await sheet.getByRole('link', { name: '閉じる' }).click();
-  await expect(page).toHaveURL(/\/office\?room=market/);
+  await expect(page).toHaveURL(/\/office\?room=market&employee=a-market-intake$/);
   await expect(sheet).toBeHidden();
+  await card.getByRole('link', { name: '閉じる' }).click();
+  await expect(page).toHaveURL(/\/office\?room=market$/);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+});
+
+test('7人の部署でも最終行が部屋の下壁より内側に収まる', async ({ page }) => {
+  const crowdedEmployees = Array.from({ length: 7 }, (_, index) => ({
+    ...EMPLOYEES[1],
+    automation_id: `a-lab-${index + 1}`,
+    name: `LAB社員 ${index + 1}`,
+    last_run_at: null,
+    last_run_id: null,
+  }));
+  await mockOffice(page, office({ employees: crowdedEmployees, runs: [] }));
+  await page.goto('/office?room=lab');
+
+  const room = page.getByRole('region', { name: 'LABの社員' });
+  await expect(room.locator('.of3__worker')).toHaveCount(7);
+  const geometry = await room.evaluate((floor) => {
+    const floorRect = floor.getBoundingClientRect();
+    const workerBottom = Math.max(
+      ...Array.from(floor.querySelectorAll('.of3__worker'), (worker) => worker.getBoundingClientRect().bottom),
+    );
+    return {
+      backgroundSize: getComputedStyle(floor).backgroundSize,
+      floorHeight: floorRect.height,
+      workerBottomFromFloorTop: workerBottom - floorRect.top,
+    };
+  });
+  // room-floor.png の下壁（画像内のおよそ80%）を床面末尾へ送るため、下側をクロップする。
+  expect(geometry.backgroundSize).toBe('100% 128%');
+  expect(geometry.workerBottomFromFloorTop).toBeLessThanOrEqual(geometry.floorHeight);
 });
 
 test('MY DESKは承認待ちだけを集め、内容確認後も自分の机へ戻る', async ({ page }) => {
@@ -499,13 +538,20 @@ test('保持期間外と未知のrunを報告シート内で明示し、ブラ�
   await mockOffice(page);
   await page.goto('/office?room=studio');
 
-  await page.getByRole('link', { name: /X週次PDCA.*直近報告を開く/ }).click();
-  const sheet = page.getByRole('dialog', { name: 'X週次PDCA（x-pdca）' });
+  await page.getByRole('link', { name: /X週次PDCA.*名簿を開く/ }).click();
+  await page
+    .getByRole('dialog', { name: 'X週次PDCA（x-pdca）の名簿' })
+    .getByRole('link', { name: '報告を見る' })
+    .click();
+  const sheet = page.getByRole('dialog', { name: 'X週次PDCA（x-pdca）', exact: true });
   await sheet.getByRole('button', { name: '報告を見る' }).click();
   await expect(sheet).toContainText('報告全文は保持期間外です');
 
+  // ブラウザバックは 報告 → 名簿 → 部署 の順に1枚ずつ閉じる（21 §3.1-4・§3.1-5）
   await page.goBack();
-  await expect(page).toHaveURL(/\/office\?room=studio/);
+  await expect(page).toHaveURL(/\/office\?room=studio&employee=a-x-pdca$/);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/office\?room=studio$/);
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
   await page.goto('/office?run=missing-run');

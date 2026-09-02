@@ -9,6 +9,7 @@ use crate::domain::{
         ApplyResult, ApplyState, ChallengeVerdict, HarnessKind, HarnessProposalBatch,
         HarnessStatus, HarnessVerdict,
     },
+    intake::{IntakeApplyResult, IntakeApplyState, IntakeBatch, IntakeLane, IntakeStatus},
     routine::{Routine, RoutineFields},
     task::{CheckedTask, Task},
 };
@@ -169,6 +170,65 @@ pub struct StoredHarnessProposal {
     pub received_at: String,
 }
 
+pub trait IntakeRepository: Send + Sync {
+    fn replace_intake_candidates(
+        &self,
+        batch: &IntakeBatch,
+        received_at: &str,
+    ) -> Result<(), IntakeRepositoryError>;
+    fn list_proposed_intake(&self) -> Result<Vec<StoredIntakeCandidate>, IntakeRepositoryError>;
+    fn list_pending_approved_intake(
+        &self,
+    ) -> Result<Vec<StoredIntakeCandidate>, IntakeRepositoryError>;
+    fn list_failed_intake(&self) -> Result<Vec<StoredIntakeCandidate>, IntakeRepositoryError>;
+    fn latest_intake_receipt(&self) -> Result<Option<IntakeReceipt>, IntakeRepositoryError>;
+    fn get_intake_candidate(
+        &self,
+        id: i64,
+    ) -> Result<Option<StoredIntakeCandidate>, IntakeRepositoryError>;
+    fn save_intake_decision(
+        &self,
+        id: i64,
+        expected_status: IntakeStatus,
+        status: IntakeStatus,
+        decided_at: &str,
+    ) -> Result<StoredIntakeCandidate, IntakeRepositoryError>;
+    fn save_intake_apply_result(
+        &self,
+        id: i64,
+        result: &IntakeApplyResult,
+        applied_at: &str,
+    ) -> Result<StoredIntakeCandidate, IntakeRepositoryError>;
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct IntakeReceipt {
+    pub date: String,
+    pub received_at: String,
+    pub item_count: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StoredIntakeCandidate {
+    pub id: i64,
+    pub date: String,
+    pub slug: String,
+    pub lane: IntakeLane,
+    pub text: String,
+    pub note: Option<String>,
+    pub line_no: Option<i64>,
+    pub source_path: String,
+    pub source_note: Option<String>,
+    pub status: IntakeStatus,
+    pub decided_at: Option<String>,
+    pub apply_state: IntakeApplyState,
+    pub applied_at: Option<String>,
+    pub apply_error: Option<String>,
+    pub result_path: Option<String>,
+    pub result_url: Option<String>,
+    pub received_at: String,
+}
+
 pub trait Clock: Send + Sync {
     fn now(&self) -> DateTime<FixedOffset>;
 }
@@ -255,6 +315,26 @@ pub enum HarnessRepositoryError {
 }
 
 impl HarnessRepositoryError {
+    pub fn internal(error: impl Error + Send + Sync + 'static) -> Self {
+        Self::Internal {
+            source: Box::new(error),
+        }
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum IntakeRepositoryError {
+    #[error("intake candidates for the date contain a protected state")]
+    Conflict,
+    #[error("intake candidate no longer matches the expected state")]
+    StateMismatch,
+    #[error("intake repository failed")]
+    Internal {
+        #[source]
+        source: Box<dyn Error + Send + Sync>,
+    },
+}
+impl IntakeRepositoryError {
     pub fn internal(error: impl Error + Send + Sync + 'static) -> Self {
         Self::Internal {
             source: Box::new(error),
