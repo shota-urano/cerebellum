@@ -135,7 +135,12 @@ const learningFrame = (page: Page) => page.getByRole('region', { name: 'LEARNING
 const tasksFrame = (page: Page) => page.locator('.panel', { has: page.locator('.list__head', { hasText: 'TASKS' }) });
 const allClear = (page: Page) => page.locator('.allclear');
 const emptyState = (page: Page) => page.locator('.empty');
-const errorBanner = (page: Page) => page.getByRole('alert');
+/**
+ * `ErrorBanner`（docs/specs/07 §6）。**クラスで掴む**——`getByRole('alert')` だけだと
+ * Next.js のルートアナウンサ（クライアント遷移で挿入される空の role=alert）を数えてしまう
+ * （2026-09-03 実測）。role の宣言自体は属性で確かめる
+ */
+const errorBanner = (page: Page) => page.locator('.banner[role="alert"]');
 /** ヘッダの赤点（§3.1）。押す操作を持たない合図なので role=img で出している */
 const redDot = (page: Page) => page.getByRole('img', { name: '確認待ちに異常があります' });
 
@@ -417,6 +422,66 @@ test('トグル POST が失敗したときもエラーバナーは最上部・�
   await expect(page.locator('.hdr__count')).toHaveText('1 / 2');
   // 他の枠は止まらない
   await expect(chip(page, '承認').locator('.wt__chip__n')).toHaveText('2');
+});
+
+test('POST の応答が届く前に画面を離れたら、その失敗はどの画面にも出ない（漏らさない）', async ({
+  page,
+}) => {
+  // 共有スロット（`DayHeader` と `DayTasks` の合図の受け渡し口）は画面をまたいで生き残るので、
+  // **アンマウント後の書き込みを抑止しているか**をここで測る。割る前は component state で、
+  // 離脱後の `catch` は誰にも見えなかった——その挙動を保てているかの検証。
+
+  let release: () => void = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let settle: () => void = () => {};
+  const settled = new Promise<void>((resolve) => {
+    settle = resolve;
+  });
+
+  // 応答を握ったまま止めておく（遷移してから 500 を返す）
+  await page.route(
+    (url) => url.pathname.startsWith('/api/days/today/checks/'),
+    async (route) => {
+      await gate;
+      await route.fulfill({
+        status: 500,
+        json: { error: { code: 'internal', message: 'チェックを保存できませんでした' } },
+      });
+      settle();
+    },
+  );
+
+  await openToday(page, { summary: [{ source: 'night-harness', open: { approve: 2 } }] });
+
+  const row = page.getByRole('button', { name: /夜のふりかえり/ });
+  await row.click();
+  // optimistic 表示だけが先に動く（応答はまだ来ていない）
+  await expect(row).toHaveAttribute('aria-pressed', 'true');
+
+  // 応答を待たずに LEARNING へ。Link のクライアント遷移なので、SWR のキャッシュは生きたまま
+  // `DayHeader` / `DayTasks` だけがアンマウントされる（リロードすると検証にならない）
+  await learningFrame(page).getByRole('link').click();
+  await page.waitForURL((url) => url.pathname.replace(/\/+$/, '') === '/learning');
+
+  // ここで 500 が届く（= cleanup の後に `catch` が走る）
+  release();
+  await settled;
+
+  // 遷移先には出さない（`learning` の `useToggleCheck` はこのスロットを読まない）
+  await expect(errorBanner(page)).toHaveCount(0);
+  await expect(page.getByText('チェックを保存できませんでした')).toHaveCount(0);
+
+  // 「今日」へ戻しても出さない（離脱後の書き込みを抑止していないと、ここで最上部に出る）
+  await page.goBack();
+  await page.waitForURL((url) => url.pathname.replace(/\/+$/, '') === '');
+  await expect(headerPanel(page)).toBeVisible();
+  await expect(errorBanner(page)).toHaveCount(0);
+  await expect(page.getByText('チェックを保存できませんでした')).toHaveCount(0);
+  // ロールバックも効いている（押した行は元に戻る）
+  await expect(row).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('.hdr__count')).toHaveText('1 / 2');
 });
 
 // ---- ⑥ 過去日は無変更（§3.3・docs/specs/09 §3） ----

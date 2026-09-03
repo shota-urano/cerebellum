@@ -26,8 +26,9 @@ export type DayTasksProps = {
  */
 export function DayTasks({ date, readonly = false }: DayTasksProps) {
   const { day, error, isLoading, mutate } = useDay(date);
-  // 失敗のバナーは `DayHeader` が最上部に出す（30 §5・§6。合図は feature 内の共有スロット経由）
-  const { toggle } = useToggleCheck(day, mutate);
+  // 失敗のバナーは同じ `date` を見る `DayHeader` が最上部に出す（30 §5・§6）。
+  // 第3引数がその受け渡し口——この組の外（他画面）からは読めない
+  const { toggle } = useToggleCheck(day, mutate, date);
 
   const isReadonly = readonly || day?.readonly === true;
   const done = day?.progress.done ?? 0;

@@ -38,7 +38,7 @@ export function DayHeader({ date, readonly = false, alert = false }: DayHeaderPr
   const { day, error, isLoading } = useDay(date);
   // トグル POST の失敗（08 §6）も**最上部の1枚**で出す。割る前の `error ?? toggleError` と
   // 同じ優先順・同じ位置——撃つのは `DayTasks` だが、表示位置は並び替えで変えない（30 §5・§6）
-  const toggleError = useToggleError();
+  const toggleError = useToggleError(date);
   const banner = error ?? toggleError;
 
   const isReadonly = readonly || day?.readonly === true;
