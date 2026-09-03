@@ -374,6 +374,9 @@ a:hover { color: #8FF2FF; }
 .of3__back { min-height: 44px; padding: 13px 4px; font-size: 10px; letter-spacing: .12em; color: var(--muted); text-align: left; }
 .of3__room-header > div { grid-column: 2; }
 .of3__room-title { margin: 0; font-size: 16px; letter-spacing: .18em; color: var(--text); }
+/* 部署ルームのヘッダも全景タイルと同じ「label 主・id 添え」に揃える（27 §3.1-5・§3.2-5）。
+   添えの id は全景と同じ `.of3__room-id` の見た目を使い、段落ぶんの余白だけ足す */
+.of3__room-header .of3__room-id { display: block; margin: 3px 0 0; }
 .of3__room-action-copy, .of3__room-quiet-copy { margin: 5px 0 0; font-size: 11px; color: #ffc34d; }
 .of3__room-quiet-copy { color: var(--muted); }
 /* 在籍の内訳（21 §3.4-3）。勤務形態は全景に出さず部署内で読む */

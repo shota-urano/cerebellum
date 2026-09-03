@@ -358,7 +358,7 @@ test('未知の dept は空状態にして落とさず、全景への導線を�
   await expect(page.getByRole('region', { name: 'AIオフィス全景' })).toBeVisible();
 });
 
-// ---- 優先順 room → line → dept（§3.3-4） ----
+// ---- 優先順（§3.3-4 の3段は 27 §3.2-4 で `room`（=`dept`）→ `line` の2段になった） ----
 
 test('room・line・dept が同時に来たら room を優先し、line も dept も無視する', async ({ page }) => {
   await mockOffice(page);
@@ -376,23 +376,34 @@ test('room・line・dept が同時に来たら room を優先し、line も dept
   await expect(page.getByText('情報収集（collect）')).toHaveCount(0);
 });
 
-test('line と dept が同時に来たら line を優先する（既存の room > line を壊さない）', async ({ page }) => {
+// 元は「line と dept が同時なら line を優先する（3段優先の中段）」を見ていたテスト。
+// docs/specs/27-web-office-departments.md §3.2-1・§3.2-4 で **`?dept=` は `?room=` の別名**に
+// なり（21 §10-3 のとおり優先順は `room`（=`dept`）→ `line` の2段へ）、`dept` は中段ではなく
+// **最上段**になった。テストの主旨（2軸が同時に来たら1軸だけで解釈し、URL を多軸で掛けない）は
+// そのまま——勝つ側が入れ替わったので期待値を反転させた（cerebellum-1wl.2）。
+test('line と dept が同時に来たら dept が勝つ（`?dept=` は `?room=` の別名・2段優先）', async ({ page }) => {
   await mockOffice(page);
   await page.goto('/office?line=knowledge&dept=x-harness');
 
-  await expect(page.locator('.of3__room-title')).toHaveText('LINE: 知識');
-  const floor = page.getByRole('region', { name: 'LINE: 知識の社員' });
+  // 見出しは部署のフロア。`departments` 未着なので id 見出しのまま（27 §3.1-4）
+  await expect(page.locator('.of3__room-title')).toHaveText('DEPT: x-harness');
+  const floor = page.getByRole('region', { name: 'DEPT: x-harnessの社員' });
   await expect(floor.locator('.of3__worker-name')).toHaveText([
-    '情報収集（collect）',
     '相談窓口（ask）',
-    '死角点検（night-blindspot）',
+    '小垢ベンチ（x-benchmark）',
+    'X投稿（x-post）',
+    'X週次PDCA（x-pdca）',
   ]);
-  // dept:x-harness だけの社員（line は x）は出ない＝ dept で解釈していない
-  await expect(page.getByText('小垢ベンチ（x-benchmark）')).toHaveCount(0);
-  await expect(page.getByText('X投稿（x-post）')).toHaveCount(0);
+  // 同時指定の line（knowledge）だけの社員は出ない＝ line で解釈していない・掛けてもいない
+  await expect(page.getByText('情報収集（collect）')).toHaveCount(0);
+  await expect(page.getByText('死角点検（night-blindspot）')).toHaveCount(0);
+  // ラインのフロアではないので LINE ヘッダも出ない
+  await expect(page.locator('.of3__room-title')).not.toContainText('LINE:');
 });
 
-test('dept だけなら部署で解釈する（優先順の末尾が効いている）', async ({ page }) => {
+// 元の題は「優先順の末尾が効いている」。27 §3.2-1 で `?dept=` が `?room=` の別名になり
+// 段の位置が変わったので題だけ改めた（見ている内容＝ dept 単独で部署で解釈することは同じ）
+test('dept だけなら部署で解釈する（`?room=` の別名として効いている）', async ({ page }) => {
   await mockOffice(page);
   await page.goto('/office?dept=second-brain-harness');
 
@@ -417,7 +428,10 @@ test('全景の部屋が dept で切られ、部屋リンクがそのまま部�
   // docs/specs/27-web-office-departments.md §3.1-1 で取り消し。部屋＝部署になり、
   // `dept` の値ごとに1部屋（`departments` 未着なので見出しは id・並びは返却順・27 §3.1-4）
   await expect(overview.locator('.of3__room')).toHaveCount(4);
-  await expect(overview.locator('a[href*="dept="]')).toHaveCount(4);
+  // 部屋タップの正規の入口は `?room=`（27 §3.2-1。cerebellum-1wl.2 でクエリ名だけ更新）。
+  // 「部屋リンクが部署のフロアへ入る」という主旨は変わらない——`?dept=` はその別名
+  await expect(overview.locator('a[href*="room="]')).toHaveCount(4);
+  await expect(overview.locator('a[href*="dept="]')).toHaveCount(0);
   await expect(overview.locator('.of3__room-name')).toHaveText([
     'second-brain-harness',
     'x-harness',

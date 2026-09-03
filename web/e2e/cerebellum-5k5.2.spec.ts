@@ -240,7 +240,11 @@ test('部署内は 勤務帯 → 手動起動 → 停止中 の順に小見出�
   await mockOffice(page);
   await page.goto('/office?room=unassigned');
 
-  const room = page.getByRole('region', { name: 'DEPT: unassignedの社員' });
+  // フロアのアクセシブル名は見出しに従う。cerebellum-1wl.2（27 §3.1-5・§3.2-5）で部署ルームの
+  // 見出しが「label 主・id 添え」に揃い、`unassigned` の部屋は `DEPT: unassigned` から
+  // 「部署 未記載」（全景タイル・下部導線と同じ表示名）になったので参照名だけ更新した。
+  // このテストが見ているもの（ブロックの順序・席の並び・下壁・社員の不在）は変えていない。
+  const room = page.getByRole('region', { name: '部署 未記載の社員' });
   await expect(room.locator('.of3__block-label')).toHaveText(['手動起動', '停止中']);
   // ブロック内は返却順のまま（勤務開始時刻の昇順。クライアントで再ソートしない・§3.4-1）
   await expect(room.locator('.of3__worker-name')).toHaveText([
@@ -274,7 +278,11 @@ test('手動込みで3行以上になる部署でも最終行が部屋の下壁�
   await mockOffice(page);
   await page.goto('/office?room=unassigned');
 
-  const room = page.getByRole('region', { name: 'DEPT: unassignedの社員' });
+  // フロアのアクセシブル名は見出しに従う。cerebellum-1wl.2（27 §3.1-5・§3.2-5）で部署ルームの
+  // 見出しが「label 主・id 添え」に揃い、`unassigned` の部屋は `DEPT: unassigned` から
+  // 「部署 未記載」（全景タイル・下部導線と同じ表示名）になったので参照名だけ更新した。
+  // このテストが見ているもの（ブロックの順序・席の並び・下壁・社員の不在）は変えていない。
+  const room = page.getByRole('region', { name: '部署 未記載の社員' });
   await expect(room.locator('.of3__worker')).toHaveCount(5);
   const geometry = await room.evaluate((floor) => {
     const floorRect = floor.getBoundingClientRect();

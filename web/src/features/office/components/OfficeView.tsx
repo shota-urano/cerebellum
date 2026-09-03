@@ -79,23 +79,24 @@ export function OfficeView({
   const cardEmployee =
     employeeId === null ? undefined : employees.find((employee) => employee.automation_id === employeeId);
   const cardRun = cardEmployee ? lastRunOf(runs, cardEmployee.automation_id) : undefined;
-  // `room`・`line`・`dept` が同時に来たら `room` → `line` → `dept` の優先順
-  // （部屋が主・ラインと部署が従。URL を多軸で解釈しない・21 §3.7-7・26 §3.3-4）
-  const scope: OfficeFloorScope | null = roomId !== null
-    ? { kind: 'room', roomId }
+  // 部屋 id ＝ `dept` の id で、`?dept=` は `?room=` の**別名**（26 §3.3 との互換・
+  // docs/specs/27-web-office-departments.md §3.2-1）。同じ画面なので軸として数えない。
+  // よって優先順は `room`（=`dept`）→ `line` の2段（同 §3.2-4・21 §3.7-8）——
+  // 26 §3.3-4 の3段（`room` → `line` → `dept`）は `dept` が `room` へ畳まれて消えた。
+  const deptRoomId = roomId ?? deptId;
+  const scope: OfficeFloorScope | null = deptRoomId !== null
+    ? // 自分へのリンクは**入ってきた別名のまま**保つ。`?dept=` の文脈で `?room=` へ
+      // 書き換えると、社員カード・報告シートの往復で URL が跳ねる（21 §3.1-4 の戻り先）
+      { kind: 'room', roomId: deptRoomId, param: roomId !== null ? 'room' : 'dept' }
     : lineId !== null
       ? { kind: 'line', lineId }
-      : deptId !== null
-        ? { kind: 'dept', deptId }
-        : null;
+      : null;
   const roomHref =
     scope === null
       ? '/office'
       : scope.kind === 'room'
-        ? `/office?room=${scope.roomId}`
-        : scope.kind === 'line'
-          ? `/office?line=${encodeURIComponent(scope.lineId)}`
-          : `/office?dept=${encodeURIComponent(scope.deptId)}`;
+        ? `/office?${scope.param}=${encodeURIComponent(scope.roomId)}`
+        : `/office?line=${encodeURIComponent(scope.lineId)}`;
   // 報告シートの戻り先は、社員カード経由で来たときだけカードへ返す（21 §3.1-4）。
   // `?run=` 単独・MY DESK 経由の既存 deep link の戻り先は 20 §3.5-4 のまま変えない。
   const cardHref =
