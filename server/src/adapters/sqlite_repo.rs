@@ -1450,6 +1450,13 @@ impl InboxRepository for SqliteTaskRepository {
         )
     }
 
+    fn list_inbox_items_by_date(
+        &self,
+        date: &str,
+    ) -> Result<Vec<StoredInboxItem>, InboxRepositoryError> {
+        self.list_inbox_items("date = ?1", "id DESC", [date])
+    }
+
     fn list_decided_inbox_items(
         &self,
         source: &str,

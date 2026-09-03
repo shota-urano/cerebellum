@@ -547,6 +547,12 @@ test('件数をタップすると その kind だけが並んだ「あなた待�
     (url) => url.pathname === '/api/inbox/items' && url.searchParams.get('applyState') === 'failed',
     (route) => route.fulfill({ json: { items: [] } }),
   );
+  // 「今日決めたもの」の出どころ（docs/specs/29-web-inbox-history.md §3.1-1）も固定する
+  // ——実サーバへ抜けると他テストの決着行が下段に混ざる（モックの追加のみ）
+  await page.route(
+    (url) => url.pathname === '/api/inbox/items' && url.searchParams.has('date'),
+    (route) => route.fulfill({ json: { items: [] } }),
+  );
 
   await openToday(page, {
     set: true,

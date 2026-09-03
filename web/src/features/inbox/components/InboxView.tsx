@@ -5,7 +5,7 @@ import { useState } from 'react';
 import type { InboxItemDto, InboxKind } from '@/shared/api';
 import { ErrorBanner, Toast } from '@/shared/ui';
 import { useInboxDecision } from '../hooks/useInboxDecision';
-import { useFailedInboxItems, useInboxItems } from '../hooks/useInboxItems';
+import { useFailedInboxItems, useInboxByDate, useInboxItems } from '../hooks/useInboxItems';
 import { useInboxSummary } from '../hooks/useInboxSummary';
 import {
   groupByKind,
@@ -17,10 +17,21 @@ import {
   type InboxRosterEntry,
 } from '../lib/item';
 import { missingSources, type InboxShiftEntry } from '../lib/missing';
+import { InboxDateView } from './InboxDateView';
 import { InboxItemRow } from './InboxItemRow';
 import { InboxMissing } from './InboxMissing';
+import { InboxSkeleton } from './InboxSkeleton';
 
 export type InboxViewProps = {
+  /**
+   * 表示する業務日（docs/specs/29-web-inbox-history.md §5・省略時は今日）。
+   *
+   * **この1つで §3.1 / §3.2 を切り替える**（同 §3.3「今日を表示しているときは 3.1 のビュー、
+   * それ以外は 3.2 のビュー」）。今日のビューでは「今日決めたもの」の出どころ＝
+   * `?date={この日}`（同 §3.1-1）、それ以外の日は読み取り専用の1列（同 §3.2）。
+   * **読むのは app 層**（`useSearchParams` と日付ナビの合成は app 層の仕事・25 §5・§3.3）。
+   */
+  date?: string;
   /**
    * 送信元 → 表示名の対応（docs/specs/25-web-inbox.md §3.2・§5）。
    * office.json の取得は app 層が行い（features 間 import を作らないため）、
@@ -47,39 +58,65 @@ export type InboxViewProps = {
    * **絞るのは未決のグループだけ**——未着（§3.3）と未処理の失敗（§3.2）は種類を問わず
    * 出し続ける。気づくための枠を絞り込みで隠すと、枠の存在理由（沈黙・見落とし対策）が消える。
    * 読むのは `?kind=` クエリで、**渡すのは app 層**（§5・useSearchParams は app 層の仕事）。
+   * **過去日のビューでは無視する**（グループしないため・29 §3.2-5）。
    */
   kind?: InboxKind;
 };
 
-function Skeleton() {
+/**
+ * 「あなた待ち」画面（docs/specs/25-web-inbox.md §3.2）。
+ *
+ * `date` で2つのビューを切り替える（docs/specs/29-web-inbox-history.md §3.3）:
+ * 今日なら §3.1（決められる画面）、それ以外なら §3.2（読み取り専用の1列）。
+ * **取得フックが違う**（過去日は `?date=` の1本だけ）ので、条件付き hook を書かずに
+ * 別コンポーネントへ分ける。
+ */
+export function InboxView({ date, roster, shiftRoster, rosterUnavailable, kind }: InboxViewProps) {
+  // 日付境界は深夜0時・ローカルタイム（docs/specs/00-overview.md §4）
+  const today = localToday();
+  const viewDate = date ?? today;
+
+  if (viewDate !== today) {
+    // 過去日（未来日も URL 直打ちならここへ来る。サーバは日付の意味を判断せず空を返す・28 §3.2）。
+    // `kind` は渡さない——過去日では絞り込みが無効（§3.2-5）
+    return <InboxDateView date={viewDate} roster={roster} />;
+  }
+
   return (
-    <div aria-busy="true" aria-live="polite">
-      {[0, 1, 2].map((index) => (
-        <section className="panel dg wt__card" key={index}>
-          <p className="wt__from">
-            <span className="skel" style={{ width: '32%' }}>&nbsp;</span>
-          </p>
-          <p className="wt__title wt__title--flat">
-            <span className="skel" style={{ width: '84%' }}>&nbsp;</span>
-          </p>
-        </section>
-      ))}
-    </div>
+    <InboxTodayView
+      today={today}
+      roster={roster}
+      shiftRoster={shiftRoster}
+      rosterUnavailable={rosterUnavailable}
+      kind={kind}
+    />
   );
 }
 
 /**
- * 「あなた待ち」画面（docs/specs/25-web-inbox.md §3.2）。
+ * 今日のビュー（docs/specs/25-web-inbox.md §3.2・出どころは
+ * docs/specs/29-web-inbox-history.md §3.1 で置き換え）。
  *
  * **kind でグループし、文言は kind で固定する**。送信元ごとの文言・専用コンポーネントを
  * 作らない——作った時点でハーネスごとの専用画面が再発する（同 §4・docs/specs/24-inbox.md §1）。
  */
-export function InboxView({ roster, shiftRoster, rosterUnavailable, kind }: InboxViewProps) {
+function InboxTodayView({
+  today,
+  roster,
+  shiftRoster,
+  rosterUnavailable,
+  kind,
+}: Omit<InboxViewProps, 'date'> & { today: string }) {
+  // 「今日決めたもの」の出どころ（docs/specs/29-web-inbox-history.md §3.1-1）。
+  // 未決グループは従来どおり `?status=open` で引く——未決は業務日をまたいで残るので
+  // 日付では引かない（同 §3.1-2・25 §3.2）
+  const viewDate = today;
   const { list, error, isLoading, mutate } = useInboxItems();
   const { failed: failedAcrossDates, failedError } = useFailedInboxItems();
+  const { dated, datedError, mutateDated } = useInboxByDate(viewDate);
   // 未着判定の受信側の根拠（§3.3-2）。受信の事実はサーバしか持たない（24 §3.5）
   const { summary, summaryError } = useInboxSummary();
-  const { decide, failure, retry, dismiss } = useInboxDecision(list, mutate);
+  const { decide, failure, retry, dismiss } = useInboxDecision(list, mutate, mutateDated);
   // `bodyMd` の開閉。1画面で片付ける導線を割らないよう、遷移せずその場で開く（§3.2）
   const [openIds, setOpenIds] = useState<number[]>([]);
 
@@ -92,11 +129,10 @@ export function InboxView({ roster, shiftRoster, rosterUnavailable, kind }: Inbo
   // バナーを足すだけで**行は保持する**（§6「ErrorBanner＋再検証待ち」）
   if (!list) {
     if (error) return <ErrorBanner message={error.message} />;
-    return isLoading ? <Skeleton /> : null;
+    return isLoading ? <InboxSkeleton /> : null;
   }
 
-  const today = localToday();
-  const { failed, pending, decided } = partition(list.items, failedAcrossDates);
+  const { failed, pending, decided } = partition(list.items, failedAcrossDates, dated?.items);
   const groups = groupByKind(pending);
   // 絞り込みは表示だけの話。空表示（下部）の判定は絞る前の `groups` で行う
   // ——「承認が0件」を「確認待ちはありません」と書くと、他の種類が残っているのに嘘になる
@@ -147,6 +183,13 @@ export function InboxView({ roster, shiftRoster, rosterUnavailable, kind }: Inbo
         <ErrorBanner message={'受信の状況を取得できませんでした: ' + summaryError.message} />
       )}
 
+      {/* `?date=` の 500・通信失敗（docs/specs/29-web-inbox-history.md §6）。
+          バナーは出すが**上段（未着・失敗・未決）は描き続ける**——決める作業を
+          履歴の障害で止めない。下段だけを `取得できません` に落とす（下記） */}
+      {datedError && (
+        <ErrorBanner message={'今日決めたものを取得できませんでした: ' + datedError.message} />
+      )}
+
       {/* 未着（§3.3）。失敗枠より上——監視の監視がここしか無い（24 §9） */}
       <InboxMissing entries={missing} unavailable={rosterUnavailable} />
 
@@ -171,16 +214,26 @@ export function InboxView({ roster, shiftRoster, rosterUnavailable, kind }: Inbo
         </section>
       ))}
 
-      {groups.length === 0 && failed.length === 0 && decided.length === 0 && (
+      {/* 空表示は「失敗・未決・決定済みが1件も無い」ときだけ（§3.2 の確定文言）。
+          下段が取得できていないときは0件と言い切れないので出さない（§6） */}
+      {groups.length === 0 && failed.length === 0 && decided.length === 0 && !datedError && (
         <p className="empty">確認待ちはありません。</p>
       )}
 
-      {/* 今日決めたもの（§3.2）。誤タップの救済路なので、決着直後に消さず畳んで残す */}
-      {decided.length > 0 && (
+      {/* 今日決めたもの（§3.2）。誤タップの救済路なので、決着直後に消さず畳んで残す。
+          出どころは `?date={今日}`（29 §3.1-1）なので、リロード・タブ復帰でも消えない */}
+      {datedError ? (
         <section className="wt__done" aria-label="今日決めたもの">
           <p className="mono wt__group wt__group--kind">今日決めたもの</p>
-          {decided.map((item) => row(item, { decided: true }))}
+          <p className="empty">取得できません</p>
         </section>
+      ) : (
+        decided.length > 0 && (
+          <section className="wt__done" aria-label="今日決めたもの">
+            <p className="mono wt__group wt__group--kind">今日決めたもの</p>
+            {decided.map((item) => row(item, { decided: true }))}
+          </section>
+        )
       )}
 
       {/* decision の POST 失敗はトーストで再試行（§6）。巻き戻して終わりにしない */}

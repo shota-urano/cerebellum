@@ -2,10 +2,10 @@
 
 import { useRouter, useSearchParams } from 'next/navigation';
 import { DayView } from '@/features/day';
-import { DateNav, InvalidDate, WeekSummary, isValidDateParam, useSummary, useToday } from '@/features/history';
+import { InvalidDate, WeekSummary, useSummary, useToday } from '@/features/history';
 import type { ApiError } from '@/shared/api';
-import { shiftDate } from '@/shared/lib';
-import { ErrorBanner } from '@/shared/ui';
+import { isValidDateParam, shiftDate } from '@/shared/lib';
+import { DateNav, ErrorBanner } from '@/shared/ui';
 
 /**
  * 「履歴」画面の合成（docs/specs/09）。app 層が day / history の両 feature を並べる

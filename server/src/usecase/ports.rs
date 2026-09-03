@@ -240,6 +240,10 @@ pub trait InboxRepository: Send + Sync {
         &self,
         now: &str,
     ) -> Result<Vec<StoredInboxItem>, InboxRepositoryError>;
+    fn list_inbox_items_by_date(
+        &self,
+        date: &str,
+    ) -> Result<Vec<StoredInboxItem>, InboxRepositoryError>;
     fn list_decided_inbox_items(
         &self,
         source: &str,

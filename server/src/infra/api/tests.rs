@@ -1835,6 +1835,86 @@ async fn inbox_http_round_trip_supports_approve_and_choose() {
 }
 
 #[tokio::test]
+async fn inbox_date_query_returns_history_and_rejects_mixed_filters() {
+    let app = test_app();
+    let saved = call_json(
+        app.clone(),
+        "POST",
+        "/api/inbox/batches",
+        inbox_batch(
+            "sender",
+            "2026-07-24",
+            json!([
+                {"slug":"open","kind":"approve","title":"open"},
+                {"slug":"expired","kind":"alert","title":"expired","expiresAt":"2026-07-24T00:00:00+09:00"},
+                {"slug":"read","kind":"read","title":"read"}
+            ]),
+        ),
+    )
+    .await;
+    assert_eq!(saved.status(), StatusCode::OK);
+
+    let initial =
+        json_body(call(app.clone(), "GET", "/api/inbox/items?date=2026-07-24").await).await;
+    let read_id = initial["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["slug"] == "read")
+        .unwrap()["id"]
+        .as_i64()
+        .unwrap();
+    assert_eq!(
+        call_json(
+            app.clone(),
+            "POST",
+            &format!("/api/inbox/items/{read_id}/decision"),
+            json!({"status":"read"}),
+        )
+        .await
+        .status(),
+        StatusCode::OK
+    );
+
+    let history = call(app.clone(), "GET", "/api/inbox/items?date=2026-07-24").await;
+    assert_eq!(history.status(), StatusCode::OK);
+    let history = json_body(history).await;
+    assert_eq!(
+        history["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|item| item["slug"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        ["read", "expired", "open"]
+    );
+    assert_eq!(history["items"][0]["status"], "read");
+    assert_eq!(
+        history["items"][1]["expiresAt"],
+        "2026-07-24T00:00:00+09:00"
+    );
+
+    let empty = call(app.clone(), "GET", "/api/inbox/items?date=2026-07-23").await;
+    assert_eq!(empty.status(), StatusCode::OK);
+    assert_eq!(json_body(empty).await, json!({"items":[]}));
+
+    for path in [
+        "/api/inbox/items?date=2026-07-24&status=open",
+        "/api/inbox/items?date=2026-07-24&source=sender",
+        "/api/inbox/items?date=2026-07-24&applyState=failed",
+        "/api/inbox/items?date=2026-02-30",
+    ] {
+        let response = call(app.clone(), "GET", path).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{path}");
+        assert_eq!(
+            json_body(response).await["error"]["code"],
+            "bad_request",
+            "{path}"
+        );
+    }
+}
+
+#[tokio::test]
 async fn inbox_alert_resend_reopens_and_http_errors_follow_contract() {
     let app = test_app();
     let alert = inbox_batch(
