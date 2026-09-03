@@ -10,10 +10,13 @@ function Bar({ width }: { width: number | string }) {
 }
 
 /**
- * ロード中スケルトン。ヘッダ・リスト枠・行の寸法は実表示と同じクラスで描くので、
- * 取得完了時に枠がずれない（レイアウトシフトを避ける。docs/specs/08 §6）。
+ * ロード中スケルトン（ヘッダぶん）。寸法は実表示と同じクラスで描くので、取得完了時に
+ * 枠がずれない（レイアウトシフトを避ける。docs/specs/08 §6）。
+ *
+ * docs/specs/30-web-today-order.md §5 に従いヘッダ用・リスト用に割った。「今日」は2つの間に
+ * WAITING・LEARNING が入るので1つの塊では描けない——**様式・寸法は転写のまま**で、割っただけ。
  */
-export function DaySkeleton({ readonly = false }: { readonly?: boolean }) {
+export function DayHeaderSkeleton({ readonly = false }: { readonly?: boolean }) {
   return (
     <div aria-busy="true" aria-live="polite">
       {readonly ? (
@@ -46,7 +49,14 @@ export function DaySkeleton({ readonly = false }: { readonly?: boolean }) {
           </div>
         </section>
       )}
+    </div>
+  );
+}
 
+/** ロード中スケルトン（TASKS 一覧ぶん）。寸法・様式は割る前の転写のまま。 */
+export function DayTasksSkeleton({ readonly = false }: { readonly?: boolean }) {
+  return (
+    <div aria-busy="true" aria-live="polite">
       <div className="panel stack" style={{ overflow: 'hidden', marginTop: readonly ? 14 : 18 }}>
         {!readonly && (
           <div className="mono list__head">

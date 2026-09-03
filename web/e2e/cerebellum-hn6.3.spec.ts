@@ -247,9 +247,13 @@ async function openToday(page: Page, options: Options = {}) {
   await expect(page.locator('.hdr')).toBeVisible();
 }
 
-// ---- 3段の並び（§3.1 の表） ----
+// ---- 3枠がそろって描かれること ----
+//
+// **並びの検証は docs/specs/30-web-today-order.md §3.1 へ移った**（2026-09-03。25 §3.1 冒頭の注記）。
+// 旧 TASKS → LEARNING → WAITING は 計器盤 → WAITING → LEARNING → TASKS に置き換わったので、
+// ここは「3枠が同時に描かれる」ことだけを見る。並び順は `cerebellum-y7o.1.spec.ts` が持つ。
 
-test('「今日」は TASKS → LEARNING → WAITING の3段が上から順に並ぶ', async ({ page }) => {
+test('「今日」に日課・LEARNING・WAITING の3枠がそろって描かれる', async ({ page }) => {
   const silent = employee({ skill: 'routine_watchdog', name: 'ルーティン監視' });
 
   await openToday(page, {
@@ -262,17 +266,15 @@ test('「今日」は TASKS → LEARNING → WAITING の3段が上から順に�
     employees: [silent],
   });
 
-  // 第1段は既存のまま（docs/specs/25-web-inbox.md §3.1「第1段は無変更」）
+  // 日課の枠は既存のまま（docs/specs/25-web-inbox.md §3.1「第1段は無変更」）
   const tasks = page.locator('.list__head').filter({ hasText: 'TASKS' });
   await expect(tasks).toBeVisible();
   await expect(page.getByRole('button', { name: /朝の散歩/ })).toBeVisible();
 
-  const first = await page.locator('.hdr').boundingBox();
-  const second = await learningStage(page).boundingBox();
-  const third = await waitingStage(page).boundingBox();
-  // 第1段のファーストビューを侵食しない＝2段目以降は下（§3.1）
-  expect(first?.y ?? Infinity).toBeLessThan(second?.y ?? 0);
-  expect(second?.y ?? Infinity).toBeLessThan(third?.y ?? 0);
+  // 計器盤・LEARNING・WAITING も同じ1枚に出ている（3種を1枚に集める・§3.1）
+  await expect(page.locator('.hdr')).toBeVisible();
+  await expect(learningStage(page)).toBeVisible();
+  await expect(waitingStage(page)).toBeVisible();
 
   await page.screenshot({
     path: 'test-results/screens/cerebellum-hn6.3-today.png',
