@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use chrono::NaiveDate;
+
 use crate::domain::{
     error::DomainError,
     inbox::{
@@ -57,6 +59,13 @@ impl ManageInbox {
     pub fn open(&self) -> Result<Vec<StoredInboxItem>, UsecaseError> {
         self.repository
             .list_open_inbox_items(&self.clock.now().to_rfc3339())
+            .map_err(repository_error)
+    }
+
+    pub fn by_date(&self, date: &str) -> Result<Vec<StoredInboxItem>, UsecaseError> {
+        validate_date(date)?;
+        self.repository
+            .list_inbox_items_by_date(date)
             .map_err(repository_error)
     }
 
@@ -151,6 +160,21 @@ impl ManageInbox {
 
 fn domain_error(error: DomainError) -> UsecaseError {
     UsecaseError::BadRequest(error.to_string())
+}
+
+fn validate_date(date: &str) -> Result<(), UsecaseError> {
+    let bytes = date.as_bytes();
+    let has_date_shape = bytes.len() == 10
+        && bytes[4] == b'-'
+        && bytes[7] == b'-'
+        && bytes
+            .iter()
+            .enumerate()
+            .all(|(index, byte)| matches!(index, 4 | 7) || byte.is_ascii_digit());
+    if !has_date_shape || NaiveDate::parse_from_str(date, "%Y-%m-%d").is_err() {
+        return Err(UsecaseError::BadRequest(format!("invalid date: {date}")));
+    }
+    Ok(())
 }
 
 fn repository_error(error: InboxRepositoryError) -> UsecaseError {
@@ -276,6 +300,23 @@ mod tests {
                     .cmp(&left.date)
                     .then_with(|| right.id.cmp(&left.id))
             });
+            Ok(rows)
+        }
+
+        fn list_inbox_items_by_date(
+            &self,
+            date: &str,
+        ) -> Result<Vec<StoredInboxItem>, InboxRepositoryError> {
+            let mut rows = self
+                .state
+                .lock()
+                .expect("repository should lock")
+                .rows
+                .iter()
+                .filter(|row| row.date == date)
+                .cloned()
+                .collect::<Vec<_>>();
+            rows.sort_by(|left, right| right.id.cmp(&left.id));
             Ok(rows)
         }
 
@@ -688,6 +729,50 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["oldest", "middle"]
         );
+    }
+
+    #[test]
+    fn date_query_ignores_status_and_expiration_without_using_clock() {
+        let (manage, _) = manage();
+        let mut expired = item("expired", "alert");
+        expired.expires_at = Some("2026-09-02T06:59:59+09:00".to_owned());
+        manage
+            .save_inbox_batch(
+                batch(
+                    "sender",
+                    "2026-09-01",
+                    vec![item("open", "approve"), expired, item("read", "read")],
+                ),
+                1,
+            )
+            .unwrap();
+
+        let read_id = manage
+            .open()
+            .unwrap()
+            .into_iter()
+            .find(|row| row.slug == "read")
+            .unwrap()
+            .id;
+        manage.save_decision(read_id, decide("read")).unwrap();
+
+        assert_eq!(
+            manage
+                .by_date("2026-09-01")
+                .unwrap()
+                .iter()
+                .map(|row| (row.slug.as_str(), row.status))
+                .collect::<Vec<_>>(),
+            [
+                ("read", InboxStatus::Read),
+                ("expired", InboxStatus::Open),
+                ("open", InboxStatus::Open),
+            ]
+        );
+        assert!(matches!(
+            manage.by_date("2026-09-31"),
+            Err(UsecaseError::BadRequest(_))
+        ));
     }
 
     #[test]

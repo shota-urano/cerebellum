@@ -415,29 +415,41 @@ pub(super) async fn get_inbox_items(
 ) -> Result<Json<InboxItemsDto>, ApiError> {
     let Query(query) = query.map_err(|error| ApiError::bad_request(error.to_string()))?;
     let usecase = Arc::clone(&state.manage_inbox);
-    let items = match (
-        query.source,
-        query.status.as_deref(),
-        query.apply_state.as_deref(),
-    ) {
-        (None, Some("open"), None) => tokio::task::spawn_blocking(move || usecase.open())
-            .await
-            .map_err(ApiError::from_join)??,
-        (Some(source), Some("decided"), Some("pending")) => {
-            tokio::task::spawn_blocking(move || usecase.decided(&source))
+    let items = match query.date {
+        Some(date)
+            if query.source.is_none() && query.status.is_none() && query.apply_state.is_none() =>
+        {
+            tokio::task::spawn_blocking(move || usecase.by_date(&date))
                 .await
                 .map_err(ApiError::from_join)??
         }
-        (None, None, Some("failed")) => tokio::task::spawn_blocking(move || usecase.failed())
-            .await
-            .map_err(ApiError::from_join)??,
-        _ => {
-            return Err(ApiError::bad_request(
-                "query must be status=open, source={source}&status=decided&applyState=pending, or applyState=failed",
-            ));
-        }
+        Some(_) => return Err(invalid_inbox_items_query()),
+        None => match (
+            query.source,
+            query.status.as_deref(),
+            query.apply_state.as_deref(),
+        ) {
+            (None, Some("open"), None) => tokio::task::spawn_blocking(move || usecase.open())
+                .await
+                .map_err(ApiError::from_join)??,
+            (Some(source), Some("decided"), Some("pending")) => {
+                tokio::task::spawn_blocking(move || usecase.decided(&source))
+                    .await
+                    .map_err(ApiError::from_join)??
+            }
+            (None, None, Some("failed")) => tokio::task::spawn_blocking(move || usecase.failed())
+                .await
+                .map_err(ApiError::from_join)??,
+            _ => return Err(invalid_inbox_items_query()),
+        },
     };
     Ok(Json(items.into()))
+}
+
+fn invalid_inbox_items_query() -> ApiError {
+    ApiError::bad_request(
+        "query must be status=open, source={source}&status=decided&applyState=pending, applyState=failed, or date=YYYY-MM-DD",
+    )
 }
 
 pub(super) async fn get_inbox_summary(
@@ -517,6 +529,7 @@ pub(super) struct IntakeQuery {
 #[derive(Debug, Default, Deserialize)]
 #[serde(default, rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct InboxItemsQuery {
+    date: Option<String>,
     source: Option<String>,
     status: Option<String>,
     apply_state: Option<String>,
