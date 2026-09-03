@@ -66,6 +66,17 @@ export function decidedLabel(item: InboxItemDto) {
 }
 
 /**
+ * 過去日ビューの状態表示（docs/specs/29-web-inbox-history.md §3.2-2）。
+ *
+ * 未決の行も「未決」と**出すだけ**——決めるのは今日のビュー。操作口が2箇所あると、
+ * 同じ項目の状態が2画面で動いて追えなくなる（同 §3.2-2・§4「決定は今日のビューだけが持つ」）。
+ * 決着した行の文言は `decidedLabel()` をそのまま使う（25 §3.2 の言い方を二重に持たない）。
+ */
+export function stateLabel(item: InboxItemDto) {
+  return item.status === 'open' ? '未決' : decidedLabel(item);
+}
+
+/**
  * 適用が動いた行か（docs/specs/25-web-inbox.md §3.2「`apply_state ≠ pending` になった行は戻せず」）。
  *
  * **`!== 'pending'` では判定できない**——`read` / `alert` は読み戻しが無いので

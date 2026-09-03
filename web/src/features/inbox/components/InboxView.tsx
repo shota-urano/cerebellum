@@ -17,18 +17,19 @@ import {
   type InboxRosterEntry,
 } from '../lib/item';
 import { missingSources, type InboxShiftEntry } from '../lib/missing';
+import { InboxDateView } from './InboxDateView';
 import { InboxItemRow } from './InboxItemRow';
 import { InboxMissing } from './InboxMissing';
+import { InboxSkeleton } from './InboxSkeleton';
 
 export type InboxViewProps = {
   /**
    * 表示する業務日（docs/specs/29-web-inbox-history.md §5・省略時は今日）。
    *
-   * 今日のビューでは「今日決めたもの」の出どころ＝`?date={この日}` になる（同 §3.1-1）。
-   * **読むのは app 層**（`useSearchParams` は app 層の仕事・25 §5）。
-   *
-   * 過去日ビュー本体（§3.2 の1列表示・状態表示）と日付ナビ（§3.3）は**まだ無い**
-   * ——29 の実装単位3件目（別タスク）。ここは §5 が指示する受け口だけを開けている。
+   * **この1つで §3.1 / §3.2 を切り替える**（同 §3.3「今日を表示しているときは 3.1 のビュー、
+   * それ以外は 3.2 のビュー」）。今日のビューでは「今日決めたもの」の出どころ＝
+   * `?date={この日}`（同 §3.1-1）、それ以外の日は読み取り専用の1列（同 §3.2）。
+   * **読むのは app 層**（`useSearchParams` と日付ナビの合成は app 層の仕事・25 §5・§3.3）。
    */
   date?: string;
   /**
@@ -57,39 +58,59 @@ export type InboxViewProps = {
    * **絞るのは未決のグループだけ**——未着（§3.3）と未処理の失敗（§3.2）は種類を問わず
    * 出し続ける。気づくための枠を絞り込みで隠すと、枠の存在理由（沈黙・見落とし対策）が消える。
    * 読むのは `?kind=` クエリで、**渡すのは app 層**（§5・useSearchParams は app 層の仕事）。
+   * **過去日のビューでは無視する**（グループしないため・29 §3.2-5）。
    */
   kind?: InboxKind;
 };
 
-function Skeleton() {
+/**
+ * 「あなた待ち」画面（docs/specs/25-web-inbox.md §3.2）。
+ *
+ * `date` で2つのビューを切り替える（docs/specs/29-web-inbox-history.md §3.3）:
+ * 今日なら §3.1（決められる画面）、それ以外なら §3.2（読み取り専用の1列）。
+ * **取得フックが違う**（過去日は `?date=` の1本だけ）ので、条件付き hook を書かずに
+ * 別コンポーネントへ分ける。
+ */
+export function InboxView({ date, roster, shiftRoster, rosterUnavailable, kind }: InboxViewProps) {
+  // 日付境界は深夜0時・ローカルタイム（docs/specs/00-overview.md §4）
+  const today = localToday();
+  const viewDate = date ?? today;
+
+  if (viewDate !== today) {
+    // 過去日（未来日も URL 直打ちならここへ来る。サーバは日付の意味を判断せず空を返す・28 §3.2）。
+    // `kind` は渡さない——過去日では絞り込みが無効（§3.2-5）
+    return <InboxDateView date={viewDate} roster={roster} />;
+  }
+
   return (
-    <div aria-busy="true" aria-live="polite">
-      {[0, 1, 2].map((index) => (
-        <section className="panel dg wt__card" key={index}>
-          <p className="wt__from">
-            <span className="skel" style={{ width: '32%' }}>&nbsp;</span>
-          </p>
-          <p className="wt__title wt__title--flat">
-            <span className="skel" style={{ width: '84%' }}>&nbsp;</span>
-          </p>
-        </section>
-      ))}
-    </div>
+    <InboxTodayView
+      today={today}
+      roster={roster}
+      shiftRoster={shiftRoster}
+      rosterUnavailable={rosterUnavailable}
+      kind={kind}
+    />
   );
 }
 
 /**
- * 「あなた待ち」画面（docs/specs/25-web-inbox.md §3.2）。
+ * 今日のビュー（docs/specs/25-web-inbox.md §3.2・出どころは
+ * docs/specs/29-web-inbox-history.md §3.1 で置き換え）。
  *
  * **kind でグループし、文言は kind で固定する**。送信元ごとの文言・専用コンポーネントを
  * 作らない——作った時点でハーネスごとの専用画面が再発する（同 §4・docs/specs/24-inbox.md §1）。
  */
-export function InboxView({ date, roster, shiftRoster, rosterUnavailable, kind }: InboxViewProps) {
-  const today = localToday();
+function InboxTodayView({
+  today,
+  roster,
+  shiftRoster,
+  rosterUnavailable,
+  kind,
+}: Omit<InboxViewProps, 'date'> & { today: string }) {
   // 「今日決めたもの」の出どころ（docs/specs/29-web-inbox-history.md §3.1-1）。
   // 未決グループは従来どおり `?status=open` で引く——未決は業務日をまたいで残るので
   // 日付では引かない（同 §3.1-2・25 §3.2）
-  const viewDate = date ?? today;
+  const viewDate = today;
   const { list, error, isLoading, mutate } = useInboxItems();
   const { failed: failedAcrossDates, failedError } = useFailedInboxItems();
   const { dated, datedError, mutateDated } = useInboxByDate(viewDate);
@@ -108,7 +129,7 @@ export function InboxView({ date, roster, shiftRoster, rosterUnavailable, kind }
   // バナーを足すだけで**行は保持する**（§6「ErrorBanner＋再検証待ち」）
   if (!list) {
     if (error) return <ErrorBanner message={error.message} />;
-    return isLoading ? <Skeleton /> : null;
+    return isLoading ? <InboxSkeleton /> : null;
   }
 
   const { failed, pending, decided } = partition(list.items, failedAcrossDates, dated?.items);

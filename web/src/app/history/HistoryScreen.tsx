@@ -2,9 +2,9 @@
 
 import { useRouter, useSearchParams } from 'next/navigation';
 import { DayView } from '@/features/day';
-import { InvalidDate, WeekSummary, isValidDateParam, useSummary, useToday } from '@/features/history';
+import { InvalidDate, WeekSummary, useSummary, useToday } from '@/features/history';
 import type { ApiError } from '@/shared/api';
-import { shiftDate } from '@/shared/lib';
+import { isValidDateParam, shiftDate } from '@/shared/lib';
 import { DateNav, ErrorBanner } from '@/shared/ui';
 
 /**
