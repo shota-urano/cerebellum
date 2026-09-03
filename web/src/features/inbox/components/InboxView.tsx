@@ -5,7 +5,7 @@ import { useState } from 'react';
 import type { InboxItemDto, InboxKind } from '@/shared/api';
 import { ErrorBanner, Toast } from '@/shared/ui';
 import { useInboxDecision } from '../hooks/useInboxDecision';
-import { useFailedInboxItems, useInboxItems } from '../hooks/useInboxItems';
+import { useFailedInboxItems, useInboxByDate, useInboxItems } from '../hooks/useInboxItems';
 import { useInboxSummary } from '../hooks/useInboxSummary';
 import {
   groupByKind,
@@ -21,6 +21,16 @@ import { InboxItemRow } from './InboxItemRow';
 import { InboxMissing } from './InboxMissing';
 
 export type InboxViewProps = {
+  /**
+   * 表示する業務日（docs/specs/29-web-inbox-history.md §5・省略時は今日）。
+   *
+   * 今日のビューでは「今日決めたもの」の出どころ＝`?date={この日}` になる（同 §3.1-1）。
+   * **読むのは app 層**（`useSearchParams` は app 層の仕事・25 §5）。
+   *
+   * 過去日ビュー本体（§3.2 の1列表示・状態表示）と日付ナビ（§3.3）は**まだ無い**
+   * ——29 の実装単位3件目（別タスク）。ここは §5 が指示する受け口だけを開けている。
+   */
+  date?: string;
   /**
    * 送信元 → 表示名の対応（docs/specs/25-web-inbox.md §3.2・§5）。
    * office.json の取得は app 層が行い（features 間 import を作らないため）、
@@ -74,12 +84,18 @@ function Skeleton() {
  * **kind でグループし、文言は kind で固定する**。送信元ごとの文言・専用コンポーネントを
  * 作らない——作った時点でハーネスごとの専用画面が再発する（同 §4・docs/specs/24-inbox.md §1）。
  */
-export function InboxView({ roster, shiftRoster, rosterUnavailable, kind }: InboxViewProps) {
+export function InboxView({ date, roster, shiftRoster, rosterUnavailable, kind }: InboxViewProps) {
+  const today = localToday();
+  // 「今日決めたもの」の出どころ（docs/specs/29-web-inbox-history.md §3.1-1）。
+  // 未決グループは従来どおり `?status=open` で引く——未決は業務日をまたいで残るので
+  // 日付では引かない（同 §3.1-2・25 §3.2）
+  const viewDate = date ?? today;
   const { list, error, isLoading, mutate } = useInboxItems();
   const { failed: failedAcrossDates, failedError } = useFailedInboxItems();
+  const { dated, datedError, mutateDated } = useInboxByDate(viewDate);
   // 未着判定の受信側の根拠（§3.3-2）。受信の事実はサーバしか持たない（24 §3.5）
   const { summary, summaryError } = useInboxSummary();
-  const { decide, failure, retry, dismiss } = useInboxDecision(list, mutate);
+  const { decide, failure, retry, dismiss } = useInboxDecision(list, mutate, mutateDated);
   // `bodyMd` の開閉。1画面で片付ける導線を割らないよう、遷移せずその場で開く（§3.2）
   const [openIds, setOpenIds] = useState<number[]>([]);
 
@@ -95,8 +111,7 @@ export function InboxView({ roster, shiftRoster, rosterUnavailable, kind }: Inbo
     return isLoading ? <Skeleton /> : null;
   }
 
-  const today = localToday();
-  const { failed, pending, decided } = partition(list.items, failedAcrossDates);
+  const { failed, pending, decided } = partition(list.items, failedAcrossDates, dated?.items);
   const groups = groupByKind(pending);
   // 絞り込みは表示だけの話。空表示（下部）の判定は絞る前の `groups` で行う
   // ——「承認が0件」を「確認待ちはありません」と書くと、他の種類が残っているのに嘘になる
@@ -147,6 +162,13 @@ export function InboxView({ roster, shiftRoster, rosterUnavailable, kind }: Inbo
         <ErrorBanner message={'受信の状況を取得できませんでした: ' + summaryError.message} />
       )}
 
+      {/* `?date=` の 500・通信失敗（docs/specs/29-web-inbox-history.md §6）。
+          バナーは出すが**上段（未着・失敗・未決）は描き続ける**——決める作業を
+          履歴の障害で止めない。下段だけを `取得できません` に落とす（下記） */}
+      {datedError && (
+        <ErrorBanner message={'今日決めたものを取得できませんでした: ' + datedError.message} />
+      )}
+
       {/* 未着（§3.3）。失敗枠より上——監視の監視がここしか無い（24 §9） */}
       <InboxMissing entries={missing} unavailable={rosterUnavailable} />
 
@@ -171,16 +193,26 @@ export function InboxView({ roster, shiftRoster, rosterUnavailable, kind }: Inbo
         </section>
       ))}
 
-      {groups.length === 0 && failed.length === 0 && decided.length === 0 && (
+      {/* 空表示は「失敗・未決・決定済みが1件も無い」ときだけ（§3.2 の確定文言）。
+          下段が取得できていないときは0件と言い切れないので出さない（§6） */}
+      {groups.length === 0 && failed.length === 0 && decided.length === 0 && !datedError && (
         <p className="empty">確認待ちはありません。</p>
       )}
 
-      {/* 今日決めたもの（§3.2）。誤タップの救済路なので、決着直後に消さず畳んで残す */}
-      {decided.length > 0 && (
+      {/* 今日決めたもの（§3.2）。誤タップの救済路なので、決着直後に消さず畳んで残す。
+          出どころは `?date={今日}`（29 §3.1-1）なので、リロード・タブ復帰でも消えない */}
+      {datedError ? (
         <section className="wt__done" aria-label="今日決めたもの">
           <p className="mono wt__group wt__group--kind">今日決めたもの</p>
-          {decided.map((item) => row(item, { decided: true }))}
+          <p className="empty">取得できません</p>
         </section>
+      ) : (
+        decided.length > 0 && (
+          <section className="wt__done" aria-label="今日決めたもの">
+            <p className="mono wt__group wt__group--kind">今日決めたもの</p>
+            {decided.map((item) => row(item, { decided: true }))}
+          </section>
+        )
       )}
 
       {/* decision の POST 失敗はトーストで再試行（§6）。巻き戻して終わりにしない */}

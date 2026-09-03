@@ -157,6 +157,12 @@ async function stubList(page: Page, open: StoredItem[], failed: StoredItem[] = [
     (url) => url.pathname === '/api/inbox/items' && url.searchParams.get('applyState') === 'failed',
     (route) => route.fulfill({ json: { items: failed } }),
   );
+  // 「今日決めたもの」の出どころ（docs/specs/29-web-inbox-history.md §3.1-1）。
+  // 実サーバへ抜けると他テストの決着行が下段に混ざるので、ここも固定する（モックの追加のみ）
+  await page.route(
+    (url) => url.pathname === '/api/inbox/items' && url.searchParams.has('date'),
+    (route) => route.fulfill({ json: { items: [] } }),
+  );
 }
 
 /** 未着の枠（`<section aria-label="未着">`）。押す操作を持たない1行の集まり */

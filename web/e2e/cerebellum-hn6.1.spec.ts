@@ -151,8 +151,20 @@ function stubItem(overrides: Partial<StoredItem> & { id: number; kind: Kind; tit
   };
 }
 
-/** 未決・失敗の一覧 GET を固定応答にする（画面全体の並びを見るテスト用）。 */
-async function stubList(page: Page, open: StoredItem[], failed: StoredItem[] = []) {
+/**
+ * 未決・失敗・その日ぶんの一覧 GET を固定応答にする（画面全体の並びを見るテスト用）。
+ *
+ * `?date=` は「今日決めたもの」の出どころ（docs/specs/29-web-inbox-history.md §3.1-1）。
+ * **ここを固定しないと**、fullyParallel で他テストが投入した今日の決着行が実サーバから返り、
+ * 下段の見出しが画面全体の並び（`groupHeadings` は「今日決めたもの」も拾う）に混ざる。
+ * 期待値は緩めず、モックの口だけを足している。
+ */
+async function stubList(
+  page: Page,
+  open: StoredItem[],
+  failed: StoredItem[] = [],
+  dated: StoredItem[] = [],
+) {
   await page.route(
     (url) => url.pathname === '/api/inbox/items' && url.searchParams.get('status') === 'open',
     (route) => route.fulfill({ json: { items: open } }),
@@ -160,6 +172,10 @@ async function stubList(page: Page, open: StoredItem[], failed: StoredItem[] = [
   await page.route(
     (url) => url.pathname === '/api/inbox/items' && url.searchParams.get('applyState') === 'failed',
     (route) => route.fulfill({ json: { items: failed } }),
+  );
+  await page.route(
+    (url) => url.pathname === '/api/inbox/items' && url.searchParams.has('date'),
+    (route) => route.fulfill({ json: { items: dated } }),
   );
 }
 
