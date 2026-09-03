@@ -37,6 +37,12 @@ type Failure = {
 export function useInboxDecision(
   list: InboxItemsResponse | undefined,
   mutate: KeyedMutator<InboxItemsResponse>,
+  /**
+   * `?date={今日}` の再検証（docs/specs/29-web-inbox-history.md §3.1-3）。
+   * 決着行が**サーバ由来の下段**へ移るので、`?status=open` への応答差し込みだけでは
+   * 「今日決めたもの」が更新されない。成功後にこのキーを引き直す。
+   */
+  mutateDated: KeyedMutator<InboxItemsResponse>,
 ) {
   const [failure, setFailure] = useState<Failure | null>(null);
   const requestQueue = useRef<Promise<void>>(Promise.resolve());
@@ -70,14 +76,19 @@ export function useInboxDecision(
             revalidate: false,
           },
         );
+        // 下段「今日決めたもの」はサーバ由来（29 §3.1-1）なので、決着・取り消しのあとは
+        // このキーを引き直す。ここを省くと、決めた行が下段に現れない／取り消した行が
+        // 下段に残ったまま未決グループにも並ぶ（29 §3.1-3）
+        void mutateDated();
       } catch (cause) {
         const error = cause instanceof ApiError ? cause : new ApiError(0, null, String(cause));
         setFailure({ id, decision, message: error.message });
         // 巻き戻した表示をサーバーの実状態に合わせ直す（404 の再検証もここ）
         void mutate();
+        void mutateDated();
       }
     },
-    [list, mutate],
+    [list, mutate, mutateDated],
   );
 
   /** トーストの「再試行」。失敗した decision をそのまま再送する。 */

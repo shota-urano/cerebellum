@@ -18,6 +18,12 @@ export type { InboxMissingSource, InboxShiftEntry } from './lib/missing';
 /** 送信元ごとの最終受信（同 §3.3-2 の受信側の根拠。「今日」第3段でも使う・§2） */
 export { useInboxSummary } from './hooks/useInboxSummary';
 /**
+ * その業務日の項目（`?date=`・docs/specs/28-inbox-history.md §3.1）。
+ * 「今日決めたもの」の出どころ（docs/specs/29-web-inbox-history.md §3.1-1）で、
+ * **barrel に置くのは 29 §5 の指示**——app 層から日付を渡して引けるようにする。
+ */
+export { useInboxByDate } from './hooks/useInboxItems';
+/**
  * 「今日」第3段（同 §3.1・§5）。件数と未着行だけを出す表示部品で、
  * 取得（`useInboxSummary`）と名簿突合（`missingSources`）は **app 層が行う**
  * ——第1段の赤点も同じ集計を読むので、同じ問いを2回しないため（§5）。

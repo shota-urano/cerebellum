@@ -77,22 +77,37 @@ export function isFrozen(item: InboxItemDto) {
 }
 
 /**
- * 3つの置き場所へ振り分ける（docs/specs/25-web-inbox.md §3.2）。
+ * 3つの置き場所へ振り分ける（docs/specs/25-web-inbox.md §3.2・出どころは
+ * docs/specs/29-web-inbox-history.md §3.1 で置き換え）。
  *
  * - `failed` … `?applyState=failed` の取得結果。**最上部**に日をまたいで出し続ける
- * - `pending` … 未決。kind でグループして出す
- * - `decided` … この画面で決めた行。下部「今日決めたもの」に畳んで残す（取り消し路）
+ * - `pending` … 未決。`?status=open` から拾う（**日付では引かない**・29 §3.1-2）
+ * - `decided` … 下部「今日決めたもの」。**`?date={その日}` の取得結果から `status !== 'open'`
+ *   を抽出する**（29 §3.1-1）。`?status=open` のキャッシュ残骸からは拾わない
+ *   ——残骸はそのタブが再取得するまでの見かけで、リロード・タブ復帰で落ちる（29 §1）
  *
- * `?status=open` の再取得で決着行は自然に落ちるので、`decided` は
- * 「いま決めたぶん」だけが残る（決定 POST の応答をキャッシュへ差し込むため）。
+ * `dated` が `undefined`（取得前・取得失敗）のとき `decided` は空。呼び出し側は
+ * 「0件」と「取得できていない」を `datedError` で区別する（29 §6）。
+ *
+ * `pending` に出ている id を `decided` から落とすのは、決定 POST 直後の
+ * **二重表示を作らない**ため——取り消しは `?status=open` へ応答差し込みで戻り（29 §3.1-3）、
+ * `?date=` 側の再検証はその後に届くので、両方に載る瞬間がある。
  */
-export function partition(open: InboxItemDto[], failed: InboxItemDto[]) {
+export function partition(
+  open: InboxItemDto[],
+  failed: InboxItemDto[],
+  dated: InboxItemDto[] | undefined,
+) {
   const failedIds = new Set(failed.map((item) => item.id));
-  const rest = open.filter((item) => !failedIds.has(item.id));
+  const pending = open.filter((item) => !failedIds.has(item.id) && item.status === 'open');
+  const pendingIds = new Set(pending.map((item) => item.id));
   return {
     failed,
-    pending: rest.filter((item) => item.status === 'open'),
-    decided: rest.filter((item) => item.status !== 'open'),
+    pending,
+    decided: (dated ?? []).filter(
+      (item) =>
+        item.status !== 'open' && !failedIds.has(item.id) && !pendingIds.has(item.id),
+    ),
   };
 }
 
@@ -186,11 +201,24 @@ export function withDecision(
 }
 
 /**
- * サーバーが返した1件で一覧を置き換える（decision の応答は単体なので合流させる）。
+ * サーバーが返した1件で `?status=open` の一覧を更新する（decision の応答は単体なので合流させる）。
  *
- * **決着した行も一覧から消さない**（§3.2）。消すと誤タップを取り消せなくなるので、
- * 下部「今日決めたもの」へ移して残す。次回の再取得（`?status=open`）で自然に落ちる。
+ * **一覧に無い id なら足す**。「今日決めたもの」は `?date=` 由来になった（29 §3.1-1）ので、
+ * 下段の行は `?status=open` のキャッシュに載っていない。そこから取り消したとき、
+ * 置換だけでは未決グループへ戻らない——`?status=open` 側は再取得せず応答差し込みで済ませる
+ * 契約（29 §3.1-3）なので、差し込みが「無ければ挿入」まで面倒を見る必要がある。
+ *
+ * 挿入位置はサーバーの並び（`date DESC, id DESC`・24 §3.4）に合わせる。クライアントで
+ * 並べ替えない規律（25 §4）を破らないため、末尾に足して見かけの順を崩すことはしない。
  */
 export function withItem(list: InboxItemsResponse, item: InboxItemDto): InboxItemsResponse {
-  return { items: list.items.map((current) => (current.id === item.id ? item : current)) };
+  if (list.items.some((current) => current.id === item.id)) {
+    return { items: list.items.map((current) => (current.id === item.id ? item : current)) };
+  }
+  const at = list.items.findIndex(
+    (current) => current.date < item.date || (current.date === item.date && current.id < item.id),
+  );
+  const items = [...list.items];
+  items.splice(at < 0 ? items.length : at, 0, item);
+  return { items };
 }
