@@ -159,7 +159,7 @@ employees: [ { automation_id, name, skill, enabled, shift, next_run_at, last_run
 5. 入口は社員カードのライン見出しだけにする。**全景（20 §3.1）にライン導線を足さない**——全景は4部屋とMY DESKだけを見せる面のままにする
 6. `line` に一致する社員が居ないときは空状態（「このラインの社員は居ません」）＋全景へ戻る導線。エラーにしない
 7. `room` と `line` が同時に来たときは `room` を優先する（部屋が主・ラインが従。URL を2軸で解釈しない）
-8. **部署絞り込み（`/office?dept={id}`）は本節と同型**（[26](./26-web-office-company.md) §3.3）。部屋・ライン・部署の優先順は `room` → `line` → `dept`
+8. **部署絞り込み（`/office?dept={id}`）は本節と同型**（[26](./26-web-office-company.md) §3.3）。優先順は `room`（=`dept`。[27](./27-web-office-departments.md) §3.2-1 で部屋 id が部署 id になり `?dept=` はその別名）→ `line` の2段
 
 ## 4. 設定値・確定値
 

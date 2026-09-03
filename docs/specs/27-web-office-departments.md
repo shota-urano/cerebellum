@@ -68,7 +68,7 @@ confirmed_rev: 3c61ba4
 - **cerebellum リポジトリに部署の対応表・順序表・日本語ラベル表・部屋分類の正規表現を持たない**（21 §4・26 §4 の原則を全景にも適用する。本仕様はその最後の例外＝`roomOf` を消す仕様）
 - `departments` の形は `{ id, label, order }[]`。`id` は `profile.dept` と同じ値域（正本の8部署 id）、`label` は正本の部署名、`order` は正本の編成表の並び（1始まりの整数）。画面は値を検査しない・翻訳しない
 - 「部署 未記載」の部屋 id は `unassigned`（`dept` の値域と衝突しない予約語。second-brain 側でこの id を部署に使わない）
-- 全景の部屋タイルは CSS のみ。20 §5 の部屋画像（4部屋分の装飾）は使わなくなる。**新しい部屋画像は作らない**（26 §7「画像の追加・差し替え」はスコープ外、を引き継ぐ）。`campus-floor.png`（全景背景）・`employee-station*.png`・`approval-folders.png` はそのまま使う
+- 全景の部屋タイルは CSS のみ。20 §5 の部屋画像（4部屋分の装飾）は使わなくなる。**新しい部屋画像は作らない**（26 §7「画像の追加・差し替え」はスコープ外、を引き継ぐ）。`campus-floor.png`（全景背景）・`room-floor.png`（部署ルーム背景。§3.2-2 で 26 §3.3 の部品を流用するため据え置き）・`employee-station*.png`・`approval-folders.png` はそのまま使う
 
 ## 5. インターフェース
 

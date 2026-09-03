@@ -45,10 +45,10 @@ cerebellum のサーバーは経由しない（Rust・SQLite・API の変更な�
 
 1. 全景では社員名・勤務時刻・個別 run を出さない。`LIBRARY` / `LAB` / `MARKET` / `STUDIO` の4部屋と中央の `MY DESK` だけを見せる
 2. 最上部は「昨夜：正常（または失敗 n）」「あなたの仕事：n件」だけにする。全員を同じ強さで読ませず、正常なものほど暗く静かにする
-3. 部屋は `skill` と現在の `name`（`skill:null` の補助だけ）を次の順で分類する。市場・ベンチ・フォロワー → MARKET、write/publish/pdca/post/reply/quote・ポスト/リプ/引用 → STUDIO、harness/study/seed/experiment/incubate/blindspot/auto-plug → LAB、それ以外（`null` を含む）→ LIBRARY。分類は表示上のグルーピングだけで outcome 判定には使わない
+3. 部屋は `skill` と現在の `name`（`skill:null` の補助だけ）を次の順で分類する。市場・ベンチ・フォロワー → MARKET、write/publish/pdca/post/reply/quote・ポスト/リプ/引用 → STUDIO、harness/study/seed/experiment/incubate/blindspot/auto-plug → LAB、それ以外（`null` を含む）→ LIBRARY。分類は表示上のグルーピングだけで outcome 判定には使わない（**→ [27](./27-web-office-departments.md) §3.1 で置き換え。部屋は `profile.dept` で切る**）
 4. 部屋の信号は、人間対応（黄）→失敗（赤）→実行中（シアン）→正常（中立）の順で1つを強調する。色だけでなく「確認 n」「失敗 n」「処理中…」「正常」の文言を併記する
 5. 部屋タップで `/office?room={id}` へ入り、初めて所属社員を表示する。`enabled:false` は全景では「停止中 n名」だけを弱く表示し、所属部屋内で停止中社員として確認できる
-6. 390px の最初の viewport に4部屋とMY DESKを収める。全景で社員数に応じた縦スクロールは発生させない
+6. 390px の最初の viewport に4部屋とMY DESKを収める。全景で社員数に応じた縦スクロールは発生させない（**→ [27](./27-web-office-departments.md) §3.1-8 で置き換え。部屋数が増えるため条件を「最上部2行・MY DESK・先頭4部屋」に緩める**）
 
 （経緯: 2026-08-24 の2列フロアはoffice感を得られた一方、全社員の名前・勤務時間・状態が同じ強さで視界に入り、社員増加時の認知負荷が残った。2026-08-26 に「正常なものほど存在感を消す」「部屋＝役割、自分の机＝人間の仕事」という方針をユーザーが採用し、`cerebellum-office-my-desk-focus.png` と `cerebellum-office-studio-room-detail.png` を正本として本節を置き換えた）
 
@@ -112,7 +112,7 @@ cerebellum のサーバーは経由しない（Rust・SQLite・API の変更な�
 - 構成規約（`app → features → shared`・feature 間 import 禁止・barrel 経由）: [`07-web-foundation.md`](./07-web-foundation.md) §3
 - `shared/ui/RunCard`（夜勤・開発の共通部品）は**流用しない**。dev-loop の run（PR・動画）と automation の run（勤務帯・報告文）は形が違う。共通化は3例目が出てから判断する
 - 採用デザインの正本は全景 `docs/design/screenshots/cerebellum-office-my-desk-focus.png`、部署内 `docs/design/screenshots/cerebellum-office-studio-room-detail.png`
-- 全景背景は `campus-floor.png`、部署背景は `room-floor.png`、社員は `employee-station*.png`、MY DESKの書類は `approval-folders.png`。すべて装飾画像（読み上げ対象外）で、アクセシブル名はリンク側に持たせる
+- 全景背景は `campus-floor.png`、部署背景は `room-floor.png`、社員は `employee-station*.png`、MY DESKの書類は `approval-folders.png`。すべて装飾画像（読み上げ対象外）で、アクセシブル名はリンク側に持たせる（**[27](./27-web-office-departments.md) 以降、全景の部屋は CSS タイルになり4部屋分の装飾は使わない。`campus-floor.png` は全景背景として、`room-floor.png` は部署ルーム背景としてそのまま使う。新しい部屋画像は作らない**）
 - 警告様式は `dg__warn` を流用する。報告はフロア下端のモーダルシートとして表示する
 
 ## 6. エラー処理

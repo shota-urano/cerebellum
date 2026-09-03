@@ -15,17 +15,21 @@
 ## レイアウト構造（上から）
 
 1. （エラー時のみ）ErrorBanner
-2. HeaderPanel（計器盤カード）
-3. （全完了時）AllClear ／（空時）EmptyState
-4. TaskList（ヘッダ行付きパネル）
-5. LearningTodayLine（第2段・パネル）
-6. InboxSummaryStrip（第3段・パネル）
+2. HeaderPanel（計器盤カード。日付・進捗バー・`CLEARED`・確認待ちの赤点）
+3. InboxSummaryStrip（WAITING・パネル。kind 別4件数＋未着行）
+4. LearningTodayLine（LEARNING・パネル。状態1行）
+5. （全完了時）AllClear ／（空時）EmptyState
+6. TaskList（TASKS・ヘッダ行付きパネル）
 
-1〜4 が**第1段**（日課）で、素材から転写した部分。5・6 は 2026-09-02 に足した第2段（学習）・
-第3段（AI からの確認待ち）で、**素材なし**——構成・文言の正本は
-[`../specs/25-web-inbox.md`](../specs/25-web-inbox.md) §3.1（判定の正は既存実装との一貫性）。
-第1段のファーストビューを侵食しないよう TaskList の下に置く。様式は第1段と同じ
-`panel` ＋ `.list__head` で、同じ画面の中で様式を割らない。
+並びの正本は [`../specs/30-web-today-order.md`](../specs/30-web-today-order.md) §3.1
+（2026-09-03 に 25 §3.1 の TASKS → LEARNING → WAITING から差し替え）。1・2・5・6 が素材から
+転写した部分で、3・4 は 2026-09-02 に足した枠——**素材なし**。枠の構成・文言の正本は
+[`../specs/25-web-inbox.md`](../specs/25-web-inbox.md) §3.1（判定の正は既存実装との一貫性）で、
+30 は並びだけを置き換える。様式はどの枠も同じ `panel` ＋ `.list__head` で、同じ画面の中で様式を割らない。
+
+ファーストビューは **計器盤と WAITING（見出し＋kind 別4件数）が 390px の最初の viewport に入る**
+こと（30 §3.2）。LEARNING・TASKS はスクロールして見えてよい。ALL CLEAR と EmptyState は
+**TASKS の直上**に置く——日課の一覧に対する状態表示なので一覧と離さない（同 §3.1）。
 
 ## コンポーネント一覧
 
