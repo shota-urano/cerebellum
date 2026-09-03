@@ -151,47 +151,6 @@ export const OFFICE_UNASSIGNED_DEPT_ID = 'unassigned';
 /** 「部署 未記載」の部屋の見出し（27 §3.1-2）。部署の日本語ラベル表ではない */
 export const OFFICE_UNASSIGNED_DEPT_LABEL = '部署 未記載';
 
-/**
- * 旧・固定4部屋（20 §3.1-3）。**全景の部屋分類からは廃止**した
- * （docs/specs/27-web-office-departments.md §3.1-1。部屋は `profile.dept` で切る）。
- * ここに残っているのは `?room=library` などの既存 URL を解決する経路だけで、
- * 27 §3.2（部署ルームの統合）で `roomOf` ごと削除する。**新しい参照を足さないこと**。
- */
-export type OfficeRoomId = 'library' | 'lab' | 'market' | 'studio';
-
-export interface OfficeRoom {
-  id: OfficeRoomId;
-  label: string;
-  name: string;
-}
-
-export const OFFICE_ROOMS: readonly OfficeRoom[] = [
-  { id: 'library', label: 'LIBRARY', name: 'Library Room' },
-  { id: 'lab', label: 'LAB', name: 'Laboratory' },
-  { id: 'market', label: 'MARKET', name: 'Market Room' },
-  { id: 'studio', label: 'STUDIO', name: 'Writing Room' },
-] as const;
-
-export function isOfficeRoomId(value: string | null): value is OfficeRoomId {
-  return OFFICE_ROOMS.some((room) => room.id === value);
-}
-
-/**
- * skill 名を4つの役割空間へ畳む。状態判定ではなく表示上の分類だけを担う。
- * 未知・null は情報の集積地点である LIBRARY に置き、社員を画面から消さない。
- *
- * **全景はこの規則を使わない**（27 §3.1-1 で `profile.dept` に置き換え）。`?room=` の
- * 旧 URL を解決するためだけに残っている——27 §3.2 で消す（§4「部屋分類の正規表現を持たない」）。
- */
-export function roomOf(employee: OfficeEmployee): OfficeRoomId {
-  // skill が取れない素の automation も消さないため、現在名は分類の補助にだけ使う。
-  const role = `${employee.skill ?? ''} ${employee.name}`.toLowerCase();
-  if (/market|benchmark|ベンチ|フォロワー/.test(role)) return 'market';
-  if (/write|publish|pdca|post|reply|quote|ポスト|リプ|引用/.test(role)) return 'studio';
-  if (/harness|study|seed|experiment|incubate|blindspot|auto-plug|ハーネス|ブラインド/.test(role)) return 'lab';
-  return 'library';
-}
-
 /** 手動起動の社員（21 §3.3-1）。`shift:null` からは推測しない——`trigger` だけを根拠にする */
 export function isManualEmployee(employee: OfficeEmployee): boolean {
   return employee.trigger === 'manual';
@@ -463,21 +422,6 @@ export interface RoomBlocks {
 }
 
 /**
- * 部署の社員を 勤務帯 → 手動起動 → 停止中 の3ブロックへ分ける（21 §3.4-1）。
- * ブロック内は `employees` の返却順（勤務開始時刻の昇順）のまま——再ソートしない（§3.1-1）。
- *
- * 行数はブロックごとに切り上げて合算する。ブロックが変わると行が切り替わるので、
- * 総人数から割ると実際より少なく出て**最終行が部屋の下壁の外に出る**（21 §3.4-4）。
- */
-export function roomBlocksOf(
-  onDuty: OfficeEmployee[],
-  stopped: OfficeEmployee[],
-  roomId: OfficeRoomId,
-): RoomBlocks {
-  return blocksOf(onDuty, stopped, (employee) => roomOf(employee) === roomId);
-}
-
-/**
  * ライン絞り込み（21 §3.7-1）。部屋（役割）とは別軸だが、**席の並びは部署ルームと同一規則**
  * ——見た目と順序を作り分けない（別の画面ではなく絞り込みだから）。
  */
@@ -665,6 +609,13 @@ export function companyDeptsOf(employees: OfficeEmployee[]): CompanyDept[] {
   return hasUnlisted ? [...depts, companyDeptOf(employees, null)] : depts;
 }
 
+/**
+ * 社員を 勤務帯 → 手動起動 → 停止中 の3ブロックへ分ける（21 §3.4-1）。
+ * ブロック内は `employees` の返却順（勤務開始時刻の昇順）のまま——再ソートしない（20 §3.1-1）。
+ *
+ * 行数はブロックごとに切り上げて合算する。ブロックが変わると行が切り替わるので、
+ * 総人数から割ると実際より少なく出て**最終行が部屋の下壁の外に出る**（21 §3.4-4）。
+ */
 function blocksOf(
   onDuty: OfficeEmployee[],
   stopped: OfficeEmployee[],

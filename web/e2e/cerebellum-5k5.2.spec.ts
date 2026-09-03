@@ -111,7 +111,8 @@ const EMPLOYEES = [
     profile: null,
   },
   {
-    // 手動でも分類規則は同じ（skill 名 x-post → STUDIO）。「手動部屋」は作らない（§3.3-3）
+    // 手動でも部屋は `profile.dept` で決まる（docs/specs/27-web-office-departments.md §3.1-1）。
+    // 「手動部屋」は作らない（§3.3-3）ので、この社員は他と同じく所属部署の部屋に出る
     automation_id: 'a-x-post',
     name: 'X投稿（x-post）',
     skill: 'x-post',
@@ -125,6 +126,7 @@ const EMPLOYEES = [
       job: '下書きから投稿案を作ります',
       command: '/x-post',
       checks: ['固有名詞の誤りが無いか'],
+      dept: 'x-harness',
       doc: '.claude/skills/x-post/SKILL.md',
     },
   },
@@ -202,7 +204,7 @@ const seat = (page: Page, name: string) => page.locator('.of3__worker', { hasTex
 
 test('手動起動の席は「手動起動」と起動コマンドを出し、架空の次回予定を出さない', async ({ page }) => {
   await mockOffice(page);
-  await page.goto('/office?room=library');
+  await page.goto('/office?room=unassigned');
 
   const ask = seat(page, '相談窓口（ask）');
   await expect(ask).toContainText('手動起動');
@@ -218,7 +220,7 @@ test('手動起動の席は「手動起動」と起動コマンドを出し、�
 
 test('起動方式が未記載の社員は「勤務時間未設定」のまま（手動と断定しない）', async ({ page }) => {
   await mockOffice(page);
-  await page.goto('/office?room=library');
+  await page.goto('/office?room=unassigned');
 
   const legacy = seat(page, '旧ジョブ（legacy）');
   await expect(legacy).toContainText('勤務時間未設定');
@@ -227,7 +229,7 @@ test('起動方式が未記載の社員は「勤務時間未設定」のまま�
 
 test('当日 run が無い手動社員には直近実行日が出る', async ({ page }) => {
   await mockOffice(page);
-  await page.goto('/office?room=library');
+  await page.goto('/office?room=unassigned');
 
   // 「いつ最後に呼ばれたか」で読ませる（§3.3-5）
   await expect(seat(page, '着想鍛造（idea-forge）')).toContainText('直近 ' + LAST_CALL_DATE);
@@ -236,9 +238,9 @@ test('当日 run が無い手動社員には直近実行日が出る', async ({ 
 
 test('部署内は 勤務帯 → 手動起動 → 停止中 の順に小見出し付きで並ぶ', async ({ page }) => {
   await mockOffice(page);
-  await page.goto('/office?room=library');
+  await page.goto('/office?room=unassigned');
 
-  const room = page.getByRole('region', { name: 'LIBRARYの社員' });
+  const room = page.getByRole('region', { name: 'DEPT: unassignedの社員' });
   await expect(room.locator('.of3__block-label')).toHaveText(['手動起動', '停止中']);
   // ブロック内は返却順のまま（勤務開始時刻の昇順。クライアントで再ソートしない・§3.4-1）
   await expect(room.locator('.of3__worker-name')).toHaveText([
@@ -253,7 +255,7 @@ test('部署内は 勤務帯 → 手動起動 → 停止中 の順に小見出�
 
 test('部署ヘッダに在籍の内訳が出る', async ({ page }) => {
   await mockOffice(page);
-  await page.goto('/office?room=library');
+  await page.goto('/office?room=unassigned');
 
   // 勤務形態の内訳は全景に出さず部署内で読む（§3.4-3・§3.5-1）。
   // 名簿未記載（`profile` が無い a-legacy・a-retired）は docs/specs/26-web-office-company.md
@@ -262,16 +264,17 @@ test('部署ヘッダに在籍の内訳が出る', async ({ page }) => {
     '勤務帯 2名・手動 2名・停止中 1名・名簿未記載 2名',
   );
 
-  await page.goto('/office?room=market');
+  // `departments` にも社員にも無い部署 id（＝未知の部署・27 §3.1-3）
+  await page.goto('/office?room=note-harness');
   // 0名のブロックは書かない
   await expect(page.locator('.of3__room-breakdown')).toHaveText('勤務帯 0名');
 });
 
 test('手動込みで3行以上になる部署でも最終行が部屋の下壁より内側に収まる', async ({ page }) => {
   await mockOffice(page);
-  await page.goto('/office?room=library');
+  await page.goto('/office?room=unassigned');
 
-  const room = page.getByRole('region', { name: 'LIBRARYの社員' });
+  const room = page.getByRole('region', { name: 'DEPT: unassignedの社員' });
   await expect(room.locator('.of3__worker')).toHaveCount(5);
   const geometry = await room.evaluate((floor) => {
     const floorRect = floor.getBoundingClientRect();
@@ -289,48 +292,28 @@ test('手動込みで3行以上になる部署でも最終行が部屋の下壁�
   expect(geometry.workerBottomFromFloorTop).toBeLessThanOrEqual(geometry.floorHeight);
 });
 
-test('手動社員も分類規則どおりの部屋に出る（手動部屋を作らない）', async ({ page }) => {
+test('手動社員も所属部署の部屋に出る（手動部屋を作らない）', async ({ page }) => {
   await mockOffice(page);
-  await page.goto('/office?room=studio');
+  await page.goto('/office?room=x-harness');
 
-  const studio = page.getByRole('region', { name: 'STUDIOの社員' });
+  const studio = page.getByRole('region', { name: 'DEPT: x-harnessの社員' });
   await expect(studio.locator('.of3__worker-name')).toHaveText(['X投稿（x-post）']);
   await expect(studio.locator('.of3__block-label')).toHaveText(['手動起動']);
-  // LIBRARY へ寄せ集めない
+  // 他部署へ寄せ集めない
   await expect(page.locator('.of3__room-breakdown')).toHaveText('勤務帯 0名・手動 1名');
 });
 
-/**
- * 全景の部屋は `profile.dept` で切る（docs/specs/27-web-office-departments.md §3.1-1 が
- * 20 §3.1-3 の skill 名分類を置き換えた）。手動社員の数え方を旧2部屋と同じ分かれ方で
- * 見るために `dept` を与える（`departments` は届いていない状態＝見出しは id・27 §3.1-4）。
- */
-const DEPT_BY_AUTOMATION: Record<string, string> = {
-  'a-collect': 'second-brain-harness',
-  'a-legacy': 'second-brain-harness',
-  'a-ask': 'second-brain-harness',
-  'a-idea-forge': 'second-brain-harness',
-  'a-retired': 'second-brain-harness',
-  'a-x-post': 'x-harness',
-};
-
-const withDept = (employees: typeof EMPLOYEES) =>
-  employees.map((employee) => ({
-    ...employee,
-    profile: { ...(employee.profile ?? {}), dept: DEPT_BY_AUTOMATION[employee.automation_id] ?? null },
-  }));
-
 test('全景の部屋カウントは在籍数（手動込み）で、信号の優先順と昨夜の集計は変わらない', async ({ page }) => {
-  await mockOffice(page, office({ employees: withDept(EMPLOYEES) }));
+  await mockOffice(page);
   await page.goto('/office');
 
   const overview = page.getByRole('region', { name: 'AIオフィス全景' });
   // 勤務帯・手動を区別しない在籍数（§3.5-1）。停止中は含めない
-  await expect(overview.getByRole('link', { name: 'second-brain-harnessに入る、社員4名' })).toBeVisible();
+  await expect(overview.getByRole('link', { name: '部署 未記載に入る、社員4名' })).toBeVisible();
   await expect(overview.getByRole('link', { name: 'x-harnessに入る、社員1名' })).toBeVisible();
   // 手動 run も直近 run として同じ規則で数える（§3.5-2・§3.5-3）
   await expect(overview.getByRole('link', { name: /x-harnessに入る/ })).toContainText('確認 1');
-  await expect(overview.getByRole('link', { name: /second-brain-harnessに入る/ })).toContainText('失敗 1');
+  await expect(overview.getByRole('link', { name: /部署 未記載に入る/ })).toContainText('失敗 1');
   const headline = page.getByLabel('昨夜のオフィス概要');
   await expect(headline).toContainText('昨夜：失敗 1');
   await expect(headline).toContainText('あなたの仕事：1件');

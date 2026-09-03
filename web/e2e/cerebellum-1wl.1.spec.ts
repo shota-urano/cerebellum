@@ -304,7 +304,7 @@ test('departments 付きで8部屋が order 順に出て、見出しが label �
   await page.screenshot({ path: 'test-results/screens/cerebellum-1wl.1-office.png', fullPage: false });
 });
 
-test('所属社員数の内訳が部屋ごとに 26 §3.2 の形で出る（0人の部署も「0名」で出す）', async ({ page }) => {
+test('所属社員数の内訳が部屋ごとに 26 §3.2 の形で出る', async ({ page }) => {
   await mockOffice(page, office({ employees: EMPLOYEES }));
   await page.goto('/office');
 
@@ -312,9 +312,28 @@ test('所属社員数の内訳が部屋ごとに 26 §3.2 の形で出る（0人
   await expect(crew('記憶整備')).toHaveText('勤務帯 2名');
   await expect(crew('学習・成長')).toHaveText('勤務帯 0名・手動 1名');
   await expect(crew('技術')).toHaveText('勤務帯 1名・停止中 1名');
-  // `departments` にあって所属0人の部署も部屋を出す（正本にある部署が空なのは見せるべき事実・§6）
-  await expect(room(page, 'マーケ')).toBeVisible();
   await expect(crew('楽天')).toHaveText('勤務帯 1名');
+});
+
+test('departments にあって所属0人の部署も部屋を出す（内訳は「0名」）', async ({ page }) => {
+  // マーケの唯一の社員を抜く。`departments` には残るので**部屋は出続ける**
+  // （正本にある部署が空なのは見せるべき事実・§6）
+  const withoutMarketing = EMPLOYEES.filter((employee) => employee.automation_id !== 'a-marketing');
+  await mockOffice(page, office({ employees: withoutMarketing }));
+  await page.goto('/office');
+
+  // 8部屋のまま。0人の部署だけが消える実装だと7部屋になる
+  await expect(campus(page).locator('.of3__room')).toHaveCount(8);
+  await expect(campus(page).locator('.of3__room-name')).toHaveText(ORDERED_LABELS);
+  const marketing = room(page, 'マーケ');
+  await expect(marketing).toBeVisible();
+  await expect(marketing.locator('.of3__room-crew')).toHaveText('勤務帯 0名');
+  await expect(marketing).toHaveAttribute('aria-label', 'マーケに入る、社員0名');
+  // 0人でも信号は 20 §3.1-4 の文言のまま（空をエラーにしない・20 §4）
+  await expect(marketing.locator('.of3__room-signal')).toHaveText('正常');
+  await expect(page.locator('.banner')).toHaveCount(0);
+  // 他の部屋は動かない（抜いた社員が別の部屋へ寄せられていない）
+  await expect(room(page, '事業開発').locator('.of3__room-crew')).toHaveText('勤務帯 1名');
 });
 
 // ---- `departments` 無し: 見出しは id・並びは返却順（§3.1-4） ----

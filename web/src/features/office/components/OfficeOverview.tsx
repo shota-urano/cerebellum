@@ -4,20 +4,20 @@ import {
   actionCountOf,
   breakdownOf,
   lastRunOf,
-  officeDeptRoomsOf,
   shiftStateOf,
-  type OfficeDepartment,
   type OfficeDeptRoom,
-  type OfficeEmployee,
   type OfficeRun,
 } from '../lib/office';
 
 export type OfficeOverviewProps = {
-  /** 停止中も含めた全社員（部屋ごとの内訳に停止中を出すため・27 §3.1-6） */
-  employees: OfficeEmployee[];
+  /**
+   * 出す部屋（`officeDeptRoomsOf` が組んだ dept 由来の一覧・27 §3.1-1〜4）。
+   * 並び・見出し・所属の判定は lib 側の1本に寄せる——画面側で部屋を作り直さない。
+   */
+  rooms: OfficeDeptRoom[];
   runs: OfficeRun[];
-  /** office.json の部署一覧。届いていなければ見出しは id・並びは返却順（27 §3.1-4） */
-  departments: OfficeDepartment[] | null | undefined;
+  /** 停止中の総数（20 §3.1-5 の「停止中 n名」）。部屋ごとの停止中は内訳に出る */
+  stoppedCount: number;
   today: string;
 };
 
@@ -36,27 +36,20 @@ type RoomSummary = {
   actions: number;
 };
 
-function summarizeRooms(
-  employees: OfficeEmployee[],
-  runs: OfficeRun[],
-  departments: OfficeDepartment[] | null | undefined,
-  today: string,
-) {
-  const rooms: RoomSummary[] = [];
+function summarizeRooms(rooms: OfficeDeptRoom[], runs: OfficeRun[], today: string) {
+  const summaries: RoomSummary[] = [];
   let failed = 0;
   let actions = 0;
-  let stoppedCount = 0;
 
-  for (const room of officeDeptRoomsOf(employees, departments)) {
+  for (const room of rooms) {
     const summary = roomSummaryOf(room, runs, today);
     // 全景の集計は在籍社員だけを見る（停止中は件数だけを弱く出す・20 §3.1-5）
     failed += summary.failed;
     actions += summary.actions;
-    stoppedCount += room.blocks.stopped.length;
-    rooms.push(summary);
+    summaries.push(summary);
   }
 
-  return { rooms, failed, actions, stoppedCount };
+  return { rooms: summaries, failed, actions };
 }
 
 function roomSummaryOf(room: OfficeDeptRoom, runs: OfficeRun[], today: string): RoomSummary {
@@ -100,8 +93,8 @@ function RoomSignal({ room }: { room: RoomSummary }) {
  * 最上部の2行と MY DESK は据え置き（§3.1-7）。全景の高さは**部屋数だけ**に依存し、
  * 社員数では変わらない（§3.1-8）——社員名・勤務時刻は部屋へ入るまで出さないため。
  */
-export function OfficeOverview({ employees, runs, departments, today }: OfficeOverviewProps) {
-  const summary = summarizeRooms(employees, runs, departments, today);
+export function OfficeOverview({ rooms, runs, stoppedCount, today }: OfficeOverviewProps) {
+  const summary = summarizeRooms(rooms, runs, today);
 
   return (
     <>
@@ -162,7 +155,7 @@ export function OfficeOverview({ employees, runs, departments, today }: OfficeOv
         </div>
       </section>
 
-      {summary.stoppedCount > 0 && <p className="mono of3__stopped-count">停止中 {summary.stoppedCount}名</p>}
+      {stoppedCount > 0 && <p className="mono of3__stopped-count">停止中 {stoppedCount}名</p>}
     </>
   );
 }

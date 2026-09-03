@@ -45,15 +45,15 @@ const profile = (over: Record<string, unknown> = {}) => ({
 });
 
 /**
- * 部屋（skill 名の分類・docs/specs/20-web-office.md §3.1-3）・ライン（`profile.line`）・
- * 部署（`profile.dept`）の3軸を**どれも一致させない**名簿。
+ * 部屋（＝部署。docs/specs/27-web-office-departments.md §3.1-1 で `profile.dept` になった）・
+ * ライン（`profile.line`）・部署（`profile.dept`）の軸を**一致させない**名簿。
  *
  * 3軸のどれかが同じ集合になっていると、別の軸で絞る誤実装がテストを素通りする。
  * 各軸の所属集合を実データから引くと:
  *
  * | 軸 | 集合 |
  * |---|---|
- * | `room=market` | x-benchmark・x-followers |
+ * | `room=growth-harness`（＝部屋・27 §3.1-1） | x-followers |
  * | `line=x` | x-benchmark・x-followers・x-post・x-pdca |
  * | `line=knowledge` | collect・**ask**・blindspot |
  * | `dept=x-harness` | **ask**・x-benchmark・x-post・x-pdca |
@@ -61,8 +61,8 @@ const profile = (over: Record<string, unknown> = {}) => ({
  * | `dept=growth-harness` | **x-followers** |
  *
  * 判別の要は2名:
- * - **a-ask**（LIBRARY / `line:knowledge` / `dept:x-harness`）——部署には入るがラインには入らない
- * - **a-x-followers**（MARKET / `line:x` / `dept:growth-harness`）——ラインと部屋には入るが部署には入らない
+ * - **a-ask**（`line:knowledge` / `dept:x-harness`）——部署には入るがラインには入らない
+ * - **a-x-followers**（`line:x` / `dept:growth-harness`）——ラインには入るが部署 x-harness には入らない
  */
 const EMPLOYEES = [
   {
@@ -115,7 +115,7 @@ const EMPLOYEES = [
     // **判別の要②**: MARKET / line:x / dept:**growth-harness**。
     // ライン x と部屋 MARKET には入るが部署 x-harness には入らない社員。
     // ライン由来で絞る誤実装だと dept=x-harness にこの社員が混ざり、
-    // room ∩ dept で絞る誤実装だと room=market からこの社員が消える（§3.3-1・§3.3-4）
+    // 部屋（＝ dept）と line を掛けて絞る誤実装だと room=growth-harness から消える（§3.3-1・§3.3-4）
     automation_id: 'a-x-followers',
     name: 'フォロワー日次（x-followers）',
     skill: 'x-followers',
@@ -244,7 +244,7 @@ async function mockOffice(page: Page, body: unknown = office()) {
 
 test('社員カードの所属部署タップで /office?dept={id} へ入る', async ({ page }) => {
   await mockOffice(page);
-  await page.goto('/office?room=market&employee=a-x-benchmark');
+  await page.goto('/office?room=x-harness&employee=a-x-benchmark');
 
   const card = page.getByRole('dialog', { name: '小垢ベンチ（x-benchmark）の名簿' });
   // 部署 id はそのままリンクの文言になる（日本語ラベルへ翻訳しない・§3.3-2・§4）
@@ -256,7 +256,7 @@ test('社員カードの所属部署タップで /office?dept={id} へ入る', a
 
 test('部署が未記載の社員カードには部署の導線が無い（行き先が無いリンクを作らない）', async ({ page }) => {
   await mockOffice(page);
-  await page.goto('/office?room=library&employee=a-idea-forge');
+  await page.goto('/office?room=unassigned&employee=a-idea-forge');
 
   const card = page.getByRole('dialog', { name: '着想鍛造（idea-forge）の名簿' });
   await expect(card.locator('.of__card-meta-wide dd')).toHaveText('部署 未記載');
@@ -360,20 +360,17 @@ test('未知の dept は空状態にして落とさず、全景への導線を�
 
 // ---- 優先順 room → line → dept（§3.3-4） ----
 
-test('room・line・dept が同時に来たら room を優先し、dept を完全に無視する', async ({ page }) => {
+test('room・line・dept が同時に来たら room を優先し、line も dept も無視する', async ({ page }) => {
   await mockOffice(page);
-  await page.goto('/office?room=market&line=knowledge&dept=x-harness');
+  // 部屋 id は `dept` の id（27 §3.1-1）。line・dept は別の集合を指すよう食い違わせてある
+  await page.goto('/office?room=growth-harness&line=knowledge&dept=x-harness');
 
-  await expect(page.locator('.of3__room-title')).toHaveText('MARKET');
-  const floor = page.getByRole('region', { name: 'MARKETの社員' });
-  // MARKET の2名がそろって出る。`dept:growth-harness` の x-followers が居ることが
-  // 「room ∩ dept で絞っていない」＝ dept を完全に無視している証拠
-  await expect(floor.locator('.of3__worker-name')).toHaveText([
-    '小垢ベンチ（x-benchmark）',
-    'フォロワー日次（x-followers）',
-  ]);
-  // 部屋の外の dept 仲間（LIBRARY の ask・STUDIO の x-post）は出ない＝ dept で解釈していない
+  await expect(page.locator('.of3__room-title')).toHaveText('DEPT: growth-harness');
+  const floor = page.getByRole('region', { name: 'DEPT: growth-harnessの社員' });
+  await expect(floor.locator('.of3__worker-name')).toHaveText(['フォロワー日次（x-followers）']);
+  // 同時指定の dept（x-harness）の社員は出ない＝ dept で解釈していない
   await expect(page.getByText('相談窓口（ask）')).toHaveCount(0);
+  await expect(page.getByText('小垢ベンチ（x-benchmark）')).toHaveCount(0);
   await expect(page.getByText('X投稿（x-post）')).toHaveCount(0);
   // 同時指定の line（knowledge）でも解釈していない
   await expect(page.getByText('情報収集（collect）')).toHaveCount(0);
