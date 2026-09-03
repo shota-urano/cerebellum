@@ -472,21 +472,29 @@ export interface OfficeDeptRoom {
   blocks: RoomBlocks;
 }
 
+/** 部署の並びの1枠（`officeDeptRoomsOf` と `companyDeptsOf` の共通形） */
+interface DeptSlot {
+  id: string;
+  /** `departments` に載っている部署だけ入る。`null` は「見出しに id を出す」（§3.1-4） */
+  label: string | null;
+}
+
 /**
- * 全景に出す部屋の一覧（docs/specs/27-web-office-departments.md §3.1-1〜4）。
+ * 部署の並び（docs/specs/27-web-office-departments.md §3.1-3）。
  *
- * 並びは `departments[].order` 昇順 → `departments` に無い `dept` 値（未知の部署）を
- * `employees` の返却順で → 「部署 未記載」を常に最後。`departments` が届いていないときは
- * 全部が「未知」になるので、結果として**返却順で最初に現れた順**になる（§3.1-4）。
- *
- * `departments` にあって所属0人の部署も**部屋を出す**（正本にある部署が空なのは見せるべき
- * 事実・§6）。逆に「部署 未記載」は0人なら出さない（§3.1-2）。
+ * `departments[].order` 昇順 → `departments` に無い `dept` 値（未知の部署）を `employees` の
+ * 返却順で。`departments` が届いていないときは全部が「未知」になるので、結果として
+ * **返却順で最初に現れた順**になる（§3.1-4・26 §3.4-2 のフォールバック）。
  * 値域の検査・翻訳はしない（§4）——`order` が数でないものだけ末尾へ送る。
+ *
+ * 「部署 未記載」は末尾に置くこと（§3.1-3）だけが共通で、束の表し方は全景（予約語
+ * `unassigned` の部屋）と会社案内（`id: null` の束）で違うので、有無だけを返して
+ * 呼び出し側に足させる。**全景と会社案内で並び規則を2箇所に書かない**（§3.3-1）。
  */
-export function officeDeptRoomsOf(
+function orderedDeptSlotsOf(
   employees: OfficeEmployee[],
   departments: OfficeDepartment[] | null | undefined,
-): OfficeDeptRoom[] {
+): { slots: DeptSlot[]; hasUnassigned: boolean } {
   const seen = new Set<string>();
   const listed = (Array.isArray(departments) ? departments : []).filter(
     (dept): dept is OfficeDepartment => {
@@ -511,12 +519,31 @@ export function officeDeptRoomsOf(
     else if (!known.has(dept) && !unknown.includes(dept)) unknown.push(dept);
   }
 
-  const rooms = [
-    ...ordered.map((dept) =>
-      deptRoomOf(employees, dept.id, typeof dept.label === 'string' && dept.label.trim() !== '' ? dept.label : null),
-    ),
-    ...unknown.map((id) => deptRoomOf(employees, id, null)),
-  ];
+  return {
+    slots: [
+      ...ordered.map((dept) => ({
+        id: dept.id,
+        label: typeof dept.label === 'string' && dept.label.trim() !== '' ? dept.label : null,
+      })),
+      ...unknown.map((id) => ({ id, label: null })),
+    ],
+    hasUnassigned,
+  };
+}
+
+/**
+ * 全景に出す部屋の一覧（docs/specs/27-web-office-departments.md §3.1-1〜4）。
+ * 並びと見出しは `orderedDeptSlotsOf`（§3.1-3・§3.1-4）＋末尾の「部署 未記載」。
+ *
+ * `departments` にあって所属0人の部署も**部屋を出す**（正本にある部署が空なのは見せるべき
+ * 事実・§6）。逆に「部署 未記載」は0人なら出さない（§3.1-2）。
+ */
+export function officeDeptRoomsOf(
+  employees: OfficeEmployee[],
+  departments: OfficeDepartment[] | null | undefined,
+): OfficeDeptRoom[] {
+  const { slots, hasUnassigned } = orderedDeptSlotsOf(employees, departments);
+  const rooms = slots.map((slot) => deptRoomOf(employees, slot.id, slot.label));
   return hasUnassigned
     ? [...rooms, deptRoomOf(employees, OFFICE_UNASSIGNED_DEPT_ID, OFFICE_UNASSIGNED_DEPT_LABEL)]
     : rooms;
@@ -562,6 +589,12 @@ export function breakdownOf(blocks: {
 export interface CompanyDept {
   /** 部署 id。**翻訳しない**（対応表を持たない・§4）。未記載の束は null */
   id: string | null;
+  /**
+   * 見出しの表示名（docs/specs/27-web-office-departments.md §3.3-2 → §3.1-5）。
+   * `departments` に載っている部署だけ入り、`null` の部署は見出しに id をそのまま出す
+   * （§3.1-4。26 §3.4-2 の姿）。未記載の束は「部署 未記載」で id を持たない。
+   */
+  label: string | null;
   /** 勤務帯の社員（返却順のまま） */
   scheduled: OfficeEmployee[];
   /** 手動起動の社員（返却順のまま） */
@@ -570,13 +603,14 @@ export interface CompanyDept {
   stopped: OfficeEmployee[];
 }
 
-function companyDeptOf(employees: OfficeEmployee[], id: string | null): CompanyDept {
+function companyDeptOf(employees: OfficeEmployee[], id: string | null, label: string | null): CompanyDept {
   const members = employees.filter((employee) => deptOf(employee) === id);
   // 部署内の並びは 勤務帯 → 手動起動 → 停止中（21 §3.4-1 と同じ順・§3.4-4）。
   // 各ブロック内は返却順のまま——クライアントで再ソートしない（20 §3.1-1）
   const { onDuty, stopped } = splitByEnabled(members);
   return {
     id,
+    label,
     scheduled: onDuty.filter((employee) => !isManualEmployee(employee)),
     manual: onDuty.filter(isManualEmployee),
     stopped,
@@ -584,29 +618,37 @@ function companyDeptOf(employees: OfficeEmployee[], id: string | null): CompanyD
 }
 
 /**
- * 会社案内の部署の束（docs/specs/26-web-office-company.md §3.4-2）。
+ * 会社案内の部署の束（docs/specs/26-web-office-company.md §3.4-2 ＋
+ * docs/specs/27-web-office-departments.md §3.3）。
  *
- * 並びは **`employees` の返却順で最初に現れた `dept` の順**。cerebellum 側に部署の順序表を
- * 持たない（§4）ので、名前順にも 8部署 id の定義順にも並べ替えない。
+ * 並びと見出しは全景の部屋と**同じ規則**（27 §3.3-1・§3.3-2 → §3.1-3・§3.1-5）。
+ * `orderedDeptSlotsOf` に寄せてあるので、`departments` があれば `order` 昇順 → 未知の部署は
+ * 返却順、無ければ全部が「返却順で最初に現れた順」（＝26 §3.4-2 の姿）に自然に戻る。
+ * cerebellum 側に部署の順序表・日本語ラベル表を持たない（27 §4）ので、名前順にも
+ * 8部署 id の定義順にも並べ替えない。
+ *
  * 最初に現れた位置は**停止中の社員も数える**——在籍状態は部署の並びと無関係で、
  * 停止中しか居ない部署だけが末尾へ押し出されるのは「返却順」ではない。
+ *
+ * 出す束は**名簿に社員が居る部署だけ**（26 §3.4-1「各部署に…所属社員を1行ずつ」の姿）。
+ * `departments` にあって所属0人の部署に部屋を出すのは全景の規則（27 §6）で、
+ * 会社案内は 27 §3.3 が並びと見出しだけを増分したので、束の集合は 26 のまま変えない。
  *
  * `dept` が `null` の社員は末尾に1束（`id: null`）でまとめる。**隠さない**（§3.4-2）——
  * 隠すと名簿の設定漏れが永久に見えなくなる（21 §3.3-1 と同じ理由）。0名なら束ごと出さない。
  */
-export function companyDeptsOf(employees: OfficeEmployee[]): CompanyDept[] {
-  const ids: string[] = [];
-  let hasUnlisted = false;
-  for (const employee of employees) {
-    const dept = deptOf(employee);
-    if (dept === null) {
-      hasUnlisted = true;
-    } else if (!ids.includes(dept)) {
-      ids.push(dept);
-    }
-  }
-  const depts = ids.map((id) => companyDeptOf(employees, id));
-  return hasUnlisted ? [...depts, companyDeptOf(employees, null)] : depts;
+export function companyDeptsOf(
+  employees: OfficeEmployee[],
+  departments: OfficeDepartment[] | null | undefined,
+): CompanyDept[] {
+  const { slots, hasUnassigned } = orderedDeptSlotsOf(employees, departments);
+  const staffed = new Set(employees.map(deptOf));
+  const depts = slots
+    .filter((slot) => staffed.has(slot.id))
+    .map((slot) => companyDeptOf(employees, slot.id, slot.label));
+  return hasUnassigned
+    ? [...depts, companyDeptOf(employees, null, OFFICE_UNASSIGNED_DEPT_LABEL)]
+    : depts;
 }
 
 /**

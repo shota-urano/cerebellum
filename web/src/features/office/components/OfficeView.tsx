@@ -130,8 +130,10 @@ export function OfficeView({
           selectedEmployeeId={employeeId}
         />
       ) : companyOpen ? (
-        // 停止中も含めた全員を渡す。部署の並びは返却順で決まる（26 §3.4-2）
-        <OfficeCompanyView employees={employees} />
+        // 停止中も含めた全員を渡す。部署の並びと見出しは全景の部屋と同じ規則
+        // （docs/specs/27-web-office-departments.md §3.3-1・§3.3-2。`departments` が
+        // 届いていなければ返却順・id 見出し＝26 §3.4-2 の姿に戻る）
+        <OfficeCompanyView employees={employees} departments={office.departments} />
       ) : (
         // 全景の部屋は `profile.dept` で切る（docs/specs/27-web-office-departments.md §3.1-1）。
         // 部屋ごとの内訳に停止中を出すので停止中も含めた全員を渡す（同 §3.1-6）
