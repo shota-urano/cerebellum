@@ -13,7 +13,7 @@ Phase 1.6 = 朝ダイジェストの取り込みと詳細ビュー（Slack 停�
 Phase 1.7 = 学習セッション（[14](./14-learning.md)・[15](./15-web-learning.md)）とハーネス承認（[17](./17-harness-approval.md)・[18](./18-web-harness.md)）。いずれも second-brain の夜間ハーネスが push し、画面での入力を翌日の自動処理が読み戻す双方向ループ。
 Phase 1.8 = 「オフィス」画面（[20](./20-web-office.md)・[21](./21-web-office-roster.md)）。Orca automation の勤務帯・直近報告・社員名簿の表示。Frontend のみで、cerebellum のスキーマ・API は無変更。
 Phase 1.9 = 「あなた待ち」画面（[22](./22-daily-intake.md)・[23](./23-web-waiting.md)）。daily取り込み候補（ToDo・考え・口調）の承認を Obsidian のチェックから画面のタップへ移す。17/18 と同じ「Vault が正本・cerebellum は人間の意思だけ持つ」双方向ループ。**→ 出荷せず Phase 2.0 に畳む（2026-09-02 決定）**。
-Phase 2.0 = 人間待ち項目の汎用化（[24](./24-inbox.md)・[25](./25-web-inbox.md)）。ハーネスごとに専用 API・画面を作る二重工事をやめ、「承認・選択・読む・異常」の4種類を1つの口で受ける。second-brain 側で社員カードに `review` を書けば枠が自動で立つ。Slack 通知の全廃止先でもある。cerebellum に載るものは「人間の日課」「学習」「AI からの確認待ち」の3種類と整理し、「今日」画面でこの3種を1枚に集約する。学習は固有の構造を持つため専用のまま残す唯一の例外。あわせてオフィスへの会社案内追補（[26](./26-web-office-company.md)）を同 Phase の Frontend 増分として含む（20・21 と同じくスキーマ・API は無変更）。
+Phase 2.0 = 人間待ち項目の汎用化（[24](./24-inbox.md)・[25](./25-web-inbox.md)）。ハーネスごとに専用 API・画面を作る二重工事をやめ、「承認・選択・読む・異常」の4種類を1つの口で受ける。second-brain 側で社員カードに `review` を書けば枠が自動で立つ。Slack 通知の全廃止先でもある。cerebellum に載るものは「人間の日課」「学習」「AI からの確認待ち」の3種類と整理し、「今日」画面でこの3種を1枚に集約する。学習は固有の構造を持つため専用のまま残す唯一の例外。あわせてオフィスへの会社案内追補（[26](./26-web-office-company.md)）を同 Phase の Frontend 増分として含む（20・21 と同じくスキーマ・API は無変更）。全景の部署化（[27](./27-web-office-departments.md)）も同 Phase の Frontend 増分——26 が「部屋と部署は別軸で並存」と据え置いた4部屋を、名簿の正本になった `dept` の8部署で切り直す（2026-09-03 に本人が全景を見て「部署が古い。4つしか無い」と読んだ）。「今日」画面の段の並び替え（[30](./30-web-today-order.md)。計器盤を最上部に残して WAITING → LEARNING → TASKS）も同様。決着済み項目の読み返し（[28](./28-inbox-history.md)・[29](./29-web-inbox-history.md)）も同 Phase の増分——24 の読み出し3形はすべて「これから処理するもの」を引く口で、決めた項目を後から読む経路が無かった（2026-09-03 に本人が「承認とか読んだとかにしたらデータが見れなくなる」と報告）。
 
 ## 2. システム全体像
 
@@ -62,6 +62,10 @@ Phase 2.0 = 人間待ち項目の汎用化（[24](./24-inbox.md)・[25](./25-web
 | 24 | [`24-inbox.md`](./24-inbox.md) | 人間待ち項目（汎用）の受け入れ・決定記録・summary（domain/usecase/API） | Backend |
 | 25 | [`25-web-inbox.md`](./25-web-inbox.md) | 「今日」の3種集約（日課・学習・確認待ち）と「あなた待ち」汎用画面 | Frontend |
 | 26 | [`26-web-office-company.md`](./26-web-office-company.md) | オフィスの会社案内追補（所属部署・人間確認の印・会社案内シート。20/21 の増分） | Frontend |
+| 27 | [`27-web-office-departments.md`](./27-web-office-departments.md) | オフィス全景を部署ベースに（4部屋の廃止・8部署の部屋・`departments` の受け取り。20/26 の増分） | Frontend |
+| 28 | [`28-inbox-history.md`](./28-inbox-history.md) | 決着済み人間待ち項目の日付読み出し（`?date=`。24 の増分） | Backend |
+| 29 | [`29-web-inbox-history.md`](./29-web-inbox-history.md) | 「あなた待ち」の決着済み表示と日付切り替え（25 の増分） | Frontend |
+| 30 | [`30-web-today-order.md`](./30-web-today-order.md) | 「今日」画面の段の並び替え（計器盤を残して WAITING → LEARNING → TASKS。25 の増分） | Frontend |
 
 ## 4. 確定済みの初期値（横断・変更禁止）
 

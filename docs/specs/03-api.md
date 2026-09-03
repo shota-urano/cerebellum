@@ -44,6 +44,7 @@ Rust（axum）と Next.js（`shared/api/types.ts` に手動同期）が共有す
 | GET | `/api/inbox/items?status=open` | 未決の人間待ち項目を日付問わず新しい順で取得 | [24](./24-inbox.md) |
 | GET | `/api/inbox/items?source={source}&status=decided&applyState=pending` | 送信元の決定済み・未適用項目を古い順で取得 | [24](./24-inbox.md) |
 | GET | `/api/inbox/items?applyState=failed` | 適用失敗の項目を日付問わず新しい順で取得 | [24](./24-inbox.md) |
+| GET | `/api/inbox/items?date={date}` | その業務日の項目を status 問わず新しい順で取得（決着済みの読み返し） | [28](./28-inbox-history.md) |
 | GET | `/api/inbox/summary` | 送信元ごとの最終受信・未決数・失敗数を取得 | [24](./24-inbox.md) |
 | POST | `/api/inbox/items/{id}/decision` | 人間待ち項目への意思を記録 | [24](./24-inbox.md) |
 | POST | `/api/inbox/items/{id}/apply-result` | 人間待ち項目の適用結果を書き戻す | [24](./24-inbox.md) |
@@ -336,6 +337,7 @@ Rust（axum）と Next.js（`shared/api/types.ts` に手動同期）が共有す
 // GET /api/inbox/items?status=open
 // GET /api/inbox/items?source=night-harness&status=decided&applyState=pending
 // GET /api/inbox/items?applyState=failed
+// GET /api/inbox/items?date=2026-09-02
 // → 200（受信ゼロなら { "items": [] }）
 {
   "items": [
@@ -352,7 +354,9 @@ Rust（axum）と Next.js（`shared/api/types.ts` に手動同期）が共有す
 }
 // status=open は未決・期限切れを除き日付降順、同日内 id 降順。
 // status=decided は approved と chosen の合成クエリ値（保存しない）。source と applyState=pending が必須で日付昇順、同日内 id 昇順。
-// applyState=failed は日付降順、同日内 id 降順。上記3形以外は 400。
+// applyState=failed は日付降順、同日内 id 降順。
+// date はその業務日の全項目を status 問わず id 降順。期限切れも返す。他パラメータとの併用不可（[28](./28-inbox-history.md)）。
+// 上記4形以外は 400。
 
 // GET /api/inbox/summary
 // → 200（受信ゼロなら { "sources": [] }）
