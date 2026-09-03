@@ -519,9 +519,13 @@ a.of__ml-node:hover { border-color: var(--accent); color: var(--text); }
    席・部屋・書類の画像を使わず SVG も持ち込まない（§3.4-5）。装飾は CSS の枠と余白だけ */
 .of__co { display: grid; gap: 10px; }
 .of__co-dept { padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
-/* 部署 id は等幅のまま（翻訳しない・§4）。タップで部署フロアへ（§3.4-3） */
+/* 見出しは `departments` の label 主・id 添え（docs/specs/27-web-office-departments.md
+   §3.3-2 → §3.1-5）。label が届いていない部署は id をそのまま等幅で出す（同 §3.1-4）。
+   タップで部署フロアへ（§3.4-3） */
 .of__co-dept-name { display: inline-block; min-height: 24px; font-size: 12px; letter-spacing: .12em; color: var(--accent); text-decoration: none; overflow-wrap: anywhere; }
 .of__co-dept-name:hover { text-decoration: underline; }
+/* 添えの id は全景タイルの `.of3__room-id` と同じ弱さ（同じ見出し形に見せる・§3.1-5） */
+.of__co-dept-id { margin: 1px 0 0; font-size: 8px; letter-spacing: .04em; color: var(--muted); opacity: .6; overflow-wrap: anywhere; }
 /* 未記載は行き先が無いのでリンクにしない。だが隠さない（§3.4-2） */
 .of__co-dept-name--missing { margin: 0; color: var(--muted); }
 .of__co-breakdown { margin: 3px 0 0; font-size: 8.5px; letter-spacing: .1em; color: var(--muted); opacity: .7; word-break: keep-all; }
