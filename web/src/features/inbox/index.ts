@@ -24,6 +24,16 @@ export { useInboxSummary } from './hooks/useInboxSummary';
  */
 export { useInboxByDate } from './hooks/useInboxItems';
 /**
+ * 業務日の境界（深夜0時・ローカルタイム。docs/specs/00-overview.md §4）。
+ *
+ * 日付ナビ（docs/specs/29-web-inbox-history.md §3.3「翌日方向は今日まで」）の判定に
+ * **app 層が要る**——ナビの合成は app 層の仕事（同 §3.3・25 §5）で、画面と同じ境界で
+ * 「今日」を決めないと §3.1 / §3.2 の切り替えとナビの止まり方がずれる。
+ * `shared/lib` の日付ユーティリティは「今日はサーバー由来」を前提にしているので、
+ * inbox の端末時計由来の「今日」はここから公開する。
+ */
+export { localToday } from './lib/item';
+/**
  * 「今日」第3段（同 §3.1・§5）。件数と未着行だけを出す表示部品で、
  * 取得（`useInboxSummary`）と名簿突合（`missingSources`）は **app 層が行う**
  * ——第1段の赤点も同じ集計を読むので、同じ問いを2回しないため（§5）。

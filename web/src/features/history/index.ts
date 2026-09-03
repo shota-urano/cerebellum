@@ -8,4 +8,3 @@ export { InvalidDate } from './components/InvalidDate';
 export { WeekSummary } from './components/WeekSummary';
 export { useSummary } from './hooks/useSummary';
 export { useToday } from './hooks/useToday';
-export { isValidDateParam } from './lib/query';

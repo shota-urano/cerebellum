@@ -2,7 +2,7 @@
 
 import type { InboxDecisionInput, InboxItemDto } from '@/shared/api';
 import { CheckRing, Markdown } from '@/shared/ui';
-import { decidedLabel, isFrozen, type InboxSender } from '../lib/item';
+import { decidedLabel, isFrozen, stateLabel, type InboxSender } from '../lib/item';
 
 type Props = {
   item: InboxItemDto;
@@ -12,10 +12,19 @@ type Props = {
   showDate?: boolean;
   /** 決定済みとして畳んで出す（下部「今日決めたもの」と失敗枠） */
   decided?: boolean;
+  /**
+   * 読み取り専用の行（過去日のビュー・docs/specs/29-web-inbox-history.md §3.2-2）。
+   *
+   * 状態だけを出し、**決定ボタン・ラジオ・取り消しを出さない**——過去日は読み返す場所で
+   * 決める場所ではない（同 §4「決定は今日のビューだけが持つ」）。`bodyMd` の展開と
+   * `refPath` の表示は今日のビューと同じまま（同 §3.2-3。本文が読めることが要件）。
+   */
+  readonly?: boolean;
   /** `bodyMd` を開いているか（開閉の状態は一覧側が持つ） */
   open: boolean;
   onToggleBody: () => void;
-  onDecide: (id: number, decision: InboxDecisionInput) => void;
+  /** 決定の記録。読み取り専用の行（`readonly`）では渡さない——押す口が無いので要らない */
+  onDecide?: (id: number, decision: InboxDecisionInput) => void;
 };
 
 /**
@@ -38,7 +47,13 @@ function ApplyFailure({ item }: { item: InboxItemDto }) {
 }
 
 /** 未決の行の操作（docs/specs/25-web-inbox.md §3.2 の表・kind で固定）。 */
-function Actions({ item, onDecide }: Pick<Props, 'item' | 'onDecide'>) {
+function Actions({
+  item,
+  onDecide,
+}: {
+  item: InboxItemDto;
+  onDecide: (id: number, decision: InboxDecisionInput) => void;
+}) {
   if (item.kind === 'alert') {
     return (
       <div className="wt__acts">
@@ -129,12 +144,16 @@ function Actions({ item, onDecide }: Pick<Props, 'item' | 'onDecide'>) {
  * 決定済みの行は「何を決めたか」＋取り消しだけを出す（畳んだ形）。**消さない**のは、
  * ✅/❌の直後に消えると誤タップを取り消せなくなるため（同 §3.2・
  * docs/specs/17-harness-approval.md §3.3-1 と同じ救済路）。
+ *
+ * `readonly` の行（過去日のビュー・docs/specs/29-web-inbox-history.md §3.2-2）は
+ * 状態表示だけになる。本文・在処の見せ方は今日のビューと同じ（同 §3.2-3）。
  */
 export function InboxItemRow({
   item,
   sender,
   showDate,
   decided,
+  readonly,
   open,
   onToggleBody,
   onDecide,
@@ -176,7 +195,14 @@ export function InboxItemRow({
           （docs/specs/03-api.md §3）なので、本文が無い行でも在処は消さずに出す */}
       {item.refPath && <p className="mono wt__ref">{item.refPath}</p>}
 
-      {decided ? (
+      {readonly || !onDecide ? (
+        /* 過去日の行（29 §3.2-2）。現在の状態を出すだけで押す口を持たない。
+           `failed` の行はカード先頭の `ApplyFailure` が `apply_error` を等幅で出すので、
+           最上部の失敗枠（25 §3.2）を過去日に持ち込まなくても原因は読める（29 §3.2-4） */
+        <div className="wt__acts">
+          <span className="mono wt__verdict">{stateLabel(item)}</span>
+        </div>
+      ) : decided ? (
         <div className="wt__acts">
           <span className="mono wt__verdict">{decidedLabel(item)}</span>
           {frozen ? (
