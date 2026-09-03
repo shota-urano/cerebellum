@@ -1,6 +1,5 @@
 'use client';
 
-import { ErrorBanner } from '@/shared/ui';
 import { useDay } from '../hooks/useDay';
 import { useToggleCheck } from '../hooks/useToggleCheck';
 import { AllClear } from './AllClear';
@@ -27,7 +26,8 @@ export type DayTasksProps = {
  */
 export function DayTasks({ date, readonly = false }: DayTasksProps) {
   const { day, error, isLoading, mutate } = useDay(date);
-  const { toggle, toggleError } = useToggleCheck(day, mutate);
+  // 失敗のバナーは `DayHeader` が最上部に出す（30 §5・§6。合図は feature 内の共有スロット経由）
+  const { toggle } = useToggleCheck(day, mutate);
 
   const isReadonly = readonly || day?.readonly === true;
   const done = day?.progress.done ?? 0;
@@ -35,11 +35,6 @@ export function DayTasks({ date, readonly = false }: DayTasksProps) {
 
   return (
     <>
-      {/* トグル POST の失敗（08 §6）。ロールバックした一覧の直上に出す——押した行のすぐ近くで
-          知らせる。取得自体が失敗しているときは `DayHeader` のバナーが理由を語るので重ねない
-          （割る前の `error ?? toggleError` と同じ優先順） */}
-      {!error && toggleError && <ErrorBanner message={toggleError.message} />}
-
       {!day ? (
         // 取得前。エラーで一度も取れていないときはスケルトンを出さない（永久スケルトンにしない・08 §6）
         isLoading || !error ? <DayTasksSkeleton readonly={readonly} /> : null

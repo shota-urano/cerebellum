@@ -77,7 +77,6 @@ confirmed_rev: 9f77c39
 |---|---|
 | `/api/days/today` 500・通信失敗 | ErrorBanner は最上部（`DayHeader` 側）。TASKS 枠はスケルトンを出さずバナーだけ（08 §6 の「永久スケルトンにしない」を踏襲） |
 | 取得前（読み込み中） | ヘッダ・TASKS それぞれのスケルトン。**WAITING と LEARNING の描画を待たない**（枠ごとに独立。25 §6） |
-| トグル POST の失敗（08 §6） | ErrorBanner は **TASKS 側（`DayTasks`）の一覧の直上**。ロールバックした行のすぐ近くで知らせる——WAITING・LEARNING を跨いだ最上部に出すと、押した行と合図が2枠ぶん離れる。取得自体が失敗しているときは `DayHeader` のバナーが理由を語るので重ねない（割る前の `error ?? toggleError` と同じ優先順） |
 | LEARNING・WAITING の失敗 | 25 §6 のまま。並びが変わっても互いを止めない |
 
 ## 7. スコープ外

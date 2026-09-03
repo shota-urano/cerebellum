@@ -2,6 +2,7 @@
 
 import { ErrorBanner } from '@/shared/ui';
 import { useDay } from '../hooks/useDay';
+import { useToggleError } from '../hooks/useToggleCheck';
 import { DayHeaderSkeleton } from './DaySkeleton';
 import { HeaderPanel } from './HeaderPanel';
 import { ReadonlyHead } from './ReadonlyHead';
@@ -35,6 +36,10 @@ export type DayHeaderProps = {
  */
 export function DayHeader({ date, readonly = false, alert = false }: DayHeaderProps) {
   const { day, error, isLoading } = useDay(date);
+  // トグル POST の失敗（08 §6）も**最上部の1枚**で出す。割る前の `error ?? toggleError` と
+  // 同じ優先順・同じ位置——撃つのは `DayTasks` だが、表示位置は並び替えで変えない（30 §5・§6）
+  const toggleError = useToggleError();
+  const banner = error ?? toggleError;
 
   const isReadonly = readonly || day?.readonly === true;
   const done = day?.progress.done ?? 0;
@@ -44,7 +49,7 @@ export function DayHeader({ date, readonly = false, alert = false }: DayHeaderPr
     <>
       {/* 文言はサーバーの message をそのまま出す（docs/specs/07 §6）。fetch 失敗時は client.ts の汎用文言。
           最上部に置く（30 §6）——並び替えでも「まず異常が目に入る」位置は変えない */}
-      {error && <ErrorBanner message={error.message} />}
+      {banner && <ErrorBanner message={banner.message} />}
 
       {!day ? (
         // 取得前。エラーで一度も取れていないときはバナーだけ出す（永久スケルトンにしない・08 §6）

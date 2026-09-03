@@ -163,6 +163,8 @@ type Options = {
   tasks?: TaskSeed[];
   /** `/api/days/today` が落ちる（§6） */
   dayDown?: boolean;
+  /** `POST /api/days/today/checks/{taskId}` が落ちる（08 §6 のロールバック＋バナー） */
+  checkDown?: boolean;
   summary?: SummarySeed[];
   /** 名簿（office.json）。未着行を出したいときだけ渡す */
   employees?: unknown[];
@@ -179,6 +181,18 @@ async function openToday(page: Page, options: Options = {}) {
         ? route.fulfill({ status: 500, json: { error: { code: 'internal', message: 'DB エラー' } } })
         : route.fulfill({ json: dayJson(options.tasks ?? OPEN_DAY) }),
   );
+
+  // 消し込みの POST（docs/specs/03 §2）。既定は素通しさせず、落とすときだけ差し替える
+  if (options.checkDown) {
+    await page.route(
+      (url) => url.pathname.startsWith('/api/days/today/checks/'),
+      (route) =>
+        route.fulfill({
+          status: 500,
+          json: { error: { code: 'internal', message: 'チェックを保存できませんでした' } },
+        }),
+    );
+  }
 
   // 学習は「届いて解いた」を既定にする（LEARNING の状態は本タスクの対象外・§3.3）
   await page.route(
@@ -373,6 +387,36 @@ test('`/api/days/today` が落ちてもエラーバナーは最上部・WAITING 
   await expect(page.locator('[aria-busy="true"]')).toHaveCount(0);
   await expect(headerPanel(page)).toHaveCount(0);
   await expect(tasksFrame(page)).toHaveCount(0);
+});
+
+test('トグル POST が失敗したときもエラーバナーは最上部・行はロールバックされる', async ({
+  page,
+}) => {
+  // 割る前は `DayView` が `error ?? toggleError` を最上部に1枚出していた。トグルを撃つのは
+  // `DayTasks`（下段）になったが、**表示位置は変えない**（30 §5・§6。合図は feature 内で渡す）
+  await openToday(page, {
+    checkDown: true,
+    summary: [{ source: 'night-harness', open: { approve: 2 } }],
+  });
+
+  const row = page.getByRole('button', { name: /夜のふりかえり/ });
+  await expect(row).toHaveAttribute('aria-pressed', 'false');
+  await row.click();
+
+  const banner = errorBanner(page).first();
+  await expect(banner).toContainText('チェックを保存できませんでした');
+
+  // WAITING・LEARNING を跨いだ**最上部**に出る（下段の一覧の直上ではない）
+  const bannerTop = await topOf(banner);
+  expect(bannerTop).toBeLessThan(await topOf(waitingFrame(page)));
+  expect(bannerTop).toBeLessThan(await topOf(learningFrame(page)));
+  expect(bannerTop).toBeLessThan(await topOf(headerPanel(page)));
+
+  // optimistic 表示はロールバックされ、進捗も元に戻る（08 §6）
+  await expect(row).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('.hdr__count')).toHaveText('1 / 2');
+  // 他の枠は止まらない
+  await expect(chip(page, '承認').locator('.wt__chip__n')).toHaveText('2');
 });
 
 // ---- ⑥ 過去日は無変更（§3.3・docs/specs/09 §3） ----
