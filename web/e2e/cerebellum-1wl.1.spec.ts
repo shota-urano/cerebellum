@@ -298,8 +298,10 @@ test('departments 付きで8部屋が order 順に出て、見出しが label �
   for (const legacy of ['LIBRARY', 'LAB', 'MARKET', 'STUDIO']) {
     await expect(campus(page).getByText(legacy, { exact: true })).toHaveCount(0);
   }
-  // 部屋タップの行き先はその部署のフロア（部屋 id ＝ `dept` の id・§3.2-1）
-  await expect(room(page, '記憶整備')).toHaveAttribute('href', '/office?dept=second-brain-harness');
+  // 部屋タップの行き先はその部署のフロア（部屋 id ＝ `dept` の id・§3.2-1）。
+  // cerebellum-1wl.2 で §3.2-1 の正規の入口が `?room=` になったのでクエリ名だけ更新した
+  // （`?dept=` は互換の別名として残る）。行き先の部署は変えていない
+  await expect(room(page, '記憶整備')).toHaveAttribute('href', '/office?room=second-brain-harness');
 
   await page.screenshot({ path: 'test-results/screens/cerebellum-1wl.1-office.png', fullPage: false });
 });
@@ -376,8 +378,8 @@ test('dept:null と profile 無しの社員は末尾の「部署 未記載」に
   await expect(room(page, '部署 未記載').locator('.of3__room-crew')).toHaveText(
     '勤務帯 2名・名簿未記載 1名',
   );
-  // 予約語 `unassigned` の部屋（§3.2-1・§4）。id は部署ではないので見出しに添えない
-  await expect(room(page, '部署 未記載')).toHaveAttribute('href', '/office?dept=unassigned');
+  // 予約語 `unassigned` の部屋（§3.2-1・§4）。cerebellum-1wl.2 で入口が `?room=` になった
+  await expect(room(page, '部署 未記載')).toHaveAttribute('href', '/office?room=unassigned');
   // 全景では社員名を出さない（20 §3.1-1 のまま）
   await expect(campus(page)).not.toContainText('着想鍛造');
 });

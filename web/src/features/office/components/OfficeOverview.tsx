@@ -142,7 +142,8 @@ export function OfficeOverview({ rooms, runs, stoppedCount, today }: OfficeOverv
             <Link
               key={room.id}
               className="of3__room"
-              href={`/office?dept=${encodeURIComponent(room.id)}`}
+              /* 部屋 id ＝ `dept` の id。正規の入口は `?room=`（27 §3.2-1。`?dept=` は別名） */
+              href={`/office?room=${encodeURIComponent(room.id)}`}
               aria-label={`${room.title}に入る、社員${room.members}名`}
             >
               <span className="of3__room-name">{room.title}</span>

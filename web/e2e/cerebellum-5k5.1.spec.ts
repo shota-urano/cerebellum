@@ -241,7 +241,11 @@ test('未知の employee は見つからないことを出す（落とさない�
   await card.getByRole('link', { name: '閉じる' }).click();
   await expect(page).toHaveURL(/\/office\?room=unassigned$/);
   // 部署そのものは通常どおり出る
-  await expect(page.getByRole('region', { name: 'DEPT: unassignedの社員' })).toBeVisible();
+  // フロアのアクセシブル名は見出しに従う。cerebellum-1wl.2（27 §3.1-5・§3.2-5）で部署ルームの
+  // 見出しが「label 主・id 添え」に揃い、`unassigned` の部屋は `DEPT: unassigned` から
+  // 「部署 未記載」（全景タイル・下部導線と同じ表示名）になったので参照名だけ更新した。
+  // このテストが見ているもの（ブロックの順序・席の並び・下壁・社員の不在）は変えていない。
+  await expect(page.getByRole('region', { name: '部署 未記載の社員' })).toBeVisible();
 });
 
 test('停止中社員の席からも名簿が開ける（状態は停止中・停止前の報告は出さない）', async ({ page }) => {
