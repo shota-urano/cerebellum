@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { ErrorBanner } from '@/shared/ui';
 import { useOffice } from '../hooks/useOffice';
-import { isOfficeRoomId, lastRunOf, localDate, splitByEnabled, staleHours } from '../lib/office';
+import { lastRunOf, localDate, officeDeptRoomsOf, splitByEnabled, staleHours } from '../lib/office';
 import { OfficeCompanyView } from './OfficeCompanyView';
 import { OfficeDeskSheet } from './OfficeDeskSheet';
 import { OfficeEmployeeSheet } from './OfficeEmployeeSheet';
@@ -67,7 +67,9 @@ export function OfficeView({
   const now = new Date();
   const stale = staleHours(office.generated_at, now.getTime());
   const { onDuty, stopped } = splitByEnabled(employees);
-  const selectedRoomId = isOfficeRoomId(roomId) ? roomId : null;
+  // 部屋一覧は office.json 由来（docs/specs/27-web-office-departments.md §3.1）。
+  // 固定4部屋の表は廃止したので、`?room=` の解決も部屋の導線もこの1本から引く（同 §4・§5）
+  const rooms = officeDeptRoomsOf(employees, office.departments);
   const selectedRun = runId === null ? undefined : runs.find((run) => run.run_id === runId);
   const selectedEmployee = selectedRun
     ? employees.find((employee) => employee.automation_id === selectedRun.automation_id)
@@ -77,23 +79,24 @@ export function OfficeView({
   const cardEmployee =
     employeeId === null ? undefined : employees.find((employee) => employee.automation_id === employeeId);
   const cardRun = cardEmployee ? lastRunOf(runs, cardEmployee.automation_id) : undefined;
-  // `room`・`line`・`dept` が同時に来たら `room` → `line` → `dept` の優先順
-  // （部屋が主・ラインと部署が従。URL を多軸で解釈しない・21 §3.7-7・26 §3.3-4）
-  const scope: OfficeFloorScope | null = selectedRoomId
-    ? { kind: 'room', roomId: selectedRoomId }
+  // 部屋 id ＝ `dept` の id で、`?dept=` は `?room=` の**別名**（26 §3.3 との互換・
+  // docs/specs/27-web-office-departments.md §3.2-1）。同じ画面なので軸として数えない。
+  // よって優先順は `room`（=`dept`）→ `line` の2段（同 §3.2-4・21 §3.7-8）——
+  // 26 §3.3-4 の3段（`room` → `line` → `dept`）は `dept` が `room` へ畳まれて消えた。
+  const deptRoomId = roomId ?? deptId;
+  const scope: OfficeFloorScope | null = deptRoomId !== null
+    ? // 自分へのリンクは**入ってきた別名のまま**保つ。`?dept=` の文脈で `?room=` へ
+      // 書き換えると、社員カード・報告シートの往復で URL が跳ねる（21 §3.1-4 の戻り先）
+      { kind: 'room', roomId: deptRoomId, param: roomId !== null ? 'room' : 'dept' }
     : lineId !== null
       ? { kind: 'line', lineId }
-      : deptId !== null
-        ? { kind: 'dept', deptId }
-        : null;
+      : null;
   const roomHref =
     scope === null
       ? '/office'
       : scope.kind === 'room'
-        ? `/office?room=${scope.roomId}`
-        : scope.kind === 'line'
-          ? `/office?line=${encodeURIComponent(scope.lineId)}`
-          : `/office?dept=${encodeURIComponent(scope.deptId)}`;
+        ? `/office?${scope.param}=${encodeURIComponent(scope.roomId)}`
+        : `/office?line=${encodeURIComponent(scope.lineId)}`;
   // 報告シートの戻り先は、社員カード経由で来たときだけカードへ返す（21 §3.1-4）。
   // `?run=` 単独・MY DESK 経由の既存 deep link の戻り先は 20 §3.5-4 のまま変えない。
   const cardHref =
@@ -118,6 +121,7 @@ export function OfficeView({
         // 絞り込みが指定されていないときだけ全景の代わりに出す（26 §3.4-6）
         <OfficeRoomView
           scope={scope}
+          rooms={rooms}
           employees={onDuty}
           runs={runs}
           stopped={stopped}
@@ -126,11 +130,15 @@ export function OfficeView({
           selectedEmployeeId={employeeId}
         />
       ) : companyOpen ? (
-        // 停止中も含めた全員を渡す。部署の並びは返却順で決まる（26 §3.4-2）
-        <OfficeCompanyView employees={employees} />
+        // 停止中も含めた全員を渡す。部署の並びと見出しは全景の部屋と同じ規則
+        // （docs/specs/27-web-office-departments.md §3.3-1・§3.3-2。`departments` が
+        // 届いていなければ返却順・id 見出し＝26 §3.4-2 の姿に戻る）
+        <OfficeCompanyView employees={employees} departments={office.departments} />
       ) : (
+        // 全景の部屋は `profile.dept` で切る（docs/specs/27-web-office-departments.md §3.1-1）。
+        // 部屋ごとの内訳に停止中を出すので停止中も含めた全員を渡す（同 §3.1-6）
         <OfficeOverview
-          employees={onDuty}
+          rooms={rooms}
           runs={runs}
           stoppedCount={stopped.length}
           today={localDate(now)}

@@ -117,45 +117,39 @@ export interface OfficeRun {
   truncated: boolean | null;
 }
 
+/**
+ * 部署一覧（docs/specs/27-web-office-departments.md §2・§4）。
+ *
+ * 正本は second-brain の編成表で、`build_office.py` が office.json のトップレベルへ載せる
+ * （同 §9 の提案）。**cerebellum に部署の順序表・日本語ラベル表を持たない**ので、
+ * 届かないあいだは無いものとして扱う（見出しは id・並びは返却順・§3.1-4）。
+ * 画面は値を検査しない・翻訳しない（§4）。
+ */
+export interface OfficeDepartment {
+  id: string;
+  label: string;
+  /** 正本の編成表の並び（1始まりの整数） */
+  order: number;
+}
+
 /** office.json 全体。`runs` は新しい順（§2） */
 export interface OfficeData {
   generated_at: string | null;
   window_days: number | null;
   employees: OfficeEmployee[];
   runs: OfficeRun[];
-}
-
-export type OfficeRoomId = 'library' | 'lab' | 'market' | 'studio';
-
-export interface OfficeRoom {
-  id: OfficeRoomId;
-  label: string;
-  name: string;
-}
-
-export const OFFICE_ROOMS: readonly OfficeRoom[] = [
-  { id: 'library', label: 'LIBRARY', name: 'Library Room' },
-  { id: 'lab', label: 'LAB', name: 'Laboratory' },
-  { id: 'market', label: 'MARKET', name: 'Market Room' },
-  { id: 'studio', label: 'STUDIO', name: 'Writing Room' },
-] as const;
-
-export function isOfficeRoomId(value: string | null): value is OfficeRoomId {
-  return OFFICE_ROOMS.some((room) => room.id === value);
+  /** 部署一覧（27 §2）。生成側の対応前は届かない——欠落を暫定の表で埋めない（27 §3.1-4） */
+  departments?: OfficeDepartment[] | null;
 }
 
 /**
- * skill 名を4つの役割空間へ畳む。状態判定ではなく表示上の分類だけを担う。
- * 未知・null は情報の集積地点である LIBRARY に置き、社員を画面から消さない。
+ * 「部署 未記載」の部屋 id（docs/specs/27-web-office-departments.md §4）。
+ * `dept` の値域と衝突しない予約語で、second-brain 側でこの id を部署に使わない。
  */
-export function roomOf(employee: OfficeEmployee): OfficeRoomId {
-  // skill が取れない素の automation も消さないため、現在名は分類の補助にだけ使う。
-  const role = `${employee.skill ?? ''} ${employee.name}`.toLowerCase();
-  if (/market|benchmark|ベンチ|フォロワー/.test(role)) return 'market';
-  if (/write|publish|pdca|post|reply|quote|ポスト|リプ|引用/.test(role)) return 'studio';
-  if (/harness|study|seed|experiment|incubate|blindspot|auto-plug|ハーネス|ブラインド/.test(role)) return 'lab';
-  return 'library';
-}
+export const OFFICE_UNASSIGNED_DEPT_ID = 'unassigned';
+
+/** 「部署 未記載」の部屋の見出し（27 §3.1-2）。部署の日本語ラベル表ではない */
+export const OFFICE_UNASSIGNED_DEPT_LABEL = '部署 未記載';
 
 /** 手動起動の社員（21 §3.3-1）。`shift:null` からは推測しない——`trigger` だけを根拠にする */
 export function isManualEmployee(employee: OfficeEmployee): boolean {
@@ -428,21 +422,6 @@ export interface RoomBlocks {
 }
 
 /**
- * 部署の社員を 勤務帯 → 手動起動 → 停止中 の3ブロックへ分ける（21 §3.4-1）。
- * ブロック内は `employees` の返却順（勤務開始時刻の昇順）のまま——再ソートしない（§3.1-1）。
- *
- * 行数はブロックごとに切り上げて合算する。ブロックが変わると行が切り替わるので、
- * 総人数から割ると実際より少なく出て**最終行が部屋の下壁の外に出る**（21 §3.4-4）。
- */
-export function roomBlocksOf(
-  onDuty: OfficeEmployee[],
-  stopped: OfficeEmployee[],
-  roomId: OfficeRoomId,
-): RoomBlocks {
-  return blocksOf(onDuty, stopped, (employee) => roomOf(employee) === roomId);
-}
-
-/**
  * ライン絞り込み（21 §3.7-1）。部屋（役割）とは別軸だが、**席の並びは部署ルームと同一規則**
  * ——見た目と順序を作り分けない（別の画面ではなく絞り込みだから）。
  */
@@ -464,7 +443,115 @@ export function deptBlocksOf(
   stopped: OfficeEmployee[],
   deptId: string,
 ): RoomBlocks {
-  return blocksOf(onDuty, stopped, (employee) => deptOf(employee) === deptId);
+  return blocksOf(onDuty, stopped, deptMemberOf(deptId));
+}
+
+/**
+ * その部署（＝全景の部屋・27 §3.1-1）に属するか。`unassigned` は予約語で
+ * 「`dept` が `null`／`profile` が無い」社員の束を指す（27 §3.1-2・§4）。
+ */
+function deptMemberOf(deptId: string): (employee: OfficeEmployee) => boolean {
+  return deptId === OFFICE_UNASSIGNED_DEPT_ID
+    ? (employee) => deptOf(employee) === null
+    : (employee) => deptOf(employee) === deptId;
+}
+
+/**
+ * 全景の1部屋（docs/specs/27-web-office-departments.md §3.1）。
+ * 席・内訳は部署ルームと同じ部品で組めるように `RoomBlocks` を持つ（§3.1-6・§5）。
+ */
+export interface OfficeDeptRoom {
+  /** 部屋 id ＝ `dept` の id。「部署 未記載」の部屋は `unassigned`（§3.2-1・§4） */
+  id: string;
+  /**
+   * 見出しの表示名。`departments` に載っている部署だけ入る。
+   * `null` の部屋は見出しに id をそのまま出す（§3.1-4）——id から表示名を推測しない。
+   */
+  label: string | null;
+  /** 勤務帯・手動・停止中の3ブロック（返却順のまま） */
+  blocks: RoomBlocks;
+}
+
+/** 部署の並びの1枠（`officeDeptRoomsOf` と `companyDeptsOf` の共通形） */
+interface DeptSlot {
+  id: string;
+  /** `departments` に載っている部署だけ入る。`null` は「見出しに id を出す」（§3.1-4） */
+  label: string | null;
+}
+
+/**
+ * 部署の並び（docs/specs/27-web-office-departments.md §3.1-3）。
+ *
+ * `departments[].order` 昇順 → `departments` に無い `dept` 値（未知の部署）を `employees` の
+ * 返却順で。`departments` が届いていないときは全部が「未知」になるので、結果として
+ * **返却順で最初に現れた順**になる（§3.1-4・26 §3.4-2 のフォールバック）。
+ * 値域の検査・翻訳はしない（§4）——`order` が数でないものだけ末尾へ送る。
+ *
+ * 「部署 未記載」は末尾に置くこと（§3.1-3）だけが共通で、束の表し方は全景（予約語
+ * `unassigned` の部屋）と会社案内（`id: null` の束）で違うので、有無だけを返して
+ * 呼び出し側に足させる。**全景と会社案内で並び規則を2箇所に書かない**（§3.3-1）。
+ */
+function orderedDeptSlotsOf(
+  employees: OfficeEmployee[],
+  departments: OfficeDepartment[] | null | undefined,
+): { slots: DeptSlot[]; hasUnassigned: boolean } {
+  const seen = new Set<string>();
+  const listed = (Array.isArray(departments) ? departments : []).filter(
+    (dept): dept is OfficeDepartment => {
+      if (typeof dept?.id !== 'string' || dept.id.trim() === '' || seen.has(dept.id)) return false;
+      // 同じ id が2回来ても部屋は1つ（社員を二重に数えない）
+      seen.add(dept.id);
+      return true;
+    },
+  );
+  const rank = (dept: OfficeDepartment) =>
+    typeof dept.order === 'number' && Number.isFinite(dept.order) ? dept.order : Number.MAX_SAFE_INTEGER;
+  // Array#sort は安定なので、同じ order・`order` 欠落は届いた順のまま残る
+  const ordered = [...listed].sort((a, b) => rank(a) - rank(b));
+  const known = new Set(ordered.map((dept) => dept.id));
+
+  // 未知の部署と「部署 未記載」の有無は返却順で拾う（停止中も数える。26 §3.4-2 と同じ理由）
+  const unknown: string[] = [];
+  let hasUnassigned = false;
+  for (const employee of employees) {
+    const dept = deptOf(employee);
+    if (dept === null) hasUnassigned = true;
+    else if (!known.has(dept) && !unknown.includes(dept)) unknown.push(dept);
+  }
+
+  return {
+    slots: [
+      ...ordered.map((dept) => ({
+        id: dept.id,
+        label: typeof dept.label === 'string' && dept.label.trim() !== '' ? dept.label : null,
+      })),
+      ...unknown.map((id) => ({ id, label: null })),
+    ],
+    hasUnassigned,
+  };
+}
+
+/**
+ * 全景に出す部屋の一覧（docs/specs/27-web-office-departments.md §3.1-1〜4）。
+ * 並びと見出しは `orderedDeptSlotsOf`（§3.1-3・§3.1-4）＋末尾の「部署 未記載」。
+ *
+ * `departments` にあって所属0人の部署も**部屋を出す**（正本にある部署が空なのは見せるべき
+ * 事実・§6）。逆に「部署 未記載」は0人なら出さない（§3.1-2）。
+ */
+export function officeDeptRoomsOf(
+  employees: OfficeEmployee[],
+  departments: OfficeDepartment[] | null | undefined,
+): OfficeDeptRoom[] {
+  const { slots, hasUnassigned } = orderedDeptSlotsOf(employees, departments);
+  const rooms = slots.map((slot) => deptRoomOf(employees, slot.id, slot.label));
+  return hasUnassigned
+    ? [...rooms, deptRoomOf(employees, OFFICE_UNASSIGNED_DEPT_ID, OFFICE_UNASSIGNED_DEPT_LABEL)]
+    : rooms;
+}
+
+function deptRoomOf(employees: OfficeEmployee[], id: string, label: string | null): OfficeDeptRoom {
+  const { onDuty, stopped } = splitByEnabled(employees);
+  return { id, label, blocks: blocksOf(onDuty, stopped, deptMemberOf(id)) };
 }
 
 /**
@@ -502,6 +589,12 @@ export function breakdownOf(blocks: {
 export interface CompanyDept {
   /** 部署 id。**翻訳しない**（対応表を持たない・§4）。未記載の束は null */
   id: string | null;
+  /**
+   * 見出しの表示名（docs/specs/27-web-office-departments.md §3.3-2 → §3.1-5）。
+   * `departments` に載っている部署だけ入り、`null` の部署は見出しに id をそのまま出す
+   * （§3.1-4。26 §3.4-2 の姿）。未記載の束は「部署 未記載」で id を持たない。
+   */
+  label: string | null;
   /** 勤務帯の社員（返却順のまま） */
   scheduled: OfficeEmployee[];
   /** 手動起動の社員（返却順のまま） */
@@ -510,13 +603,14 @@ export interface CompanyDept {
   stopped: OfficeEmployee[];
 }
 
-function companyDeptOf(employees: OfficeEmployee[], id: string | null): CompanyDept {
+function companyDeptOf(employees: OfficeEmployee[], id: string | null, label: string | null): CompanyDept {
   const members = employees.filter((employee) => deptOf(employee) === id);
   // 部署内の並びは 勤務帯 → 手動起動 → 停止中（21 §3.4-1 と同じ順・§3.4-4）。
   // 各ブロック内は返却順のまま——クライアントで再ソートしない（20 §3.1-1）
   const { onDuty, stopped } = splitByEnabled(members);
   return {
     id,
+    label,
     scheduled: onDuty.filter((employee) => !isManualEmployee(employee)),
     manual: onDuty.filter(isManualEmployee),
     stopped,
@@ -524,31 +618,46 @@ function companyDeptOf(employees: OfficeEmployee[], id: string | null): CompanyD
 }
 
 /**
- * 会社案内の部署の束（docs/specs/26-web-office-company.md §3.4-2）。
+ * 会社案内の部署の束（docs/specs/26-web-office-company.md §3.4-2 ＋
+ * docs/specs/27-web-office-departments.md §3.3）。
  *
- * 並びは **`employees` の返却順で最初に現れた `dept` の順**。cerebellum 側に部署の順序表を
- * 持たない（§4）ので、名前順にも 8部署 id の定義順にも並べ替えない。
+ * 並びと見出しは全景の部屋と**同じ規則**（27 §3.3-1・§3.3-2 → §3.1-3・§3.1-5）。
+ * `orderedDeptSlotsOf` に寄せてあるので、`departments` があれば `order` 昇順 → 未知の部署は
+ * 返却順、無ければ全部が「返却順で最初に現れた順」（＝26 §3.4-2 の姿）に自然に戻る。
+ * cerebellum 側に部署の順序表・日本語ラベル表を持たない（27 §4）ので、名前順にも
+ * 8部署 id の定義順にも並べ替えない。
+ *
  * 最初に現れた位置は**停止中の社員も数える**——在籍状態は部署の並びと無関係で、
  * 停止中しか居ない部署だけが末尾へ押し出されるのは「返却順」ではない。
+ *
+ * 出す束は**名簿に社員が居る部署だけ**（26 §3.4-1「各部署に…所属社員を1行ずつ」の姿）。
+ * `departments` にあって所属0人の部署に部屋を出すのは全景の規則（27 §6）で、
+ * 会社案内は 27 §3.3 が並びと見出しだけを増分したので、束の集合は 26 のまま変えない。
  *
  * `dept` が `null` の社員は末尾に1束（`id: null`）でまとめる。**隠さない**（§3.4-2）——
  * 隠すと名簿の設定漏れが永久に見えなくなる（21 §3.3-1 と同じ理由）。0名なら束ごと出さない。
  */
-export function companyDeptsOf(employees: OfficeEmployee[]): CompanyDept[] {
-  const ids: string[] = [];
-  let hasUnlisted = false;
-  for (const employee of employees) {
-    const dept = deptOf(employee);
-    if (dept === null) {
-      hasUnlisted = true;
-    } else if (!ids.includes(dept)) {
-      ids.push(dept);
-    }
-  }
-  const depts = ids.map((id) => companyDeptOf(employees, id));
-  return hasUnlisted ? [...depts, companyDeptOf(employees, null)] : depts;
+export function companyDeptsOf(
+  employees: OfficeEmployee[],
+  departments: OfficeDepartment[] | null | undefined,
+): CompanyDept[] {
+  const { slots, hasUnassigned } = orderedDeptSlotsOf(employees, departments);
+  const staffed = new Set(employees.map(deptOf));
+  const depts = slots
+    .filter((slot) => staffed.has(slot.id))
+    .map((slot) => companyDeptOf(employees, slot.id, slot.label));
+  return hasUnassigned
+    ? [...depts, companyDeptOf(employees, null, OFFICE_UNASSIGNED_DEPT_LABEL)]
+    : depts;
 }
 
+/**
+ * 社員を 勤務帯 → 手動起動 → 停止中 の3ブロックへ分ける（21 §3.4-1）。
+ * ブロック内は `employees` の返却順（勤務開始時刻の昇順）のまま——再ソートしない（20 §3.1-1）。
+ *
+ * 行数はブロックごとに切り上げて合算する。ブロックが変わると行が切り替わるので、
+ * 総人数から割ると実際より少なく出て**最終行が部屋の下壁の外に出る**（21 §3.4-4）。
+ */
 function blocksOf(
   onDuty: OfficeEmployee[],
   stopped: OfficeEmployee[],
