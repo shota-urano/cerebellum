@@ -480,20 +480,26 @@ test('生成が新しいときは鮮度警告を出さない', async ({ page }) 
 
 // ---- 全景の構図は変えない（§3.4-6・§3.3-6） ----
 
-test('全景の4部屋＋MY DESK の構図が変わっていない', async ({ page }) => {
+test('全景の構図は部署の部屋＋MY DESK（§3.4-6 は 27 §3.1 で取り消し）', async ({ page }) => {
   await mockOffice(page);
   await page.goto('/office');
 
   const campus = page.getByRole('region', { name: 'AIオフィス全景' });
-  // 実カウント: 部屋4つ・MY DESK 1つ・それ以外の子要素は無い
-  await expect(campus.locator('.of3__room')).toHaveCount(4);
+  // 実カウント: 部屋は `dept` の値ごとに1つ＋末尾の「部署 未記載」・MY DESK 1つ・他は無い
+  // （docs/specs/27-web-office-departments.md §3.1-1〜3。`departments` 未着なので返却順）
+  await expect(campus.locator('.of3__room')).toHaveCount(5);
   await expect(campus.locator('.of3__desk')).toHaveCount(1);
-  await expect(campus.locator('a, div.of3__desk')).toHaveCount(5);
-  await expect(campus.locator('.of3__room-name')).toHaveText(['LIBRARY', 'LAB', 'MARKET', 'STUDIO']);
-  // 会社案内・部署の導線を構図の中へ足していない（入口はヘッダ側の1本だけ）
+  await expect(campus.locator('a, div.of3__desk')).toHaveCount(6);
+  await expect(campus.locator('.of3__room-name')).toHaveText([
+    'note-harness',
+    'x-harness',
+    'engineering',
+    'biz-harness',
+    '部署 未記載',
+  ]);
+  // 会社案内の導線は構図の中へ足していない（入口はヘッダ側の1本だけ・§3.4-6 の残る部分）
   await expect(campus.locator('a[href*="company="]')).toHaveCount(0);
-  await expect(campus.locator('a[href*="dept="]')).toHaveCount(0);
-  // 全景の見出しも2項のまま。部署の内訳を全景へ持ち出さない
+  // 全景の見出しは2項のまま（27 §3.1-7）。部署ルームのヘッダ内訳は全景へ持ち出さない
   await expect(page.locator('.of3__headline p')).toHaveCount(2);
   await expect(page.locator('.of3__room-breakdown')).toHaveCount(0);
 });

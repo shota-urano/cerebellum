@@ -230,7 +230,11 @@ test('全景にライン導線は増えていない（4部屋＋MY DESKのまま
 
   const overview = page.getByRole('region', { name: 'AIオフィス全景' });
   await expect(overview.locator('a[href*="line="]')).toHaveCount(0);
-  await expect(overview.locator('a, div.of3__desk')).toHaveCount(5);
+  // 全景の構図は「部屋＋MY DESK」のまま。部屋は `dept` で切るようになった
+  // （docs/specs/27-web-office-departments.md §3.1-1）ので、`dept` を持たないこの名簿では
+  // 「部署 未記載」の1部屋だけになる（§3.1-2）——ライン導線が増えていないことは変わらない
+  await expect(overview.locator('.of3__room')).toHaveCount(1);
+  await expect(overview.locator('a, div.of3__desk')).toHaveCount(2);
   await expect(page.locator('.of3__room-breakdown')).toHaveCount(0);
 });
 

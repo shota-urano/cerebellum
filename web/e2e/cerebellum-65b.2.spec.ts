@@ -409,15 +409,26 @@ test('dept だけなら部署で解釈する（優先順の末尾が効いてい
   await expect(page.getByText('相談窓口（ask）')).toHaveCount(0);
 });
 
-// ---- 全景は変えない（§3.3-6） ----
+// ---- 全景の部屋そのものが部署になった（§3.3-6 は 27 §3.1-1 で取り消し） ----
 
-test('全景に部署導線は増えていない（4部屋＋MY DESKのまま）', async ({ page }) => {
+test('全景の部屋が dept で切られ、部屋リンクがそのまま部署のフロアへ入る', async ({ page }) => {
   await mockOffice(page);
   await page.goto('/office');
 
   const overview = page.getByRole('region', { name: 'AIオフィス全景' });
-  await expect(overview.locator('a[href*="dept="]')).toHaveCount(0);
+  // 「全景に部署の導線を増やさない」（§3.3-6）は
+  // docs/specs/27-web-office-departments.md §3.1-1 で取り消し。部屋＝部署になり、
+  // `dept` の値ごとに1部屋（`departments` 未着なので見出しは id・並びは返却順・27 §3.1-4）
+  await expect(overview.locator('.of3__room')).toHaveCount(4);
+  await expect(overview.locator('a[href*="dept="]')).toHaveCount(4);
+  await expect(overview.locator('.of3__room-name')).toHaveText([
+    'second-brain-harness',
+    'x-harness',
+    'growth-harness',
+    '部署 未記載',
+  ]);
   await expect(overview.locator('a, div.of3__desk')).toHaveCount(5);
+  // 勤務形態の1行（部署ルームのヘッダ内訳）は依然として部屋へ入るまで出さない
   await expect(page.locator('.of3__room-breakdown')).toHaveCount(0);
 });
 

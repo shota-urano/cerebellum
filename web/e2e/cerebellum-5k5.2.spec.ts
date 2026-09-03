@@ -300,21 +300,42 @@ test('手動社員も分類規則どおりの部屋に出る（手動部屋を�
   await expect(page.locator('.of3__room-breakdown')).toHaveText('勤務帯 0名・手動 1名');
 });
 
+/**
+ * 全景の部屋は `profile.dept` で切る（docs/specs/27-web-office-departments.md §3.1-1 が
+ * 20 §3.1-3 の skill 名分類を置き換えた）。手動社員の数え方を旧2部屋と同じ分かれ方で
+ * 見るために `dept` を与える（`departments` は届いていない状態＝見出しは id・27 §3.1-4）。
+ */
+const DEPT_BY_AUTOMATION: Record<string, string> = {
+  'a-collect': 'second-brain-harness',
+  'a-legacy': 'second-brain-harness',
+  'a-ask': 'second-brain-harness',
+  'a-idea-forge': 'second-brain-harness',
+  'a-retired': 'second-brain-harness',
+  'a-x-post': 'x-harness',
+};
+
+const withDept = (employees: typeof EMPLOYEES) =>
+  employees.map((employee) => ({
+    ...employee,
+    profile: { ...(employee.profile ?? {}), dept: DEPT_BY_AUTOMATION[employee.automation_id] ?? null },
+  }));
+
 test('全景の部屋カウントは在籍数（手動込み）で、信号の優先順と昨夜の集計は変わらない', async ({ page }) => {
-  await mockOffice(page);
+  await mockOffice(page, office({ employees: withDept(EMPLOYEES) }));
   await page.goto('/office');
 
   const overview = page.getByRole('region', { name: 'AIオフィス全景' });
   // 勤務帯・手動を区別しない在籍数（§3.5-1）。停止中は含めない
-  await expect(overview.getByRole('link', { name: 'LIBRARYに入る、社員4名' })).toBeVisible();
-  await expect(overview.getByRole('link', { name: 'STUDIOに入る、社員1名' })).toBeVisible();
+  await expect(overview.getByRole('link', { name: 'second-brain-harnessに入る、社員4名' })).toBeVisible();
+  await expect(overview.getByRole('link', { name: 'x-harnessに入る、社員1名' })).toBeVisible();
   // 手動 run も直近 run として同じ規則で数える（§3.5-2・§3.5-3）
-  await expect(overview.getByRole('link', { name: /STUDIOに入る/ })).toContainText('確認 1');
-  await expect(overview.getByRole('link', { name: /LIBRARYに入る/ })).toContainText('失敗 1');
+  await expect(overview.getByRole('link', { name: /x-harnessに入る/ })).toContainText('確認 1');
+  await expect(overview.getByRole('link', { name: /second-brain-harnessに入る/ })).toContainText('失敗 1');
   const headline = page.getByLabel('昨夜のオフィス概要');
   await expect(headline).toContainText('昨夜：失敗 1');
   await expect(headline).toContainText('あなたの仕事：1件');
-  // 全景に勤務形態の内訳・社員名は出さない
+  // 全景に社員名は出さない。部屋ごとの内訳（27 §3.1-6）は出るが、勤務形態の1行
+  // （`.of3__room-breakdown`＝部署ルームのヘッダ）は依然として部屋へ入るまで出さない
   await expect(page.locator('.of3__room-breakdown')).toHaveCount(0);
   await expect(page.getByText('相談窓口（ask）')).toHaveCount(0);
   await expect(page.getByText('手動起動')).toHaveCount(0);

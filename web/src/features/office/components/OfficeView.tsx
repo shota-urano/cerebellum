@@ -129,10 +129,12 @@ export function OfficeView({
         // 停止中も含めた全員を渡す。部署の並びは返却順で決まる（26 §3.4-2）
         <OfficeCompanyView employees={employees} />
       ) : (
+        // 全景の部屋は `profile.dept` で切る（docs/specs/27-web-office-departments.md §3.1-1）。
+        // 部屋ごとの内訳に停止中を出すので停止中も含めた全員を渡す（同 §3.1-6）
         <OfficeOverview
-          employees={onDuty}
+          employees={employees}
           runs={runs}
-          stoppedCount={stopped.length}
+          departments={office.departments}
           today={localDate(now)}
         />
       )}
