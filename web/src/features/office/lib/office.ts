@@ -292,8 +292,8 @@ export function deptOf(employee: OfficeEmployee): string | null {
   return rosterOf(employee).dept;
 }
 
-/** ミニラインのノード種別（21 §2 の4種＋解決できなかったもの） */
-export type LineNodeKind = 'employee' | 'manual' | 'human' | 'place' | 'unknown';
+/** ミニラインのノード種別（21 §2 の5種＋解決できなかったもの） */
+export type LineNodeKind = 'employee' | 'manual' | 'human' | 'place' | 'dest' | 'unknown';
 
 export interface LineNode {
   kind: LineNodeKind;
@@ -319,6 +319,10 @@ export function lineNodesOf(values: string[], employees: OfficeEmployee[]): Line
     }
     if (raw.startsWith('place:')) {
       return { kind: 'place' as const, label: raw.slice(6), raw, employeeId: null };
+    }
+    if (raw.startsWith('dest:')) {
+      // 成果物の行き先。人間が開く場所ではないので「見る場所」を付けない（21 §3.6-5・§9.2）
+      return { kind: 'dest' as const, label: raw.slice(5), raw, employeeId: null };
     }
     if (raw.startsWith('manual:')) {
       const command = raw.slice(7);
