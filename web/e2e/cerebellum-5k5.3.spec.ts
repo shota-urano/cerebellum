@@ -258,14 +258,14 @@ const card = (page: Page, name: string) => page.getByRole('dialog', { name: `${n
 
 test('カードに担当エージェントが出て、未記載は推測で埋めない', async ({ page }) => {
   await mockOffice(page);
-  await page.goto('/office?room=library&employee=a-connection-process');
+  await page.goto('/office?room=unassigned&employee=a-connection-process');
   const sheet = card(page, 'つながり処理（connection-process）');
   await expect(sheet).toContainText('AGENT');
   await expect(sheet).toContainText('claude-code (opus)');
   // skill（何の手順で動くか）と agent（誰が動かすか）は別物
   await expect(sheet).toContainText('connection-process');
 
-  await page.goto('/office?room=library&employee=a-consolidate');
+  await page.goto('/office?room=unassigned&employee=a-consolidate');
   const missing = card(page, '統合（consolidate）');
   await expect(missing).toContainText('エージェント 未記載');
   await expect(missing).not.toContainText('claude');
@@ -274,7 +274,7 @@ test('カードに担当エージェントが出て、未記載は推測で埋�
 
 test('ミニラインが upstream → 本人 → downstream の1-hopで出て、2-hop先を出さない', async ({ page }) => {
   await mockOffice(page);
-  await page.goto('/office?room=library&employee=a-connection-process');
+  await page.goto('/office?room=unassigned&employee=a-connection-process');
   const sheet = card(page, 'つながり処理（connection-process）');
 
   await expect(sheet).toContainText('LINE: 知識');
@@ -295,7 +295,7 @@ test('ミニラインが upstream → 本人 → downstream の1-hopで出て、
 
 test('place: ノードに「見る場所」が付き、リンクを持たない', async ({ page }) => {
   await mockOffice(page);
-  await page.goto('/office?room=studio&employee=a-reply-assist');
+  await page.goto('/office?room=unassigned&employee=a-reply-assist');
   const sheet = card(page, 'リプ支援（reply-assist）');
 
   const place = sheet.locator('.of__ml-node--place');
@@ -309,12 +309,12 @@ test('place: ノードに「見る場所」が付き、リンクを持たない'
 
 test('社員ノードのタップで相手のカードへ移り、1-hopずつ辿れる', async ({ page }) => {
   await mockOffice(page);
-  await page.goto('/office?room=library&employee=a-connection-process');
+  await page.goto('/office?room=unassigned&employee=a-connection-process');
 
   await card(page, 'つながり処理（connection-process）')
     .getByRole('link', { name: '統合（consolidate）' })
     .click();
-  await expect(page).toHaveURL(/\/office\?room=library&employee=a-consolidate$/);
+  await expect(page).toHaveURL(/\/office\?room=unassigned&employee=a-consolidate$/);
   const next = card(page, '統合（consolidate）');
   await expect(next.locator('.of__ml-self')).toHaveText('統合（consolidate）');
 
@@ -328,7 +328,7 @@ test('社員ノードのタップで相手のカードへ移り、1-hopずつ辿
 
 test('解決できないノードは値のまま出し、タップさせない', async ({ page }) => {
   await mockOffice(page);
-  await page.goto('/office?room=lab&employee=a-night-study');
+  await page.goto('/office?room=unassigned&employee=a-night-study');
   const sheet = card(page, '夜学（night-study）');
 
   // employees に無い automation_id は id のまま（名前を捏造しない・§3.6-4）
@@ -350,7 +350,7 @@ test('manual: ノードは在籍する手動社員のカードへ繋がる', asy
       ),
     }),
   );
-  await page.goto('/office?room=library&employee=a-consolidate');
+  await page.goto('/office?room=unassigned&employee=a-consolidate');
   const sheet = card(page, '統合（consolidate）');
 
   await expect(sheet.getByLabel('下流')).toContainText('/unknown-cmd');
@@ -362,7 +362,7 @@ test('manual: ノードは在籍する手動社員のカードへ繋がる', asy
 
 test('独立と名簿未記載は、それぞれの言い方で出す', async ({ page }) => {
   await mockOffice(page);
-  await page.goto('/office?room=lab&employee=a-thinking-gym');
+  await page.goto('/office?room=unassigned&employee=a-thinking-gym');
   const independent = card(page, '思考体操（thinking-gym）');
   await expect(independent).toContainText('独立（ラインなし）');
   await expect(independent.getByLabel('上流')).toHaveCount(0);
@@ -370,7 +370,7 @@ test('独立と名簿未記載は、それぞれの言い方で出す', async ({
   await expect(independent.locator('.of__ml-self')).toHaveText('思考体操（thinking-gym）');
 
   // profile が無い社員はミニラインを出さない（§3.6-8）
-  await page.goto('/office?room=library&employee=a-bare');
+  await page.goto('/office?room=unassigned&employee=a-bare');
   const bare = card(page, '旧バックアップ（bare）');
   await expect(bare).toContainText('名簿 未記載');
   await expect(bare.locator('.of__ml')).toHaveCount(0);

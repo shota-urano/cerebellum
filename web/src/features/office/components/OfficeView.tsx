@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { ErrorBanner } from '@/shared/ui';
 import { useOffice } from '../hooks/useOffice';
-import { isOfficeRoomId, lastRunOf, localDate, splitByEnabled, staleHours } from '../lib/office';
+import { lastRunOf, localDate, officeDeptRoomsOf, splitByEnabled, staleHours } from '../lib/office';
 import { OfficeCompanyView } from './OfficeCompanyView';
 import { OfficeDeskSheet } from './OfficeDeskSheet';
 import { OfficeEmployeeSheet } from './OfficeEmployeeSheet';
@@ -67,7 +67,9 @@ export function OfficeView({
   const now = new Date();
   const stale = staleHours(office.generated_at, now.getTime());
   const { onDuty, stopped } = splitByEnabled(employees);
-  const selectedRoomId = isOfficeRoomId(roomId) ? roomId : null;
+  // 部屋一覧は office.json 由来（docs/specs/27-web-office-departments.md §3.1）。
+  // 固定4部屋の表は廃止したので、`?room=` の解決も部屋の導線もこの1本から引く（同 §4・§5）
+  const rooms = officeDeptRoomsOf(employees, office.departments);
   const selectedRun = runId === null ? undefined : runs.find((run) => run.run_id === runId);
   const selectedEmployee = selectedRun
     ? employees.find((employee) => employee.automation_id === selectedRun.automation_id)
@@ -79,8 +81,8 @@ export function OfficeView({
   const cardRun = cardEmployee ? lastRunOf(runs, cardEmployee.automation_id) : undefined;
   // `room`・`line`・`dept` が同時に来たら `room` → `line` → `dept` の優先順
   // （部屋が主・ラインと部署が従。URL を多軸で解釈しない・21 §3.7-7・26 §3.3-4）
-  const scope: OfficeFloorScope | null = selectedRoomId
-    ? { kind: 'room', roomId: selectedRoomId }
+  const scope: OfficeFloorScope | null = roomId !== null
+    ? { kind: 'room', roomId }
     : lineId !== null
       ? { kind: 'line', lineId }
       : deptId !== null
@@ -118,6 +120,7 @@ export function OfficeView({
         // 絞り込みが指定されていないときだけ全景の代わりに出す（26 §3.4-6）
         <OfficeRoomView
           scope={scope}
+          rooms={rooms}
           employees={onDuty}
           runs={runs}
           stopped={stopped}
@@ -129,8 +132,10 @@ export function OfficeView({
         // 停止中も含めた全員を渡す。部署の並びは返却順で決まる（26 §3.4-2）
         <OfficeCompanyView employees={employees} />
       ) : (
+        // 全景の部屋は `profile.dept` で切る（docs/specs/27-web-office-departments.md §3.1-1）。
+        // 部屋ごとの内訳に停止中を出すので停止中も含めた全員を渡す（同 §3.1-6）
         <OfficeOverview
-          employees={onDuty}
+          rooms={rooms}
           runs={runs}
           stoppedCount={stopped.length}
           today={localDate(now)}

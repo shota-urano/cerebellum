@@ -35,7 +35,10 @@ function atLocal(dayOffset: number, hhmm: string): string {
   return localIso(at);
 }
 
-/** 全員 LIBRARY（skill 名の分類規則・20 §3.1-3）に落ちるようにして1部署で検証する */
+/**
+ * 全員が「部署 未記載」の部屋（`?room=unassigned`・docs/specs/27-web-office-departments.md
+ * §3.1-2）へ落ちるようにして1部署で検証する（`profile.dept` を持たせない）。
+ */
 const EMPLOYEES = [
   {
     automation_id: 'a-collect',
@@ -140,10 +143,10 @@ async function mockOffice(page: Page, body: unknown = office()) {
 
 test('席タップで社員カードが開き、名簿が読み順どおりに出る', async ({ page }) => {
   await mockOffice(page);
-  await page.goto('/office?room=library');
+  await page.goto('/office?room=unassigned');
 
   await page.getByRole('link', { name: /情報収集（collect）の名簿を開く/ }).click();
-  await expect(page).toHaveURL(/\/office\?room=library&employee=a-collect$/);
+  await expect(page).toHaveURL(/\/office\?room=unassigned&employee=a-collect$/);
 
   const card = page.getByRole('dialog', { name: '情報収集（collect）の名簿' });
   await expect(card).toBeVisible();
@@ -180,7 +183,7 @@ test('席タップで社員カードが開き、名簿が読み順どおりに�
 
 test('名簿が無い社員は「名簿 未記載」と直す場所を出し、値を捏造しない', async ({ page }) => {
   await mockOffice(page);
-  await page.goto('/office?room=library&employee=a-bare');
+  await page.goto('/office?room=unassigned&employee=a-bare');
 
   const card = page.getByRole('dialog', { name: '旧バックアップ（bare）の名簿' });
   await expect(card).toContainText('名簿 未記載');
@@ -199,11 +202,11 @@ test('名簿が無い社員は「名簿 未記載」と直す場所を出し、�
 
 test('社員カードから報告シートへ移り、閉じるとカードへ戻る', async ({ page }) => {
   await mockOffice(page);
-  await page.goto('/office?room=library&employee=a-collect');
+  await page.goto('/office?room=unassigned&employee=a-collect');
 
   const card = page.getByRole('dialog', { name: '情報収集（collect）の名簿' });
   await card.getByRole('link', { name: '報告を見る' }).click();
-  await expect(page).toHaveURL(/\/office\?room=library&employee=a-collect&run=r-collect-today$/);
+  await expect(page).toHaveURL(/\/office\?room=unassigned&employee=a-collect&run=r-collect-today$/);
 
   // シートは常に1枚（§3.1-4）
   await expect(page.getByRole('dialog')).toHaveCount(1);
@@ -213,40 +216,40 @@ test('社員カードから報告シートへ移り、閉じるとカードへ�
   await expect(sheet).toContainText('候補B');
 
   await sheet.getByRole('link', { name: '閉じる' }).click();
-  await expect(page).toHaveURL(/\/office\?room=library&employee=a-collect$/);
+  await expect(page).toHaveURL(/\/office\?room=unassigned&employee=a-collect$/);
   await expect(card).toBeVisible();
 });
 
 test('`?run=` 単独の deep link は従来どおり部署へ戻る', async ({ page }) => {
   await mockOffice(page);
-  await page.goto('/office?room=library&run=r-collect-today');
+  await page.goto('/office?room=unassigned&run=r-collect-today');
 
   const sheet = page.getByRole('dialog', { name: '情報収集（collect）', exact: true });
   await expect(sheet).toBeVisible();
   await sheet.getByRole('link', { name: '閉じる' }).click();
   // 名簿を経由していない deep link の戻り先は 20 §3.5-4 のまま（§3.1-4）
-  await expect(page).toHaveURL(/\/office\?room=library$/);
+  await expect(page).toHaveURL(/\/office\?room=unassigned$/);
   await expect(page.getByRole('dialog')).toHaveCount(0);
 });
 
 test('未知の employee は見つからないことを出す（落とさない）', async ({ page }) => {
   await mockOffice(page);
-  await page.goto('/office?room=library&employee=a-missing');
+  await page.goto('/office?room=unassigned&employee=a-missing');
 
   const card = page.getByRole('dialog', { name: 'その社員は見つかりません' });
   await expect(card).toContainText('a-missing');
   await card.getByRole('link', { name: '閉じる' }).click();
-  await expect(page).toHaveURL(/\/office\?room=library$/);
+  await expect(page).toHaveURL(/\/office\?room=unassigned$/);
   // 部署そのものは通常どおり出る
-  await expect(page.getByRole('region', { name: 'LIBRARYの社員' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'DEPT: unassignedの社員' })).toBeVisible();
 });
 
 test('停止中社員の席からも名簿が開ける（状態は停止中・停止前の報告は出さない）', async ({ page }) => {
   await mockOffice(page);
-  await page.goto('/office?room=library');
+  await page.goto('/office?room=unassigned');
 
   await page.locator('.of3__worker--stopped').click();
-  await expect(page).toHaveURL(/\/office\?room=library&employee=a-retired$/);
+  await expect(page).toHaveURL(/\/office\?room=unassigned&employee=a-retired$/);
 
   const card = page.getByRole('dialog', { name: '旧ダッシュボード生成（retired）の名簿' });
   await expect(card).toContainText('運用ダッシュボードのHTMLを吐いていました');

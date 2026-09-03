@@ -75,6 +75,9 @@ const EMPLOYEES = [
     next_run_at: atLocal(1, '02:40'),
     last_run_at: atLocal(0, '02:40'),
     last_run_id: 'r-market-intake',
+    // 部屋は `profile.dept` で切る（docs/specs/27-web-office-departments.md §3.1-1）。
+    // 「その部屋の社員だけが出る」を見たいので、この社員だけ別部署に置く
+    profile: { dept: 'biz-harness' },
   },
   {
     automation_id: 'a-collect',
@@ -117,6 +120,7 @@ const EMPLOYEES = [
     next_run_at: atLocal(2, '08:00'),
     last_run_at: LAST_WEEK,
     last_run_id: 'r-x-pdca',
+    profile: { dept: 'x-harness' },
   },
   {
     // 直近 run 無し＝「まだ実行なし」＋ next_run_at（§3.2 最終行）
@@ -128,6 +132,7 @@ const EMPLOYEES = [
     next_run_at: atLocal(0, '22:00'),
     last_run_at: null,
     last_run_id: null,
+    profile: { dept: 'x-harness' },
   },
 ];
 
@@ -403,31 +408,55 @@ async function mockOffice(page: Page, body: unknown = office()) {
   );
 }
 
-test('全景は4部屋＋MY DESKへ情報を畳み、正常社員の文字を常時読ませない', async ({ page }) => {
-  await mockOffice(page);
+/**
+ * 全景の部屋は `profile.dept` で切る（docs/specs/27-web-office-departments.md §3.1-1 が
+ * 20 §3.1-3 の skill 名分類を置き換えた）。部屋の信号の優先順を**4部屋で**見るために、
+ * 旧4部屋と同じ分かれ方になる `dept` を与える（値は second-brain 側の名簿から届くもの）。
+ */
+const DEPT_BY_AUTOMATION: Record<string, string> = {
+  'a-night-harness': 'second-brain-harness',
+  'a-daily-digest': 'second-brain-harness',
+  'a-market-intake': 'biz-harness',
+  'a-collect': 'engineering',
+  'a-night-shift': 'engineering',
+  'a-x-pdca': 'x-harness',
+  'a-x-auto-plug': 'x-harness',
+  'a-retired': 'x-harness',
+};
+
+const withDept = (employees: typeof EMPLOYEES) =>
+  employees.map((employee) => ({
+    ...employee,
+    profile: { dept: DEPT_BY_AUTOMATION[employee.automation_id] ?? null },
+  }));
+
+test('全景は部署の部屋＋MY DESKへ情報を畳み、正常社員の文字を常時読ませない', async ({ page }) => {
+  // `departments` は届いていない状態（見出しは id・並びは返却順・27 §3.1-4）
+  await mockOffice(page, office({ employees: withDept(EMPLOYEES) }));
   await page.goto('/office');
 
   await expect(page.getByText('ROUTINE / OFFICE')).toBeVisible();
   const overview = page.getByRole('region', { name: 'AIオフィス全景' });
-  await expect(overview.getByRole('link', { name: /LIBRARYに入る/ })).toBeVisible();
-  await expect(overview.getByRole('link', { name: /LABに入る/ })).toBeVisible();
-  await expect(overview.getByRole('link', { name: /MARKETに入る/ })).toBeVisible();
-  await expect(overview.getByRole('link', { name: /STUDIOに入る/ })).toBeVisible();
+  await expect(overview.locator('.of3__room')).toHaveCount(4);
+  await expect(overview.getByRole('link', { name: /engineeringに入る/ })).toBeVisible();
+  await expect(overview.getByRole('link', { name: /second-brain-harnessに入る/ })).toBeVisible();
+  await expect(overview.getByRole('link', { name: /biz-harnessに入る/ })).toBeVisible();
+  await expect(overview.getByRole('link', { name: /x-harnessに入る/ })).toBeVisible();
   await expect(overview.getByRole('link', { name: /MY DESK、承認待ち2件/ })).toBeVisible();
 
   const headline = page.getByLabel('昨夜のオフィス概要');
   await expect(headline).toContainText('昨夜：失敗 1');
   await expect(headline).toContainText('あなたの仕事：2件');
-  await expect(overview.getByRole('link', { name: /LABに入る/ })).toContainText('確認 2');
-  await expect(overview.getByRole('link', { name: /MARKETに入る/ })).toContainText('失敗 1');
-  await expect(overview.getByRole('link', { name: /LIBRARYに入る/ })).toContainText('処理中…');
-  await expect(overview.getByRole('link', { name: /STUDIOに入る/ })).toContainText('正常');
+  await expect(overview.getByRole('link', { name: /second-brain-harnessに入る/ })).toContainText('確認 2');
+  await expect(overview.getByRole('link', { name: /biz-harnessに入る/ })).toContainText('失敗 1');
+  await expect(overview.getByRole('link', { name: /engineeringに入る/ })).toContainText('処理中…');
+  await expect(overview.getByRole('link', { name: /x-harnessに入る/ })).toContainText('正常');
 
   // 全景は部屋と自分の机だけ。社員名・勤務時刻・headline は部署へ入るまで出さない。
   for (const expected of EXPECTED) await expect(page.getByText(expected.name)).toHaveCount(0);
   await expect(page.getByText('毎日 01:00')).toHaveCount(0);
   for (const stale of STALE_HEADLINES) await expect(page.getByText(stale)).toHaveCount(0);
-  await expect(page.getByText('停止中 1名')).toBeVisible();
+  await expect(page.locator('.of3__stopped-count')).toHaveText('停止中 1名');
 
   // 生成が新しいときは鮮度警告を出さない（§6）
   await expect(page.locator('.dg__warn')).toHaveCount(0);
@@ -444,12 +473,11 @@ test('部署へ入ると所属社員だけが返却順で現れ、席から報�
   page,
 }) => {
   await mockOffice(page);
-  await page.goto('/office');
-
-  await page.getByRole('link', { name: /MARKETに入る/ }).click();
-  await expect(page).toHaveURL(/\/office\?room=market/);
+  // 全景の部屋タップは 27 §3.2（部署ルームの統合）の検証に移った。ここで見るのは
+  // 「部屋へ入ってからの席・名簿・報告の往復」なので URL から直接入る
+  await page.goto('/office?room=biz-harness');
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
-  const room = page.getByRole('region', { name: 'MARKETの社員' });
+  const room = page.getByRole('region', { name: 'DEPT: biz-harnessの社員' });
   await expect(room.locator('.of3__worker')).toHaveCount(1);
   await expect(room).toContainText('候補仕入れ（market-intake）');
   await expect(room).toContainText('平日 02:40');
@@ -458,10 +486,10 @@ test('部署へ入ると所属社員だけが返却順で現れ、席から報�
 
   // 席タップは社員名簿へ行き、報告はそこから開く（docs/specs/21-web-office-roster.md §3.1-1）
   await page.getByRole('link', { name: /候補仕入れ.*名簿を開く/ }).click();
-  await expect(page).toHaveURL(/\/office\?room=market&employee=a-market-intake/);
+  await expect(page).toHaveURL(/\/office\?room=biz-harness&employee=a-market-intake/);
   const card = page.getByRole('dialog', { name: '候補仕入れ（market-intake）の名簿' });
   await card.getByRole('link', { name: '報告を見る' }).click();
-  await expect(page).toHaveURL(/\/office\?room=market&employee=a-market-intake&run=r-market-intake-today/);
+  await expect(page).toHaveURL(/\/office\?room=biz-harness&employee=a-market-intake&run=r-market-intake-today/);
   // `exact` を付ける。既定の部分一致では名簿カード（「…の名簿」）にも当たる
   const sheet = page.getByRole('dialog', { name: '候補仕入れ（market-intake）', exact: true });
   await expect(sheet).toBeVisible();
@@ -479,10 +507,10 @@ test('部署へ入ると所属社員だけが返却順で現れ、席から報�
 
   // 名簿経由で開いた報告は名簿へ返す（21 §3.1-4）
   await sheet.getByRole('link', { name: '閉じる' }).click();
-  await expect(page).toHaveURL(/\/office\?room=market&employee=a-market-intake$/);
+  await expect(page).toHaveURL(/\/office\?room=biz-harness&employee=a-market-intake$/);
   await expect(sheet).toBeHidden();
   await card.getByRole('link', { name: '閉じる' }).click();
-  await expect(page).toHaveURL(/\/office\?room=market$/);
+  await expect(page).toHaveURL(/\/office\?room=biz-harness$/);
   await expect(page.getByRole('dialog')).toHaveCount(0);
 });
 
@@ -495,9 +523,9 @@ test('7人の部署でも最終行が部屋の下壁より内側に収まる', a
     last_run_id: null,
   }));
   await mockOffice(page, office({ employees: crowdedEmployees, runs: [] }));
-  await page.goto('/office?room=lab');
+  await page.goto('/office?room=unassigned');
 
-  const room = page.getByRole('region', { name: 'LABの社員' });
+  const room = page.getByRole('region', { name: 'DEPT: unassignedの社員' });
   await expect(room.locator('.of3__worker')).toHaveCount(7);
   const geometry = await room.evaluate((floor) => {
     const floorRect = floor.getBoundingClientRect();
@@ -536,7 +564,7 @@ test('MY DESKは承認待ちだけを集め、内容確認後も自分の机へ�
 
 test('保持期間外と未知のrunを報告シート内で明示し、ブラウザバックで部署へ戻る', async ({ page }) => {
   await mockOffice(page);
-  await page.goto('/office?room=studio');
+  await page.goto('/office?room=x-harness');
 
   await page.getByRole('link', { name: /X週次PDCA.*名簿を開く/ }).click();
   await page
@@ -549,9 +577,9 @@ test('保持期間外と未知のrunを報告シート内で明示し、ブラ�
 
   // ブラウザバックは 報告 → 名簿 → 部署 の順に1枚ずつ閉じる（21 §3.1-4・§3.1-5）
   await page.goBack();
-  await expect(page).toHaveURL(/\/office\?room=studio&employee=a-x-pdca$/);
+  await expect(page).toHaveURL(/\/office\?room=x-harness&employee=a-x-pdca$/);
   await page.goBack();
-  await expect(page).toHaveURL(/\/office\?room=studio$/);
+  await expect(page).toHaveURL(/\/office\?room=x-harness$/);
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
   await page.goto('/office?run=missing-run');
@@ -582,7 +610,7 @@ test('/office にコンソールエラーが出ない（hydration mismatch の�
 
 test('当日 run が無い社員（週次）には直近実行日が出る', async ({ page }) => {
   await mockOffice(page);
-  await page.goto('/office?room=studio');
+  await page.goto('/office?room=x-harness');
 
   // 週次・平日限定の社員が毎日「未実行」に見えるのを防ぐ補助表示（§3.2 末尾）
   const weekly = page.locator('.of3__worker', { hasText: 'X週次PDCA（x-pdca）' });
@@ -597,10 +625,11 @@ test('enabled:false の社員は全景で件数だけ、所属部署内で停止
   await mockOffice(page);
   await page.goto('/office');
 
-  await expect(page.getByText('停止中 1名')).toBeVisible();
+  await expect(page.locator('.of3__stopped-count')).toHaveText('停止中 1名');
   await expect(page.getByText('旧ダッシュボード生成（retired）')).toHaveCount(0);
 
-  await page.getByRole('link', { name: /LIBRARYに入る/ }).click();
+  // 全景から入る導線の検証は 27 §3.2 側。ここは「所属部屋の中でだけ停止中が見える」ことを見る
+  await page.goto('/office?room=unassigned');
   const stopped = page.locator('.of3__worker--stopped');
   await expect(stopped).toHaveCount(1);
   await expect(stopped).toContainText('旧ダッシュボード生成（retired）');

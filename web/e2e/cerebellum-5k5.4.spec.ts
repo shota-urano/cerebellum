@@ -42,7 +42,8 @@ const profile = (over: Record<string, unknown> = {}) => ({
 /** `line: "x"` の社員を**別の部屋**に散らす（部屋とは別軸だと分かるようにする・§3.7-1） */
 const EMPLOYEES = [
   {
-    // skill x-benchmark → MARKET
+    // 部屋は `profile.dept`（docs/specs/27-web-office-departments.md §3.1-1）。
+    // この社員だけ別部署に置き、`line=x` の集合と食い違わせる
     automation_id: 'a-bench',
     name: '小垢ベンチ（x-benchmark）',
     skill: 'x-benchmark',
@@ -52,7 +53,7 @@ const EMPLOYEES = [
     last_run_at: null,
     last_run_id: null,
     trigger: 'scheduled',
-    profile: profile({ job: '小垢のベンチを取ります' }),
+    profile: profile({ job: '小垢のベンチを取ります', dept: 'growth-harness' }),
   },
   {
     // skill x-post → STUDIO
@@ -152,13 +153,13 @@ async function mockOffice(page: Page, body: unknown = office()) {
 
 test('カードのライン見出しから入り、部屋をまたいで同じラインの社員が並ぶ', async ({ page }) => {
   await mockOffice(page);
-  await page.goto('/office?room=studio&employee=a-x-post');
+  await page.goto('/office?room=unassigned&employee=a-x-post');
 
   await page.getByRole('dialog', { name: 'X投稿（x-post）の名簿' }).getByRole('link', { name: 'LINE: X運用' }).click();
   await expect(page).toHaveURL(/\/office\?line=x$/);
 
   const floor = page.getByRole('region', { name: 'LINE: X運用の社員' });
-  // MARKET と STUDIO に散っている社員が1フロアに集まる（部屋とは別軸・§3.7-1）
+  // 別々の部屋に散っている社員が1フロアに集まる（部屋とは別軸・§3.7-1）
   await expect(floor.locator('.of3__worker-name')).toHaveText([
     '小垢ベンチ（x-benchmark）',
     'X投稿（x-post）',
@@ -216,21 +217,26 @@ test('該当社員が居ないラインは空状態にして落とさない', as
 
 test('room と line が同時に来たら room を優先する', async ({ page }) => {
   await mockOffice(page);
-  await page.goto('/office?room=market&line=x');
+  await page.goto('/office?room=growth-harness&line=x');
 
-  // URL を2軸で解釈しない（§3.7-7）
-  await expect(page.locator('.of3__room-title')).toHaveText('MARKET');
-  await expect(page.getByRole('region', { name: 'MARKETの社員' })).toContainText('小垢ベンチ（x-benchmark）');
-  await expect(page.getByText('X投稿（x-post）')).toHaveCount(0);
+  // URL を2軸で解釈しない（§3.7-7）。部屋は `dept` で決まる（27 §3.1-1）
+  await expect(page.locator('.of3__room-title')).toHaveText('DEPT: growth-harness');
+  await expect(page.getByRole('region', { name: 'DEPT: growth-harnessの社員' })).toContainText('小垢ベンチ（x-benchmark）');
+  // `line=x` の仲間（x-post）は出ない＝ line で解釈していない
+  await expect(page.locator('.of3__worker-name')).toHaveText(['小垢ベンチ（x-benchmark）']);
 });
 
-test('全景にライン導線は増えていない（4部屋＋MY DESKのまま）', async ({ page }) => {
+test('全景にライン導線は増えていない（部屋＋MY DESKのまま）', async ({ page }) => {
   await mockOffice(page);
   await page.goto('/office');
 
   const overview = page.getByRole('region', { name: 'AIオフィス全景' });
   await expect(overview.locator('a[href*="line="]')).toHaveCount(0);
-  await expect(overview.locator('a, div.of3__desk')).toHaveCount(5);
+  // 全景の構図は「部屋＋MY DESK」のまま。部屋は `dept` で切るようになった
+  // （docs/specs/27-web-office-departments.md §3.1-1）ので、この名簿では
+  // growth-harness と「部署 未記載」の2部屋になる（§3.1-2）——ライン導線は増えていない
+  await expect(overview.locator('.of3__room')).toHaveCount(2);
+  await expect(overview.locator('a, div.of3__desk')).toHaveCount(3);
   await expect(page.locator('.of3__room-breakdown')).toHaveCount(0);
 });
 

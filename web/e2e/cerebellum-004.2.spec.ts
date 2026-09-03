@@ -160,7 +160,7 @@ test('席から開いた報告シートは headline とメタを先に出し、�
   page,
 }) => {
   await mockOffice(page);
-  await page.goto('/office?room=lab');
+  await page.goto('/office?room=unassigned');
 
   await page.getByRole('link', { name: /ハーネス取り込み判定.*名簿を開く/ }).click();
   await page
@@ -170,7 +170,7 @@ test('席から開いた報告シートは headline とメタを先に出し、�
 
   // シートは URL を持つ（§3.5-1。ブラウザバックで閉じられる前提）
   await expect(page).toHaveURL(
-    /\/office\?room=lab&employee=a-night-harness&run=r-harness-today$/,
+    /\/office\?room=unassigned&employee=a-night-harness&run=r-harness-today$/,
   );
   // `exact` を付ける。既定の部分一致では名簿カード（「…の名簿」）にも当たる
   const sheet = page.getByRole('dialog', { name: 'ハーネス取り込み判定（night-harness）', exact: true });
@@ -212,7 +212,7 @@ test('席から開いた報告シートは headline とメタを先に出し、�
 
 test('output が null の run は「保持期間外」と出す（欠落を無言にしない）', async ({ page }) => {
   await mockOffice(page);
-  await page.goto('/office?room=market&employee=a-market-intake&run=r-intake-old');
+  await page.goto('/office?room=unassigned&employee=a-market-intake&run=r-intake-old');
 
   const sheet = page.getByRole('dialog', { name: '候補仕入れ（market-intake）', exact: true });
   await expect(sheet.locator('.of2__headline')).toHaveText('候補を5件仕入れました。');
@@ -314,7 +314,7 @@ test('ドロワーの「オフィス」から遷移でき、オフィス配下�
   // 判定は前方一致（16 §3.5）。クエリ付きの部署内でもアクティブのまま
   // （報告シートを開いている間はヘッダごとバックドロップが覆う＝modal なので、
   //  ドロワーを開けるのはシートが閉じている状態だけ。ここは部署内で見る）
-  await page.goto('/office?room=lab');
+  await page.goto('/office?room=unassigned');
   await openDrawer(page);
   await expect(page.getByRole('link', { name: 'オフィス', exact: true })).toHaveAttribute(
     'aria-current',

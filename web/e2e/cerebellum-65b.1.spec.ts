@@ -46,8 +46,8 @@ const profile = (over: Record<string, unknown> = {}) => ({
 });
 
 /**
- * 全員を LIBRARY に落とす（部屋の分類は skill 名の規則・docs/specs/20-web-office.md §3.1-3）。
- * 内訳（§3.2）を1つのヘッダで数えたいので、部屋をまたがせない。
+ * 名簿。部屋は `profile.dept` で切る（docs/specs/27-web-office-departments.md §3.1-1）ので、
+ * 内訳（§3.2）を1つのヘッダで数えるテストは `inOneRoom` で全員を「部署 未記載」へ落として使う。
  */
 const EMPLOYEES = [
   {
@@ -213,6 +213,19 @@ const RUNS = [
   },
 ];
 
+/**
+ * 全員を「部署 未記載」の部屋（`?room=unassigned`）へ落とした名簿。
+ *
+ * 部屋は `profile.dept` で切る（docs/specs/27-web-office-departments.md §3.1-1）ので、
+ * §3.2 の内訳を**1つのヘッダで全員**数えるには部屋をまたがせない必要がある。
+ * `dept` 以外は触らない——`review`・`job`・`profile` 不在の別は内訳の期待値の要（§3.2-2）。
+ */
+const inOneRoom = <T extends { profile?: unknown }>(employees: readonly T[]) =>
+  employees.map((employee) => ({
+    ...employee,
+    profile: employee.profile ? { ...(employee.profile as Record<string, unknown>), dept: null } : null,
+  }));
+
 /** `profile.review` だけを剥がした同じ名簿（MY DESK の件数が動かないことの対照） */
 const EMPLOYEES_WITHOUT_REVIEW = EMPLOYEES.map((employee) => {
   if (!employee.profile) return employee;
@@ -233,7 +246,7 @@ async function mockOffice(page: Page, body: unknown = office()) {
 
 /** 社員カードを URL で直接開く（席タップの検証は 5k5.1 が持つ） */
 async function openCard(page: Page, automationId: string, label: string) {
-  await page.goto(`/office?room=library&employee=${automationId}`);
+  await page.goto(`/office?room=unassigned&employee=${automationId}`);
   const card = page.getByRole('dialog', { name: `${label}の名簿` });
   await expect(card).toBeVisible();
   return card;
@@ -321,10 +334,12 @@ test('dept のキーが無い社員も同じく「部署 未記載」（生成�
 
 test('席には所属部署も人間確認も出ない（正常なものほど静かに）', async ({ page }) => {
   await mockOffice(page);
-  await page.goto('/office?room=library');
+  // `dept:second-brain-harness` の2名（digest・ask）が居る部屋。席に部署が出ないことを
+  // **部署を持つ社員で**見る（27 §3.1-1 で部屋＝部署になった）
+  await page.goto('/office?room=second-brain-harness');
 
-  const room = page.getByRole('region', { name: 'LIBRARYの社員' });
-  await expect(room.locator('.of3__worker')).toHaveCount(8);
+  const room = page.getByRole('region', { name: 'DEPT: second-brain-harnessの社員' });
+  await expect(room.locator('.of3__worker')).toHaveCount(2);
   const seats = (await room.locator('.of3__worker').allInnerTexts()).join(' ');
   expect(seats).not.toContain('人間確認');
   expect(seats).not.toContain('second-brain-harness');
@@ -355,8 +370,8 @@ test('MY DESK の件数は review の有無で変わらない', async ({ page })
 // ---- 部署ヘッダの内訳（§3.2） ----
 
 test('部署ヘッダに「人間確認あり n名」と「名簿未記載 m名」が出る', async ({ page }) => {
-  await mockOffice(page);
-  await page.goto('/office?room=library');
+  await mockOffice(page, office({ employees: inOneRoom(EMPLOYEES) }));
+  await page.goto('/office?room=unassigned');
 
   // 勤務帯6・手動1・停止中1／review を持つのは digest・watchdog・ask・retired の4名／
   // **`profile` が無いのは bare の1名だけ**——`job` が空の a-blank は frontmatter があるので
@@ -384,13 +399,14 @@ test('job が空だけの社員はカードでは「名簿 未記載」でも、
 
   // ヘッダが数えるのは「カードが書けない一体」＝ `profile` 不在の a-bare だけ（26 §3.2-2）。
   // 2名になっていたら `job` 空の a-blank まで混ざっている
-  await page.goto('/office?room=library');
+  // `dept` を持たない4名（watchdog・idea-forge・blank・bare）の部屋。`profile` 不在は bare だけ
+  await page.goto('/office?room=unassigned');
   await expect(page.locator('.of3__room-breakdown')).toContainText('名簿未記載 1名');
 });
 
 test('review を持つ社員が居なければ「人間確認あり」の項は出ない（0名を書かない）', async ({ page }) => {
-  await mockOffice(page, office({ employees: EMPLOYEES_WITHOUT_REVIEW }));
-  await page.goto('/office?room=library');
+  await mockOffice(page, office({ employees: inOneRoom(EMPLOYEES_WITHOUT_REVIEW) }));
+  await page.goto('/office?room=unassigned');
 
   const breakdown = page.locator('.of3__room-breakdown');
   await expect(breakdown).toHaveText('勤務帯 6名・手動 1名・停止中 1名・名簿未記載 1名');

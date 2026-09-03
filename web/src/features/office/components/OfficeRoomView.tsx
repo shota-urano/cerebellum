@@ -7,13 +7,11 @@ import {
   lastRunOf,
   lineBlocksOf,
   lineLabelOf,
-  OFFICE_ROOMS,
-  roomBlocksOf,
   rosterOf,
   shiftStateOf,
   workLabelOf,
+  type OfficeDeptRoom,
   type OfficeEmployee,
-  type OfficeRoomId,
   type OfficeRun,
 } from '../lib/office';
 
@@ -23,12 +21,15 @@ import {
  * docs/specs/26-web-office-company.md §3.3-1）。見た目を作り分けない。
  */
 export type OfficeFloorScope =
-  | { kind: 'room'; roomId: OfficeRoomId }
+  /** 部屋 id ＝ `dept` の id（docs/specs/27-web-office-departments.md §3.1-1・§3.2-1） */
+  | { kind: 'room'; roomId: string }
   | { kind: 'line'; lineId: string }
   | { kind: 'dept'; deptId: string };
 
 export type OfficeRoomViewProps = {
   scope: OfficeFloorScope;
+  /** 下部の導線に出す部屋（27 §3.1 の dept 由来。cerebellum に部屋の表を持たない・§4） */
+  rooms: OfficeDeptRoom[];
   employees: OfficeEmployee[];
   runs: OfficeRun[];
   stopped: OfficeEmployee[];
@@ -106,6 +107,7 @@ function RoomStation({
 /** 部屋（またはライン）へ入った後だけ社員名・勤務時間・報告導線を開示する。 */
 export function OfficeRoomView({
   scope,
+  rooms,
   employees,
   runs,
   stopped,
@@ -113,18 +115,12 @@ export function OfficeRoomView({
   selectedRunId,
   selectedEmployeeId,
 }: OfficeRoomViewProps) {
-  const room =
-    scope.kind === 'room'
-      ? (OFFICE_ROOMS.find((candidate) => candidate.id === scope.roomId) ?? OFFICE_ROOMS[0])
-      : null;
+  // 部屋＝部署になったので（27 §3.1-1）、いまの絞り込みの id は room でも dept でも部署 id
+  const currentId = scope.kind === 'room' ? scope.roomId : scope.kind === 'dept' ? scope.deptId : null;
   // ラインの未知の値はラベルに変えず値のまま出す（21 §3.7-3）。
   // 部署は**そもそも翻訳しない**——日本語ラベルの対応表を cerebellum に持たない（26 §3.3-2・§4）
   const title =
-    scope.kind === 'room'
-      ? (room?.label ?? '')
-      : scope.kind === 'line'
-        ? `LINE: ${lineLabelOf(scope.lineId)}`
-        : `DEPT: ${scope.deptId}`;
+    scope.kind === 'line' ? `LINE: ${lineLabelOf(scope.lineId)}` : `DEPT: ${currentId}`;
   const scopeHref =
     scope.kind === 'room'
       ? `/office?room=${scope.roomId}`
@@ -133,11 +129,9 @@ export function OfficeRoomView({
         : `/office?dept=${encodeURIComponent(scope.deptId)}`;
   // 勤務帯 → 手動起動 → 停止中（21 §3.4-1）。ブロック内は返却順のまま
   const blocks =
-    scope.kind === 'room'
-      ? roomBlocksOf(employees, stopped, scope.roomId)
-      : scope.kind === 'line'
-        ? lineBlocksOf(employees, stopped, scope.lineId)
-        : deptBlocksOf(employees, stopped, scope.deptId);
+    scope.kind === 'line'
+      ? lineBlocksOf(employees, stopped, scope.lineId)
+      : deptBlocksOf(employees, stopped, currentId ?? '');
   const onDuty = [...blocks.scheduled, ...blocks.manual];
   const actions = onDuty.reduce(
     (count, employee) => count + actionCountOf(lastRunOf(runs, employee.automation_id)),
@@ -202,9 +196,9 @@ export function OfficeRoomView({
       </section>
 
       <nav className="of3__room-nav" aria-label="部署を移動">
-        {OFFICE_ROOMS.map((candidate) => (
-          <Link key={candidate.id} className={candidate.id === room?.id ? 'of3__room-nav-link is-active' : 'of3__room-nav-link'} href={`/office?room=${candidate.id}`} aria-current={candidate.id === room?.id ? 'page' : undefined}>
-            <span className="mono">{candidate.label}</span>
+        {rooms.map((candidate) => (
+          <Link key={candidate.id} className={candidate.id === currentId ? 'of3__room-nav-link is-active' : 'of3__room-nav-link'} href={`/office?dept=${encodeURIComponent(candidate.id)}`} aria-current={candidate.id === currentId ? 'page' : undefined}>
+            <span className="mono">{candidate.label ?? candidate.id}</span>
           </Link>
         ))}
         <Link className="mono of3__desk-shortcut" href="/office?desk=1" scroll={false}>MY DESK</Link>
