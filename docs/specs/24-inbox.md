@@ -140,7 +140,7 @@ JSON 契約の正本は [`03-api.md`](./03-api.md) §3。ここには検証規�
 | [`11`](./11-digest.md)・[`12`](./12-web-digest.md) ダイジェスト | 送信元 daily-digest が 2026-09-01 に廃止済み。**新規の受信は無い**。テーブルと画面は過去分の閲覧用に残し、次の棚卸しで撤去を判定する |
 | [`13`](./13-web-nightshift.md)・[`19`](./19-web-dev-history.md) 夜勤 | 夜勤の朝レポ（Slack 送信）は `kind: read` の項目として本口へ送る。夜勤ビューア（:48310）は run 詳細の置き場として残す |
 | [`14`](./14-learning.md)・[`15`](./15-web-learning.md) 学習 | 無変更（§7） |
-| [`20`](./20-web-office.md)・[`21`](./21-web-office-roster.md) オフィス | 名簿に `profile.review` が増える（§9）。画面は「人間確認あり」の社員に印を出す程度の追補 |
+| [`20`](./20-web-office.md)・[`21`](./21-web-office-roster.md) オフィス | 名簿に `profile.review` が増える（§9）。画面は「人間確認あり」の社員に印を出す程度の追補 → [`26`](./26-web-office-company.md) で実装 |
 
 **最初の送信元は second-brain の routine_watchdog.py（`kind: alert`）**。理由は3つ。項目が最も単純（title だけで成立）・読み戻しが無い・いま監視が止まっていて最も急ぐ。
 

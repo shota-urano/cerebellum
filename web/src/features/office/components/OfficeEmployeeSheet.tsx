@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import {
+  reviewLabelOf,
   rosterOf,
   shiftStateOf,
   workLabelOf,
@@ -112,7 +113,28 @@ export function OfficeEmployeeSheet({
             <dt>SKILL</dt>
             <dd>{employee.skill ?? 'skill なし（素の実行）'}</dd>
           </div>
+          <div className="of__card-meta-wide">
+            {/* 組織図の所属（26 §3.1）。値域を検査も翻訳もしない——id をそのまま等幅で出す（26 §4） */}
+            <dt>部署</dt>
+            <dd>
+              {roster.dept === null ? (
+                // 未記載はリンクにしない（行き先が無い・26 §3.1-3）
+                '部署 未記載'
+              ) : (
+                // 部署絞り込みの入口はここと会社案内シートだけ。全景には足さない（26 §3.3-6）
+                <Link className="of__card-dept" href={`/office?dept=${encodeURIComponent(roster.dept)}`}>
+                  {roster.dept}
+                </Link>
+              )}
+            </dd>
+          </div>
         </dl>
+
+        {/*
+          人間確認（26 §3.1-1）。`review` から機械的に組む1行で、`kinds` は翻訳しない。
+          `null` は「なし」＝正常な状態なので「未記載」様式（muted の欠損表示）に寄せない。
+        */}
+        <p className="mono of__card-review">{reviewLabelOf(roster.review)}</p>
 
         {/* 名簿が無い社員はミニラインを出さず「名簿 未記載」に畳む（21 §3.6-8） */}
         {!roster.missing && (

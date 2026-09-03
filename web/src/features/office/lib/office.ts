@@ -49,6 +49,13 @@ export interface OfficeProfile {
    * 届かないので optional——欠落を `shift` と読み替えない。
    */
   review?: OfficeReview | null;
+  /**
+   * 所属部署（docs/specs/26-web-office-company.md §3.1。値域は同 §4 の8部署 id）。
+   * 正本は各 skill の `SKILL.md` frontmatter で、**cerebellum に対応表を持たない**——
+   * 画面は値域を検査も翻訳もしない（未知の値も文字列のまま出す・26 §6）。
+   * 生成側の対応前は届かないので optional。**`line` や skill 名から推測して埋めない**（26 §9）。
+   */
+  dept?: string | null;
   /** 名簿の正本の在処（例 `.claude/skills/x-post/SKILL.md`）。リンクにしない（21 §3.2-4） */
   doc: string | null;
 }
@@ -176,6 +183,13 @@ export interface RosterEntry {
   line: string | null;
   upstream: string[];
   downstream: string[];
+  /** 所属部署。未記載は null（26 §3.1-3。skill 名や `line` から推測して埋めない） */
+  dept: string | null;
+  /**
+   * 人間確認の契約（26 §3.1-1）。`null` は**欠損ではなく「人間確認なし」という正常な状態**
+   * （24 §9）なので、`missing` と同じ「未記載」様式に寄せない。
+   */
+  review: OfficeReview | null;
   doc: string | null;
   /** `profile` が無い／`job` が空。画面は「名簿 未記載」を出す */
   missing: boolean;
@@ -202,9 +216,55 @@ export function rosterOf(employee: OfficeEmployee): RosterEntry {
     line: text(profile?.line),
     upstream: list(profile?.upstream),
     downstream: list(profile?.downstream),
+    dept: text(profile?.dept),
+    // `review` は形をそのまま持ち回る（値域の検査は生成側の責務・26 §4）
+    review: profile?.review ?? null,
     doc: text(profile?.doc),
     missing: job === null,
   };
+}
+
+/** `cadence` の表示語（26 §3.1-1）。未知の値はそのまま出す（落とさない・20 §6 と同じ姿勢） */
+function cadenceLabelOf(cadence: string): string {
+  if (cadence === 'shift') return '勤務帯どおり毎回';
+  if (cadence === 'adhoc') return '不定期';
+  return cadence;
+}
+
+/**
+ * 社員カード・会社案内に出す「人間確認」の1行（docs/specs/26-web-office-company.md §3.1-1）。
+ *
+ * `review` から**機械的に**決める。`kinds` は画面で翻訳しない（`approve` / `choose` / `read` /
+ * `alert` のまま出す・§3.1-2）——「あなた待ち」（25）と語を揃えるため。
+ * `null` は「人間確認: なし」で、**欠損ではなく正常な状態**（24 §9）なので
+ * 21 §3.2-3 の「未記載」様式に寄せない（§3.1-1）。
+ */
+export function reviewLabelOf(review: OfficeReview | null | undefined): string {
+  if (!review) return '人間確認: なし';
+  const kinds = Array.isArray(review.kinds)
+    ? review.kinds.filter((kind): kind is string => typeof kind === 'string' && kind.trim() !== '')
+    : [];
+  const cadence = typeof review.cadence === 'string' && review.cadence.trim() !== '' ? review.cadence : null;
+  // `alert` のみ＝人間の判断を求めず異常だけ知らせる契約。ここだけ言い換える（§3.1-1）
+  const body = kinds.length === 0 ? 'あり' : kinds.length === 1 && kinds[0] === 'alert' ? '異常のみ通知' : kinds.join('・');
+  return '人間確認: ' + body + (cadence === null ? '' : '（' + cadenceLabelOf(cadence) + '）');
+}
+
+/** `review` を持つ社員（26 §3.2-1 の「人間確認あり n名」）。値の中身は問わない */
+export function hasReview(employee: OfficeEmployee): boolean {
+  return rosterOf(employee).review !== null;
+}
+
+/**
+ * 名簿（`profile`）そのものが無い社員（docs/specs/26-web-office-company.md §3.2-2 の
+ * 「名簿未記載 m名」）。数えるのは正本の「**カードが書けない一体**」＝ `profile` 不在だけ。
+ *
+ * `rosterOf().missing`（21 §3.2-3）とは**別の述語**。あちらは社員カードの表示用で
+ * 「`profile` が無い／`job` が空」の両方を「名簿 未記載」に畳むが、`job` だけが空の社員は
+ * カードが書けている（frontmatter はある）ので §3.2-2 の集計には入れない。
+ */
+export function hasNoProfile(employee: OfficeEmployee): boolean {
+  return (employee.profile ?? null) === null;
 }
 
 /** ライン（`profile.line`）の日本語ラベル（21 §3.7-2）。識別子→表示語彙の対応で、名簿の値ではない */
@@ -228,6 +288,14 @@ export function lineLabelOf(line: string): string {
 /** その社員の所属ライン。未記載は null（`'none'` は記載なので null にしない） */
 export function lineOf(employee: OfficeEmployee): string | null {
   return rosterOf(employee).line;
+}
+
+/**
+ * その社員の所属部署（docs/specs/26-web-office-company.md §3.3-1）。未記載は null。
+ * **`line` や skill 名から推測して埋めない**（26 §9）——対応表を持たないので推測もできない。
+ */
+export function deptOf(employee: OfficeEmployee): string | null {
+  return rosterOf(employee).dept;
 }
 
 /** ミニラインのノード種別（21 §2 の4種＋解決できなかったもの） */
@@ -384,6 +452,101 @@ export function lineBlocksOf(
   lineId: string,
 ): RoomBlocks {
   return blocksOf(onDuty, stopped, (employee) => lineOf(employee) === lineId);
+}
+
+/**
+ * 部署絞り込み（docs/specs/26-web-office-company.md §3.3-1）。ライン絞り込みと**同型**で、
+ * 部屋をまたいで `dept` 一致の社員を1フロアに出す。席・ブロック分け・状態表示は部署ルームと
+ * 同一規則を流用する（別軸のグルーピングであって別の画面ではない・26 §5）。
+ */
+export function deptBlocksOf(
+  onDuty: OfficeEmployee[],
+  stopped: OfficeEmployee[],
+  deptId: string,
+): RoomBlocks {
+  return blocksOf(onDuty, stopped, (employee) => deptOf(employee) === deptId);
+}
+
+/**
+ * 在籍の内訳1行（21 §3.4-3 ＋ docs/specs/26-web-office-company.md §3.2）。0名の項は書かない。
+ *
+ * 部屋・ライン・部署のフロア（`OfficeRoomView`）と会社案内シート（§3.4-1「§3.2 の内訳」）を
+ * **同じ関数で組む**。同じ形と言われているものを2箇所に書くと片方だけ直して静かにずれる。
+ *
+ * 人間確認・名簿未記載は**その束に出ている社員全員**（停止中を含む）で数える——
+ * 名簿の設定漏れは在籍状態と独立に潰す対象なので、停止中を外すと漏れが隠れる（26 §3.2-2）。
+ */
+export function breakdownOf(blocks: {
+  scheduled: OfficeEmployee[];
+  manual: OfficeEmployee[];
+  stopped: OfficeEmployee[];
+}): string {
+  const members = [...blocks.scheduled, ...blocks.manual, ...blocks.stopped];
+  const reviewers = members.filter(hasReview).length;
+  // 数えるのは `profile` 不在だけ（§3.2-2）。`job` が空の社員はカードでは「名簿 未記載」
+  // （21 §3.2-3）だが frontmatter そのものはあるので、ここには混ぜない
+  const unlisted = members.filter(hasNoProfile).length;
+  return [
+    `勤務帯 ${blocks.scheduled.length}名`,
+    blocks.manual.length > 0 ? `手動 ${blocks.manual.length}名` : null,
+    blocks.stopped.length > 0 ? `停止中 ${blocks.stopped.length}名` : null,
+    reviewers > 0 ? `人間確認あり ${reviewers}名` : null,
+    // 「カードが書けない一体は編成に載せない」を画面で可視化する。隠さない（26 §3.2-2）
+    unlisted > 0 ? `名簿未記載 ${unlisted}名` : null,
+  ]
+    .filter((part): part is string => part !== null)
+    .join('・');
+}
+
+/** 会社案内の1部署（docs/specs/26-web-office-company.md §3.4）。`id: null` は「部署 未記載」の束 */
+export interface CompanyDept {
+  /** 部署 id。**翻訳しない**（対応表を持たない・§4）。未記載の束は null */
+  id: string | null;
+  /** 勤務帯の社員（返却順のまま） */
+  scheduled: OfficeEmployee[];
+  /** 手動起動の社員（返却順のまま） */
+  manual: OfficeEmployee[];
+  /** 停止中の社員。各部署の末尾に「停止中」の小見出しで出す（§3.4-4） */
+  stopped: OfficeEmployee[];
+}
+
+function companyDeptOf(employees: OfficeEmployee[], id: string | null): CompanyDept {
+  const members = employees.filter((employee) => deptOf(employee) === id);
+  // 部署内の並びは 勤務帯 → 手動起動 → 停止中（21 §3.4-1 と同じ順・§3.4-4）。
+  // 各ブロック内は返却順のまま——クライアントで再ソートしない（20 §3.1-1）
+  const { onDuty, stopped } = splitByEnabled(members);
+  return {
+    id,
+    scheduled: onDuty.filter((employee) => !isManualEmployee(employee)),
+    manual: onDuty.filter(isManualEmployee),
+    stopped,
+  };
+}
+
+/**
+ * 会社案内の部署の束（docs/specs/26-web-office-company.md §3.4-2）。
+ *
+ * 並びは **`employees` の返却順で最初に現れた `dept` の順**。cerebellum 側に部署の順序表を
+ * 持たない（§4）ので、名前順にも 8部署 id の定義順にも並べ替えない。
+ * 最初に現れた位置は**停止中の社員も数える**——在籍状態は部署の並びと無関係で、
+ * 停止中しか居ない部署だけが末尾へ押し出されるのは「返却順」ではない。
+ *
+ * `dept` が `null` の社員は末尾に1束（`id: null`）でまとめる。**隠さない**（§3.4-2）——
+ * 隠すと名簿の設定漏れが永久に見えなくなる（21 §3.3-1 と同じ理由）。0名なら束ごと出さない。
+ */
+export function companyDeptsOf(employees: OfficeEmployee[]): CompanyDept[] {
+  const ids: string[] = [];
+  let hasUnlisted = false;
+  for (const employee of employees) {
+    const dept = deptOf(employee);
+    if (dept === null) {
+      hasUnlisted = true;
+    } else if (!ids.includes(dept)) {
+      ids.push(dept);
+    }
+  }
+  const depts = ids.map((id) => companyDeptOf(employees, id));
+  return hasUnlisted ? [...depts, companyDeptOf(employees, null)] : depts;
 }
 
 function blocksOf(

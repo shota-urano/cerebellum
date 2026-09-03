@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { ErrorBanner } from '@/shared/ui';
 import { useOffice } from '../hooks/useOffice';
 import { isOfficeRoomId, lastRunOf, localDate, splitByEnabled, staleHours } from '../lib/office';
+import { OfficeCompanyView } from './OfficeCompanyView';
 import { OfficeDeskSheet } from './OfficeDeskSheet';
 import { OfficeEmployeeSheet } from './OfficeEmployeeSheet';
 import { OfficeOverview } from './OfficeOverview';
@@ -39,12 +40,17 @@ export function OfficeView({
   deskOpen,
   employeeId,
   lineId,
+  deptId,
+  companyOpen,
 }: {
   runId: string | null;
   roomId: string | null;
   deskOpen: boolean;
   employeeId: string | null;
   lineId: string | null;
+  deptId: string | null;
+  /** 会社案内（docs/specs/26-web-office-company.md §3.4）。全景の代わりに出す1枚 */
+  companyOpen: boolean;
 }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -71,18 +77,23 @@ export function OfficeView({
   const cardEmployee =
     employeeId === null ? undefined : employees.find((employee) => employee.automation_id === employeeId);
   const cardRun = cardEmployee ? lastRunOf(runs, cardEmployee.automation_id) : undefined;
-  // `room` と `line` が同時に来たら `room` を優先する（部屋が主・ラインが従・21 §3.7-7）
+  // `room`・`line`・`dept` が同時に来たら `room` → `line` → `dept` の優先順
+  // （部屋が主・ラインと部署が従。URL を多軸で解釈しない・21 §3.7-7・26 §3.3-4）
   const scope: OfficeFloorScope | null = selectedRoomId
     ? { kind: 'room', roomId: selectedRoomId }
     : lineId !== null
       ? { kind: 'line', lineId }
-      : null;
+      : deptId !== null
+        ? { kind: 'dept', deptId }
+        : null;
   const roomHref =
     scope === null
       ? '/office'
       : scope.kind === 'room'
         ? `/office?room=${scope.roomId}`
-        : `/office?line=${encodeURIComponent(scope.lineId)}`;
+        : scope.kind === 'line'
+          ? `/office?line=${encodeURIComponent(scope.lineId)}`
+          : `/office?dept=${encodeURIComponent(scope.deptId)}`;
   // 報告シートの戻り先は、社員カード経由で来たときだけカードへ返す（21 §3.1-4）。
   // `?run=` 単独・MY DESK 経由の既存 deep link の戻り先は 20 §3.5-4 のまま変えない。
   const cardHref =
@@ -103,6 +114,8 @@ export function OfficeView({
       {employees.length === 0 ? (
         <div className="empty">登録されている automation がありません</div>
       ) : scope !== null ? (
+        // 部屋・ライン・部署のフロア。会社案内は絞り込みの軸ではないので優先順の外に置き、
+        // 絞り込みが指定されていないときだけ全景の代わりに出す（26 §3.4-6）
         <OfficeRoomView
           scope={scope}
           employees={onDuty}
@@ -112,6 +125,9 @@ export function OfficeView({
           selectedRunId={runId}
           selectedEmployeeId={employeeId}
         />
+      ) : companyOpen ? (
+        // 停止中も含めた全員を渡す。部署の並びは返却順で決まる（26 §3.4-2）
+        <OfficeCompanyView employees={employees} />
       ) : (
         <OfficeOverview
           employees={onDuty}

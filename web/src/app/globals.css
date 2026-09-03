@@ -359,6 +359,10 @@ a:hover { color: #8FF2FF; }
 .of3__desk--quiet { opacity: .58; }
 .of3__desk--quiet .of3__desk-status { color: var(--muted); }
 .of3__stopped-count { margin: 7px 0 0; text-align: center; font-size: 9px; letter-spacing: .1em; color: var(--muted); opacity: .65; }
+/* 会社案内への導線（26 §3.4-6）。全景の構図（.of3__campus）の外＝ヘッダ側に1つだけ置く */
+.of3__company-link { display: flex; justify-content: flex-end; margin: -4px 0 6px; }
+.of3__company { display: inline-flex; align-items: center; min-height: 44px; padding: 0 4px; font-size: 10px; letter-spacing: .14em; color: var(--muted); text-decoration: none; }
+.of3__company:hover, .of3__company:focus-visible { color: var(--accent); }
 .of3__room-header { display: grid; grid-template-columns: 82px 1fr 82px; align-items: start; margin: 0 0 10px; text-align: center; }
 .of3__back { min-height: 44px; padding: 13px 4px; font-size: 10px; letter-spacing: .12em; color: var(--muted); text-align: left; }
 .of3__room-header > div { grid-column: 2; }
@@ -366,7 +370,9 @@ a:hover { color: #8FF2FF; }
 .of3__room-action-copy, .of3__room-quiet-copy { margin: 5px 0 0; font-size: 11px; color: #ffc34d; }
 .of3__room-quiet-copy { color: var(--muted); }
 /* 在籍の内訳（21 §3.4-3）。勤務形態は全景に出さず部署内で読む */
-.of3__room-breakdown { margin: 4px 0 0; font-size: 8.5px; letter-spacing: .1em; color: var(--muted); opacity: .7; }
+/* 内訳は項目が5つまで増える（26 §3.2）。`keep-all` で「人間確認/あり」のような
+   語中改行を止め、折り返しは項目区切りの「・」の後だけにする */
+.of3__room-breakdown { margin: 4px 0 0; font-size: 8.5px; letter-spacing: .1em; color: var(--muted); opacity: .7; word-break: keep-all; }
 .of3__room-floor { position: relative; min-height: 660px; margin: 0 -16px; background: #050b1a url('/images/office/room-floor.png') center top / 100% 100% no-repeat; overflow: hidden; }
 .of3__room-floor--crowded { background-size: 100% 128%; }
 /* 席は 勤務帯 → 手動起動 → 停止中 の3ブロック（docs/specs/21-web-office-roster.md §3.4） */
@@ -461,8 +467,16 @@ a:hover { color: #8FF2FF; }
 .of__card-job--missing { color: var(--muted); }
 .of__card-doc { display: block; margin-top: 6px; font-size: 10px; letter-spacing: .04em; color: var(--muted); overflow-wrap: anywhere; }
 .of__card-doc--foot { margin: 14px 0 0; opacity: .6; }
-/* 勤務・起動・AGENT・SKILL の4項目。390px で4列は潰れるので2×2にする */
+/* 勤務・起動・AGENT・SKILL・部署の5項目。390px で横並びは潰れるので2列にする */
 .of__card-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 8px; }
+/* 部署 id（`second-brain-harness` など）は半列に収まらないので1行使う（26 §3.1） */
+.of__card-meta-wide { grid-column: 1 / -1; }
+/* 所属部署タップ＝部署絞り込みの入口（26 §3.3-6）。ライン見出し（.of__ml-line）と同じ様式 */
+.of__card-dept { color: var(--accent); text-decoration: none; overflow-wrap: anywhere; }
+.of__card-dept:hover { text-decoration: underline; }
+/* 人間確認の1行（docs/specs/26-web-office-company.md §3.1-1）。「なし」も同じ様式で出す
+   ——欠損ではなく正常な状態なので、未記載の muted 表示に寄せない */
+.of__card-review { margin: 12px 0 0; font-size: 11px; line-height: 1.55; letter-spacing: .04em; color: var(--text); overflow-wrap: anywhere; }
 /* ミニライン（docs/specs/21-web-office-roster.md §3.6）。SVG も図形ライブラリも使わない（§5） */
 .of__ml { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); text-align: center; }
 .of__ml-head { margin: 0 0 10px; text-align: left; }
@@ -490,6 +504,30 @@ a.of__ml-node:hover { border-color: var(--accent); color: var(--text); }
 .of__card-when { font-size: 10px; letter-spacing: .06em; color: var(--muted); }
 .of__card-headline { margin: 8px 0 0; font-size: 13px; line-height: 1.7; color: var(--text); text-wrap: pretty; }
 .of__card-report { display: flex; align-items: center; justify-content: center; text-decoration: none; }
+
+/* 会社案内（docs/specs/26-web-office-company.md §3.4）。**テキストだけの1枚**——
+   席・部屋・書類の画像を使わず SVG も持ち込まない（§3.4-5）。装飾は CSS の枠と余白だけ */
+.of__co { display: grid; gap: 10px; }
+.of__co-dept { padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+/* 部署 id は等幅のまま（翻訳しない・§4）。タップで部署フロアへ（§3.4-3） */
+.of__co-dept-name { display: inline-block; min-height: 24px; font-size: 12px; letter-spacing: .12em; color: var(--accent); text-decoration: none; overflow-wrap: anywhere; }
+.of__co-dept-name:hover { text-decoration: underline; }
+/* 未記載は行き先が無いのでリンクにしない。だが隠さない（§3.4-2） */
+.of__co-dept-name--missing { margin: 0; color: var(--muted); }
+.of__co-breakdown { margin: 3px 0 0; font-size: 8.5px; letter-spacing: .1em; color: var(--muted); opacity: .7; word-break: keep-all; }
+.of__co-list { margin: 8px 0 0; padding: 0; list-style: none; }
+.of__co-row + .of__co-row { border-top: 1px solid var(--border); }
+.of__co-member { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; min-height: 44px; padding: 9px 0; color: var(--text); text-decoration: none; }
+.of__co-member:hover .of__co-name { color: var(--accent); }
+.of__co-name { min-width: 0; font-size: 13px; line-height: 1.45; text-wrap: pretty; }
+/* 勤務帯 or 手動起動。名前の右肩に置いて1行で「誰が・いつ」を読ませる */
+.of__co-work { justify-self: end; font-size: 9px; letter-spacing: .06em; color: var(--muted); white-space: nowrap; }
+.of__co-job { grid-column: 1 / -1; font-size: 11.5px; line-height: 1.5; color: var(--muted); text-wrap: pretty; }
+.of__co-job--missing { opacity: .7; }
+.of__co-review { grid-column: 1 / -1; margin-top: 2px; font-size: 9.5px; line-height: 1.5; letter-spacing: .04em; color: var(--muted); opacity: .8; overflow-wrap: anywhere; }
+/* 停止中は各部署の末尾（§3.4-4）。席（.of3__worker--stopped）と同じく静かに沈める */
+.of__co-block { margin: 10px 0 0; font-size: 9px; letter-spacing: .18em; color: var(--muted); opacity: .7; }
+.of__co-list--stopped { opacity: .5; }
 
 /* ハーネス承認（docs/specs/18-web-harness.md）。panel dg 様式の上に載せる最小限の追加 */
 .hn__head { margin: 2px 0 12px; font-size: 15px; font-weight: 500; letter-spacing: .04em; }

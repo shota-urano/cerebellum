@@ -90,6 +90,8 @@ employees: [ { automation_id, name, skill, enabled, shift, next_run_at, last_run
 | 利用 skill | `employee.skill` | 出さない | 等幅で出す |
 | 勤務帯 or 手動 | `employee.trigger`・`shift.label` | 出す（§3.3-2） | 出す |
 | **所属ライン・上下流** | `profile.line`・`upstream`・`downstream` | 出さない | ミニライン（§3.6） |
+| **所属部署** | `profile.dept` | 出さない | 等幅で出す・タップで部署絞り込み（[26](./26-web-office-company.md) §3.1・§3.3） |
+| **人間確認** | `profile.review` | 出さない | 1行で出す（[26](./26-web-office-company.md) §3.1-1） |
 
 1. **席には名簿本文を出さない**。20 §3.1-2「正常なものほど暗く静かに」を壊さないため、席は名前・勤務帯・状態のままにする
 2. `profile.checks` は**省略せず全件出す**（シートは縦スクロールする）。件数上限で切ると「確認すべきこと」が黙って消える。生成側の目安は1件80文字以内・5件以内とし、超えても画面は落とさない
@@ -157,6 +159,7 @@ employees: [ { automation_id, name, skill, enabled, shift, next_run_at, last_run
 5. 入口は社員カードのライン見出しだけにする。**全景（20 §3.1）にライン導線を足さない**——全景は4部屋とMY DESKだけを見せる面のままにする
 6. `line` に一致する社員が居ないときは空状態（「このラインの社員は居ません」）＋全景へ戻る導線。エラーにしない
 7. `room` と `line` が同時に来たときは `room` を優先する（部屋が主・ラインが従。URL を2軸で解釈しない）
+8. **部署絞り込み（`/office?dept={id}`）は本節と同型**（[26](./26-web-office-company.md) §3.3）。部屋・ライン・部署の優先順は `room` → `line` → `dept`
 
 ## 4. 設定値・確定値
 

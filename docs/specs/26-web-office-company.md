@@ -1,5 +1,6 @@
 ---
-status: draft
+status: confirmed
+confirmed_rev: d66de00
 ---
 
 # 26. 「オフィス」の会社案内追補（所属部署・人間確認の印・会社案内シート）
