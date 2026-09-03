@@ -1,4 +1,6 @@
 export { CheckRing } from './CheckRing';
+export { DateNav } from './DateNav';
+export type { DateNavProps } from './DateNav';
 export { ErrorBanner } from './ErrorBanner';
 export { HudStatus } from './HudStatus';
 export type { HudStatusProps } from './HudStatus';
