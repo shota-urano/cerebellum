@@ -48,14 +48,15 @@ employees: [ { automation_id, name, skill, enabled, shift, next_run_at, last_run
 ```
 
 - **`line` の値域**: `knowledge` | `x` | `harness` | `learning` | `note` | `incubate` | `dev` | `rakuten` | `none`（配属の実データは §11）
-- **`upstream` / `downstream` のノードは4種**。前3種は 2026-08-27 の second-brain 側回答どおりで、`place:` は本仕様で追加した（理由は §9-4）:
+- **`upstream` / `downstream` のノードは5種**。前3種は 2026-08-27 の second-brain 側回答どおりで、`place:` は本仕様で追加した（理由は §9-4）。`dest:` は 2026-09-03 追加（理由は §9-5）:
 
 | 値の形 | 意味 | 例 |
 |---|---|---|
 | `<automation_id>` | 社員 | `a-collect` |
 | `manual:/<command>` | 手動起動の skill（automation 未登録も含む） | `manual:/ask` |
 | `human:<何をするか>` | **人間の仕事** | `human:Inbox選別` |
-| `place:<どこ>` | 成果物・確認する場所 | `place:Typefully draft` |
+| `place:<どこ>` | **人間が開いて確認する場所** | `place:cerebellum（昇格するか choose）` |
+| `dest:<どこ>` | **成果物の行き先**（人間は開かない） | `dest:10_Sources` |
 
   人間をノードにするのが要点。「あなたが Inbox を放置すると下流3名が空回りする」がこれで画面に出る（2026-08-27 ユーザー起点）。
 
@@ -134,9 +135,10 @@ employees: [ { automation_id, name, skill, enabled, shift, next_run_at, last_run
 | `manual:/<command>` | コマンドをそのまま等幅 | `profile.command` が一致する在籍社員があればそのカードへ |
 | `human:<何をするか>` | 「あなた：<何をするか>」 | 無し（人間の仕事） |
 | `place:<どこ>` | 等幅でそのまま | 無し（リンクにしない・§3.2-4 と同じ理由） |
+| `dest:<どこ>` | 等幅でそのまま | 無し（同上） |
 
 4. **`automation_id` が `employees` に無いときは id をそのまま等幅で出す**（改名・削除に耐える。名前を捏造しない・20 §2）。タップは無しにする
-5. `downstream` の `place:` ノードには「見る場所」を併記して強調する。**これが「どこを確認するか」の答え**で、`checks`（何を見るか）と対になる
+5. `downstream` の `place:` ノードには「見る場所」を併記して強調する。**これが「どこを確認するか」の答え**で、`checks`（何を見るか）と対になる。**`dest:` には併記しない**——行き先は人間が開く場所ではないので、同じピルを付けると「朝ここを開け」という嘘になる（2026-09-03。`place:00_Inbox` と `place:10_Sources` がこの誤りだった）。1枚のカードに「見る場所」は原則1つに保つ。`dest:` 側には代わりに**「行き先」を淡色（`--muted`。`--accent` は使わない）で併記**して、「開く場所」と「流れ込む先」を色で分ける（ピルの色差だけで役割が読めるようにする）
 6. **`human:` ノードは他より強く出す**（人間が止まるとラインが止まるのが要点）。ただし MY DESK の承認件数（20 §3.3）とは無関係——ここは名簿の静的な流れで、`note = "承認待ち"` の実績とは別
 7. 1-hop ずつカードを辿れることが、専用グラフ画面を持たない理由になっている。「上流を見る → その社員のカード → さらに上流」で流れは追える
 8. `upstream`・`downstream` が空配列の側は**そのブロックを出さない**。`line` が `none`（独立）なら「独立（ラインなし）」と出す。`profile` が無い社員はミニライン全体を出さず §3.2-3 の「名簿 未記載」に畳む
@@ -226,6 +228,11 @@ employees: [ { automation_id, name, skill, enabled, shift, next_run_at, last_run
 - `job: string`（1行）・`checks: string[]` の形。`checks` を1本の文章にせず配列で持つのは正しい（画面が箇条で出せる）
 - **利用 skill を `profile` に重ねない**（既存の `employee.skill` を使う）。同じ値の二重定義を作らない
 - 手書きの名簿ファイルを作らず `SKILL.md` frontmatter を正本にする方針。cerebellum 側に対応表を持たない（§4）
+
+### 9.2 `dest:` の追加（2026-09-03・ユーザー起点）
+
+5. **`upstream`/`downstream` に `dest:<どこ>` を5種目として足す**。`place:` が「成果物・確認する場所」を兼ねていたため、`place:10_Sources`・`place:Typefully draft` のような**行き先**に §3.6-5 の「見る場所」ピルが付き、「朝ここを開け」という嘘の指示になっていた（発端は collect のカードで「見る場所」が `00_Inbox` と `cerebellum` の2つ出ていたこと）。`place:` は人間が開く場所に限り、行き先は `dest:` へ分ける。1枚のカードに「見る場所」は原則1つ。
+   - **`place:` の既存値は動く**（未知の接頭辞を落とさない §6 の姿勢と同じで、`dest:` 未対応の名簿もそのまま描ける）。second-brain 側は行き先ノードを順次 `dest:` へ移す
 
 ### 9.1 2026-08-27 の回答スキーマとの差分（追補分）
 

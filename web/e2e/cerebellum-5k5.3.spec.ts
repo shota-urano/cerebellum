@@ -75,7 +75,8 @@ const EMPLOYEES = [
       checks: [],
       line: 'knowledge',
       upstream: [],
-      downstream: ['human:Inbox選別'],
+      // place: は人間が開く場所・dest: は成果物の行き先（§3.6-5・§9.2）
+      downstream: ['place:cerebellum（承認）', 'dest:10_Sources'],
       doc: null,
     },
   },
@@ -305,6 +306,21 @@ test('place: ノードに「見る場所」が付き、リンクを持たない'
   // 上流が空なら上流ブロックを出さない（§3.6-8）
   await expect(sheet.getByLabel('上流')).toHaveCount(0);
   await expect(sheet.getByLabel('下流')).toBeVisible();
+});
+
+test('dest: ノードは「行き先」で出て「見る場所」は付かない（§3.6-5）', async ({ page }) => {
+  await mockOffice(page);
+  await page.goto('/office?room=unassigned&employee=a-collect');
+  const sheet = card(page, '情報収集（collect）');
+
+  const dest = sheet.locator('.of__ml-node--dest');
+  await expect(dest).toContainText('10_Sources');
+  await expect(dest).toContainText('行き先');
+  await expect(dest).not.toContainText('見る場所');
+  await expect(sheet.getByRole('link', { name: /10_Sources/ })).toHaveCount(0);
+  // 「見る場所」は人間が開く place: だけに1つ。行き先には付かない
+  await expect(sheet.locator('.of__ml-tag', { hasText: '見る場所' })).toHaveCount(1);
+  await expect(sheet.locator('.of__ml-node--place')).toContainText('cerebellum（承認）');
 });
 
 test('社員ノードのタップで相手のカードへ移り、1-hopずつ辿れる', async ({ page }) => {

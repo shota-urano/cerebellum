@@ -32,6 +32,8 @@ export function OfficeMiniLine({ roster, employees, self, scopeHref }: OfficeMin
         <span className="of__ml-text">{item.label}</span>
         {/* 「どこを確認するか」の答え。checks（何を見るか）と対になる（§3.6-5） */}
         {downstreamSide && item.kind === 'place' && <span className="of__ml-tag">見る場所</span>}
+        {/* 行き先は開く場所ではない。淡色のピルで「見る場所」と役割を分ける（§3.6-5・§9.2） */}
+        {item.kind === 'dest' && <span className="of__ml-tag of__ml-tag--dest">行き先</span>}
       </>
     );
     return item.employeeId === null ? (
