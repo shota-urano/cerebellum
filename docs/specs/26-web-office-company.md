@@ -138,9 +138,9 @@ second-brain 側の組織再設計（Vault `85_定義/ハーネス組織.md`・2
 
 ## 実装単位
 
-- [ ] [Frontend] 社員カードへの所属部署・人間確認の追加と部署ヘッダ内訳（§3.1・§3.2）
+- [x] [Frontend] 社員カードへの所属部署・人間確認の追加と部署ヘッダ内訳（§3.1・§3.2）
   - 受け入れ基準: E2E（`web/e2e/<task-id>.spec.ts`・office.json はフィクスチャを配信して :48310 実サーバに依存しない）で、`review: {kinds:[approve,read], cadence:shift}` の社員カードに「人間確認: approve・read（勤務帯どおり毎回）」が出る・`kinds:[alert]` で「異常のみ通知」が出る・`cadence:adhoc` で「不定期」が出る・`review:null` で「人間確認: なし」が出て未記載様式にならない・`dept:null` で「部署 未記載」が出て skill 名から推測した値が出ない・席には両項目が出ない・MY DESK の件数が `review` の有無で変わらない・部署ヘッダに「人間確認あり n名」と「名簿未記載 m名」が出ることを検証。`make verify` PASS
-- [ ] [Frontend] 部署絞り込み（`/office?dept=`）（§3.3）
+- [x] [Frontend] 部署絞り込み（`/office?dept=`）（§3.3）
   - 受け入れ基準: E2E で、社員カードの所属部署タップで `/office?dept={id}` へ入る・部屋をまたいで `dept` 一致の在籍社員だけが部署ルームと同じ席・ブロック分け・状態表示で出る・ヘッダに `DEPT: {id}` と内訳が出る・矢印や連結線を描かない・未知の `dept` で空状態＋全景への導線が出る・`room`/`line`/`dept` 同時指定で `room` → `line` → `dept` の優先順になる・**全景に部署導線が増えていない**ことを検証。`make verify` PASS
-- [ ] [Frontend] 会社案内シート（`/office?company=1`）（§3.4）
+- [x] [Frontend] 会社案内シート（`/office?company=1`）（§3.4）
   - 受け入れ基準: E2E で、全景ヘッダの「会社案内」から開く・部署が `employees` の返却順で最初に現れた順に並ぶ・各部署に内訳と社員1行（名前・勤務帯 or 手動起動・`job`・人間確認）が出る・`dept:null` の社員が末尾の「部署 未記載」に出て消えていない・停止中社員が各部署末尾の「停止中」小見出しの下に出る・部署見出しタップで `/office?dept=`、社員行タップで `/office?employee=` に移る・画像要素（`img`）を含まない・`generated_at` が24時間以上前のとき鮮度警告が出る・全景の4部屋＋MY DESK の構図が変わっていないことを検証。`make verify` PASS
