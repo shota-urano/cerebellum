@@ -1,5 +1,6 @@
 ---
-status: draft
+status: confirmed
+confirmed_rev: 3c61ba4
 ---
 
 # 27. 「オフィス」全景を部署ベースに作り替える（4部屋の廃止・8部署の部屋・部署一覧の受け取り）
