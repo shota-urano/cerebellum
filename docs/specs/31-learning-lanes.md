@@ -1,6 +1,6 @@
 ---
 status: confirmed
-confirmed_rev: 2164be0
+confirmed_rev: 6bb3d4e
 ---
 
 # 31. 学習レーンの複線化（本線＋英語の2枠）
