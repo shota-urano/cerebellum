@@ -1093,6 +1093,38 @@ async fn learning_set_accepts_exactly_ten_problems() {
 }
 
 #[tokio::test]
+async fn learning_set_applies_the_sixty_problem_limit() {
+    let body = |count: u32| {
+        let problems = (1..=count)
+            .map(|no| {
+                json!({
+                    "no": no,
+                    "questionMd": format!("question {no}"),
+                    "answerMd": format!("answer {no}")
+                })
+            })
+            .collect::<Vec<_>>();
+        json!({
+            "date": "today",
+            "theme": "theme",
+            "lessonMd": "lesson",
+            "problems": problems
+        })
+    };
+
+    for count in [53, 60] {
+        let response = call_json(test_app(), "POST", "/api/learning/sets", body(count)).await;
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    for count in [0, 61] {
+        let response = call_json(test_app(), "POST", "/api/learning/sets", body(count)).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(json_body(response).await["error"]["code"], "bad_request");
+    }
+}
+
+#[tokio::test]
 async fn learning_set_returns_not_found_for_dates_without_an_import() {
     let response = call(test_app(), "GET", "/api/learning/sets/2026-07-24").await;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);

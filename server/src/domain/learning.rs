@@ -6,6 +6,7 @@ use thiserror::Error;
 pub const MAX_LEARNING_SET_BYTES: usize = 256 * 1024;
 pub const MAX_LEARNING_FEELING_CHARS: usize = 2000;
 pub const MAX_LEARNING_ANSWER_CHARS: usize = 500;
+pub const MAX_LEARNING_PROBLEMS: usize = 60;
 
 const DEFAULT_SOURCE: &str = "theme";
 const DEFAULT_KIND: &str = "quiz";
@@ -91,7 +92,7 @@ pub struct LearningGradeInput {
 pub enum LearningValidationError {
     #[error("{0} is required")]
     Required(&'static str),
-    #[error("problems must contain between 1 and 10 items")]
+    #[error("problems must contain between 1 and {MAX_LEARNING_PROBLEMS} items")]
     InvalidProblemCount,
     #[error("problem no {0} is duplicated")]
     DuplicateProblemNo(u32),
@@ -136,7 +137,7 @@ impl LearningSetInput {
         let problems = self
             .problems
             .ok_or(LearningValidationError::Required("problems"))?;
-        if !(1..=10).contains(&problems.len()) {
+        if !(1..=MAX_LEARNING_PROBLEMS).contains(&problems.len()) {
             return Err(LearningValidationError::InvalidProblemCount);
         }
 
@@ -303,7 +304,7 @@ mod tests {
     use super::{
         LearningGradeInput, LearningGradeValue, LearningProblemInput, LearningResultInput,
         LearningSetInput, LearningValidationError, MAX_LEARNING_ANSWER_CHARS,
-        MAX_LEARNING_FEELING_CHARS,
+        MAX_LEARNING_FEELING_CHARS, MAX_LEARNING_PROBLEMS,
     };
 
     fn valid_input() -> LearningSetInput {
@@ -372,7 +373,7 @@ mod tests {
 
         let problem = valid_input().problems.expect("fixture has problems")[0].clone();
         let too_many = LearningSetInput {
-            problems: Some(vec![problem.clone(); 11]),
+            problems: Some(vec![problem.clone(); MAX_LEARNING_PROBLEMS + 1]),
             ..valid_input()
         };
         assert_eq!(
@@ -387,6 +388,38 @@ mod tests {
         assert_eq!(
             duplicate.validate(),
             Err(LearningValidationError::DuplicateProblemNo(1))
+        );
+    }
+
+    #[test]
+    fn accepts_problem_counts_up_to_the_limit() {
+        let template = valid_input().problems.expect("fixture has problems")[0].clone();
+        let numbered = |count: u32| {
+            (1..=count)
+                .map(|no| LearningProblemInput {
+                    no: Some(no),
+                    ..template.clone()
+                })
+                .collect::<Vec<_>>()
+        };
+
+        for count in [53, MAX_LEARNING_PROBLEMS as u32] {
+            let learning_set = LearningSetInput {
+                problems: Some(numbered(count)),
+                ..valid_input()
+            }
+            .validate()
+            .expect("problem counts within the limit should pass");
+            assert_eq!(learning_set.problems.len(), count as usize);
+        }
+
+        let over_limit = LearningSetInput {
+            problems: Some(numbered(MAX_LEARNING_PROBLEMS as u32 + 1)),
+            ..valid_input()
+        };
+        assert_eq!(
+            over_limit.validate(),
+            Err(LearningValidationError::InvalidProblemCount)
         );
     }
 

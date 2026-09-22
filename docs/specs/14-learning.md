@@ -29,7 +29,7 @@ sharpen の `study-set`（旧名 night-study・2026-09-10 に second-brain か�
 HTTP DTO の具体形は [`03-api.md`](./03-api.md) §3 を正とする。
 
 - `theme` は学習テーマ、`lessonMd` は完全初学者向けのレッスン本文
-- `problems` は1〜10件。各問題の `no` は問題番号、`questionMd` は問題文、`answerMd` は解答（正解＋解説。採点画面で表示する）
+- `problems` は1〜60件（2026-09-22 に1〜10件から引き上げ。英語レーンの語彙パートが1日およそ50語になるため。[31](./31-learning-lanes.md) §3.6）。各問題の `no` は問題番号、`questionMd` は問題文、`answerMd` は解答（正解＋解説。採点画面で表示する）
 - 必須: `theme`・`lessonMd`・`problems[]`（各 `no`・`questionMd`・`answerMd`）
 - `source` は `theme`（学習テーマ契約由来）| `memo`（メモキュー由来。将来拡張）。省略時 `theme`
 - `kind` は `quiz`（画面内で答える）| `code`（ターミナルで解く）。省略時 `quiz`
