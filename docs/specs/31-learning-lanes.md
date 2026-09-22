@@ -85,11 +85,21 @@ CREATE TABLE learning_results (
 - 学習の未着・未決を計器盤の赤点に含めない（[`25`](./25-web-inbox.md) §3.1）——**2行になっても変えない**。常時点灯すると合図が死ぬ
 - タップ先は `/learning?lane={lane}`
 
+### 3.6 `problems` の件数上限を 60 へ引き上げる
+
+英語レーン（sharpen `docs/英語レーン.md`）の語彙パートは、忘却曲線で復習期限が来た語を**その日に全部出す**設計で、定常状態で1日およそ50語になる。文法3問と合わせて1セット最大53問。現行の上限 1〜10件（[`14-learning.md`](./14-learning.md) §3.1・[`03-api.md`](./03-api.md) §3・`server/src/domain/learning.rs`）では受理できない。
+
+- **上限を `1..=60` に変える**。下限・その他の検証則（`no` 重複・256KiB・自動採点フィールド）は変えない
+- 上限を上げるのは**受理側の話だけ**で、本線が10問を超えて生成してよいという意味ではない。生成側の分量は各レーンの契約（`docs/学習テーマ.md` / `docs/英語レーン.md`）が縛る
+- 画面は**1問1カードのまま**（[`15-web-learning.md`](./15-web-learning.md) §3.2）。53問で問題段が縦に長くなるのは許容する。語彙ドリル用の詰めた表示・「次の未回答へ」のジャンプは作らない——[`15`](./15-web-learning.md) §1 の一本道を壊さないため。必要になったら別仕様で足す
+- 採点段は自動採点が最初から grade を埋めるので（[`15`](./15-web-learning.md) §3.3）、問題数が増えてもタップ数は増えない。**「全問に grade が揃うまで感想へ進めない」規則はそのまま**
+
 ## 4. 送信側の責務（sharpen `study-set`・本仕様の範囲外だが契約として明記）
 
 - レーンごとに生成して `lane` 付きで送る。`lane` を付けない送信は `main` として受理される（移行期間の後方互換）
 - **未着手スキップ・持ち越しの判定はレーン別に行う**（`GET .../result?lane=` で判定する）。本線が未着手でも英語は生成してよい。現行 `status.sh` は日付単位なので改修が要る
 - 生成規約（全問 quiz・`answerType` 必須・自己完結）はレーンによらず同じ（`PROMPT.md`）
+- **`selftest.sh` / `deliver.sh` の `problems は1〜10件` 検査も 60 に合わせる**（送信前検査が受理側より厳しいままだと英語セットが配送前に落ちる）
 
 ## 5. インターフェース（実装時に他仕様へ追記するもの）
 
@@ -129,6 +139,8 @@ CREATE TABLE learning_results (
   - 受け入れ基準: ①`lane` 省略が `main` として受理される ②同じ date に `main` と `en` を送って**両方が独立に残る**（相互に上書きしない） ③同じ `(date, lane)` の再送が UPSERT ④語彙外 lane が `bad_request` ⑤未取り込みレーンの GET が 404 のテストが通る。`make verify` PASS
 - [ ] [Backend] 成績 API のレーン対応（`POST` / `GET /api/learning/sets/{date}/result?lane=`）
   - 受け入れ基準: ①`grades[].no` が**同じレーンのセット**と突き合わされる（他レーンの `no` は `bad_request`） ②`main` と `en` の result が独立に UPSERT できる ③未記録レーンの GET が 404 のテストが通る。`make verify` PASS
+- [ ] [Backend] `problems` の件数上限を `1..=60` に引き上げる（§3.6）。[`14-learning.md`](./14-learning.md) §3.1・[`03-api.md`](./03-api.md) §3 への追記とセット
+  - 受け入れ基準: ①53問のセットが受理される ②61問が `bad_request` ③0問が `bad_request`（下限は据え置き） ④既存の10問以下のテストが無改修で PASS。`make verify` PASS
 - [ ] [Frontend] 学習セッションビューのレーン対応（`/learning?lane=`・result 送信先）。[`15-web-learning.md`](./15-web-learning.md) §2 への追記とセット
   - 受け入れ基準: E2E（`web/e2e/<task-id>.spec.ts`）で ①`/learning?lane=en` が英語セットを描く ②`lane` 省略で本線が描かれる（既存 E2E が無改修で PASS） ③完了時の result が開いているレーンに送られる ④レーン切り替えタブが画面内に無いことを検証。`make verify` PASS
 - [ ] [Frontend] 「今日」画面の LEARNING 段を2行に（`本線` / `英語`・固定順・状態判定は据え置き）。[`25-web-inbox.md`](./25-web-inbox.md) §3.1 への追記とセット
