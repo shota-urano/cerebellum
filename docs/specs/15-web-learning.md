@@ -13,9 +13,10 @@ confirmed_rev: 9db4adc
 
 ## 2. 入出力
 
-- **入力**: `GET /api/learning/sets/{date}`（[`14-learning.md`](./14-learning.md)）。タスク側の `detailRef = learning.session` は `GET /api/days/{date}` の DTO に含まれる
-- **出力**: `POST /api/learning/sets/{date}/result`（自己採点＋感想）、既存 `POST /api/days/today/checks/{taskId}`（消し込み）
-- **経路**: `/learning?date=YYYY-MM-DD&taskId=...`（date 省略時は今日）。「今日」画面のタップ分割規約は [`12-web-digest.md`](./12-web-digest.md) §のとおり（`detailRef` 持ちの行は面全体が遷移）
+- **入力**: `GET /api/learning/sets/{date}?lane={lane}`（[`14-learning.md`](./14-learning.md)）。タスク側の `detailRef = learning.session` は `GET /api/days/{date}` の DTO に含まれる
+- **出力**: `POST /api/learning/sets/{date}/result?lane={lane}`（自己採点＋感想。**開いているレーンに送る**）、既存 `POST /api/days/today/checks/{taskId}`（消し込み）
+- **経路**: `/learning?date=YYYY-MM-DD&lane={lane}&taskId=...`（date 省略時は今日）。「今日」画面のタップ分割規約は [`12-web-digest.md`](./12-web-digest.md) §のとおり（`detailRef` 持ちの行は面全体が遷移）
+- **レーン**: `lane` は `main` | `en` の2値（[`31-learning-lanes.md`](./31-learning-lanes.md) §3.1）。**省略・語彙外はどちらも本線**（`main`）として開く。本線のリクエストにはクエリを付けない（省略時が `main` のため同義）。画面の一本道・見出し（`今日の学習 — {theme}`）はレーンによらず同一で、**レーン切り替えタブ・レーン一覧を画面内に置かない**——在庫を見せない原則（同 §3.4）。レーン間の移動は「今日」画面の LEARNING 段を経由する
 
 ## 3. 処理詳細
 
