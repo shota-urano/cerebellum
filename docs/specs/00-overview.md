@@ -66,6 +66,7 @@ Phase 2.0 = 人間待ち項目の汎用化（[24](./24-inbox.md)・[25](./25-web
 | 28 | [`28-inbox-history.md`](./28-inbox-history.md) | 決着済み人間待ち項目の日付読み出し（`?date=`。24 の増分） | Backend |
 | 29 | [`29-web-inbox-history.md`](./29-web-inbox-history.md) | 「あなた待ち」の決着済み表示と日付切り替え（25 の増分） | Frontend |
 | 30 | [`30-web-today-order.md`](./30-web-today-order.md) | 「今日」画面の段の並び替え（計器盤を残して WAITING → LEARNING → TASKS。25 の増分） | Frontend |
+| 31 | [`31-learning-lanes.md`](./31-learning-lanes.md) | 学習レーンの複線化（本線＋英語の2枠。主キーに lane を追加。14/15/25 の増分） | 共通 |
 
 ## 4. 確定済みの初期値（横断・変更禁止）
 
