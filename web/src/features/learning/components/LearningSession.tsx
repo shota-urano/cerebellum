@@ -2,11 +2,17 @@
 
 import Link from 'next/link';
 import { useCallback, useState } from 'react';
-import type { LearningGrade, LearningProblemDto, LearningResultResponse } from '@/shared/api';
+import type {
+  LearningGrade,
+  LearningLane,
+  LearningProblemDto,
+  LearningResultResponse,
+} from '@/shared/api';
 import { ErrorBanner, Markdown, Toast } from '@/shared/ui';
 import { useLearningResult, useSaveLearningResult } from '../hooks/useLearningResult';
 import { useLearningSet } from '../hooks/useLearningSet';
 import { EMPTY_CALCULATION, type CalculationScratch } from '../lib/calculator';
+import { DEFAULT_LEARNING_LANE } from '../lib/lane';
 import { autoGrade, isAutoGraded } from '../lib/grade';
 import { ProblemCard } from './ProblemCard';
 import { RecordedResult } from './RecordedResult';
@@ -15,6 +21,12 @@ import { Stepper, type Step } from './Stepper';
 export type LearningSessionProps = {
   /** `GET /api/learning/sets/{date}` の `{date}`。`today` または `YYYY-MM-DD` */
   date: string;
+  /**
+   * 開いているレーン（docs/specs/31-learning-lanes.md §3.4）。省略時は本線。
+   * セットの取得も成績の送信もこのレーンに閉じる。**画面内に切り替えタブは置かない**
+   * ——移動は「今日」画面の LEARNING 段を経由する（在庫を見せない原則・同 §3.4）。
+   */
+  lane?: LearningLane;
   /**
    * 成績の記録に**成功した直後**だけ呼ばれる（docs/specs/15-web-learning.md §3.4 ②）。
    * タスクの消し込みは day feature の仕事なので、app 層が合成して渡す
@@ -59,9 +71,13 @@ function Next({
  * レッスン → 問題 → 採点 → 感想 の4段ステッパー。見えるのは今日の1セットだけで、
  * 途中離脱の復元はしない（同 §4。1セット10分想定）。
  */
-export function LearningSession({ date, onRecorded }: LearningSessionProps) {
-  const { set, error, isLoading } = useLearningSet(date);
-  const { result, resultLoading, mutateResult } = useLearningResult(date);
+export function LearningSession({
+  date,
+  lane = DEFAULT_LEARNING_LANE,
+  onRecorded,
+}: LearningSessionProps) {
+  const { set, error, isLoading } = useLearningSet(date, lane);
+  const { result, resultLoading, mutateResult } = useLearningResult(date, lane);
 
   const onSaved = useCallback(
     (saved: LearningResultResponse) => {
@@ -69,7 +85,7 @@ export function LearningSession({ date, onRecorded }: LearningSessionProps) {
     },
     [mutateResult],
   );
-  const { save, saving, saveError, clearSaveError } = useSaveLearningResult(date, onSaved);
+  const { save, saving, saveError, clearSaveError } = useSaveLearningResult(date, onSaved, lane);
 
   const [step, setStep] = useState<Step>('lesson');
   const [answers, setAnswers] = useState<Record<number, string>>({});

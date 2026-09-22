@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useCallback } from 'react';
 import { useDay, useToggleCheck } from '@/features/day';
-import { LearningSession } from '@/features/learning';
+import { LearningSession, parseLearningLane } from '@/features/learning';
 import { ErrorBanner } from '@/shared/ui';
 
 /**
@@ -16,6 +16,8 @@ export function LearningScreen() {
   const date = params.get('date') ?? 'today';
   // 記録できたら消し込む元タスク。今日画面の行タップから渡ってくる（同 §2）
   const taskId = params.get('taskId');
+  // 開いているレーン（docs/specs/31-learning-lanes.md §3.4）。省略・語彙外は本線
+  const lane = parseLearningLane(params.get('lane'));
 
   const { day, mutate } = useDay(date);
   const { toggle, toggleError } = useToggleCheck(day, mutate);
@@ -42,7 +44,7 @@ export function LearningScreen() {
         </Link>
       </div>
 
-      <LearningSession date={date} onRecorded={checkOff} />
+      <LearningSession date={date} lane={lane} onRecorded={checkOff} />
     </main>
   );
 }
