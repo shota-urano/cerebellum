@@ -1120,6 +1120,170 @@ async fn import_learning_set_for_result(app: axum::Router) {
     assert_eq!(response.status(), StatusCode::OK);
 }
 
+async fn import_result_lane(app: axum::Router, lane: &str, no: u32) {
+    let mut payload = lane_set_payload(lane, lane);
+    payload["problems"] = json!([{ "no": no, "questionMd": "q", "answerMd": "a" }]);
+    assert_eq!(
+        call_json(app, "POST", "/api/learning/sets", payload)
+            .await
+            .status(),
+        StatusCode::OK
+    );
+}
+
+#[tokio::test]
+async fn learning_result_matches_problem_numbers_only_in_its_lane() {
+    let app = test_app();
+    import_result_lane(app.clone(), "main", 1).await;
+    import_result_lane(app.clone(), "en", 2).await;
+    for (lane, own, other) in [("main", 1, 2), ("en", 2, 1)] {
+        let uri = format!("/api/learning/sets/today/result?lane={lane}");
+        let valid = json!({"grades":[{"no":own,"grade":"o"}],"feeling":""});
+        let response = call_json(app.clone(), "POST", &uri, valid).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let saved = json_body(response).await;
+        let response = call_json(
+            app.clone(),
+            "POST",
+            &uri,
+            json!({"grades":[{"no":other,"grade":"o"}],"feeling":"invalid"}),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(json_body(response).await["error"]["code"], "bad_request");
+        assert_eq!(json_body(call(app.clone(), "GET", &uri).await).await, saved);
+    }
+}
+
+#[tokio::test]
+async fn learning_results_upsert_independently_and_default_to_main() {
+    let app = test_app();
+    for lane in ["main", "en"] {
+        import_result_lane(app.clone(), lane, 1).await;
+    }
+    let mut expected = std::collections::HashMap::new();
+    for (lane, grade, feeling) in [
+        ("main", "o", "main first"),
+        ("en", "x", "en first"),
+        ("main", "d", "main replaced"),
+        ("en", "o", "en replaced"),
+    ] {
+        let uri = format!("/api/learning/sets/today/result?lane={lane}");
+        let response = call_json(
+            app.clone(),
+            "POST",
+            &uri,
+            json!({"grades":[{"no":1,"grade":grade,"answer":feeling}],"feeling":feeling}),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let saved = json_body(response).await;
+        assert_eq!(saved["feeling"], feeling);
+        assert_eq!(
+            saved["grades"],
+            json!([{"no":1,"grade":grade,"answer":feeling}])
+        );
+        expected.insert(lane, saved);
+        for (read_lane, saved) in &expected {
+            let response = call(
+                app.clone(),
+                "GET",
+                &format!("/api/learning/sets/2026-07-25/result?lane={read_lane}"),
+            )
+            .await;
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(&json_body(response).await, saved);
+        }
+        assert_eq!(
+            json_body(call(app.clone(), "GET", "/api/learning/sets/today/result").await).await,
+            expected["main"]
+        );
+    }
+    let response = call_json(
+        app.clone(),
+        "POST",
+        "/api/learning/sets/today/result",
+        json!({"grades":[],"feeling":"default main"}),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        json_body(
+            call(
+                app.clone(),
+                "GET",
+                "/api/learning/sets/today/result?lane=main"
+            )
+            .await
+        )
+        .await["feeling"],
+        "default main"
+    );
+    assert_eq!(
+        json_body(call(app, "GET", "/api/learning/sets/today/result?lane=en").await).await,
+        expected["en"]
+    );
+}
+
+#[tokio::test]
+async fn learning_result_missing_lane_is_not_found_independently() {
+    for (present, missing) in [("main", "en"), ("en", "main")] {
+        let app = test_app();
+        import_result_lane(app.clone(), present, 1).await;
+        let response = call_json(
+            app.clone(),
+            "POST",
+            &format!("/api/learning/sets/today/result?lane={present}"),
+            json!({"grades":[],"feeling":"recorded"}),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let uri = format!("/api/learning/sets/today/result?lane={missing}");
+        let response =
+            call_json(app.clone(), "POST", &uri, json!({"grades":[],"feeling":""})).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_eq!(json_body(response).await["error"]["code"], "not_found");
+        for has_set in [false, true] {
+            if has_set {
+                import_result_lane(app.clone(), missing, 1).await;
+            }
+            let response = call(app.clone(), "GET", &uri).await;
+            assert_eq!(response.status(), StatusCode::NOT_FOUND);
+            assert_eq!(json_body(response).await["error"]["code"], "not_found");
+        }
+    }
+}
+
+#[tokio::test]
+async fn learning_result_validates_date_then_lane_before_reading_body() {
+    let app = test_app();
+    let baseline =
+        json_body(call(app.clone(), "GET", "/api/learning/sets/tomorrow/result").await).await;
+    for (lane, encoded) in [
+        ("english", "english"),
+        ("", ""),
+        ("MAIN", "MAIN"),
+        (" en ", "%20en%20"),
+    ] {
+        for date in ["today", "tomorrow"] {
+            let uri = format!("/api/learning/sets/{date}/result?lane={encoded}");
+            let expected = if date == "tomorrow" {
+                baseline.clone()
+            } else {
+                json!({"error":{"code":"bad_request","message":format!("unknown lane: {lane}")}})
+            };
+            let response = call(app.clone(), "GET", &uri).await;
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+            assert_eq!(json_body(response).await, expected);
+            for body in ["{", "{}", r#"{"grades":[],"feeling":""}"#] {
+                let response = call_json_body(app.clone(), "POST", &uri, body.to_owned()).await;
+                assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+                assert_eq!(json_body(response).await, expected);
+            }
+        }
+    }
+}
+
 #[tokio::test]
 async fn learning_result_accepts_partial_grading_and_upserts_the_complete_result() {
     let app = test_app();

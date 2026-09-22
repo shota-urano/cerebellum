@@ -19,7 +19,7 @@ sharpen の `study-set`（旧名 night-study・2026-09-10 に second-brain か�
 
 - **入力**: `POST /api/learning/sets`（body に date・任意の lane とセット JSON）。送信元は sharpen の `study-set` skill（生成後に送る）
 - **出力**: `GET /api/learning/sets/{date}?lane={lane}`（`today` 可・lane 省略時 `main`）
-- **成績**: `POST /api/learning/sets/{date}/result`（自己採点・感想）／`GET /api/learning/sets/{date}/result`（study-set が翌晩の適応に読む）
+- **成績**: `POST /api/learning/sets/{date}/result?lane={lane}`（自己採点・感想）／`GET /api/learning/sets/{date}/result?lane={lane}`（study-set が翌晩の適応に読む）
 - **依存ポート**: `LearningRepository`（`learning_sets` / `learning_results` の読み書き）・`Clock`
 
 ## 3. 処理詳細
@@ -50,15 +50,17 @@ HTTP DTO の具体形は [`03-api.md`](./03-api.md) §3 を正とする。
 
 HTTP DTO の具体形は [`03-api.md`](./03-api.md) §3 を正とする。
 
-1. `grade` は `o` | `d` | `x`（○△×）。`grades` の `no` はセットの `problems` と突き合わせ、不明な `no` は `bad_request`。全問分なくてもよい（途中まで採点も受ける）
+検証順は `date` → `lane` → body。`lane` は省略時 `main`、語彙外は `bad_request`（[31](./31-learning-lanes.md) §3.1・§3.3・§6）。
+
+1. `grade` は `o` | `d` | `x`（○△×）。`grades` の `no` は同じ `(date, lane)` のセットの `problems` と突き合わせ、不明な `no` は `bad_request`。全問分なくてもよい（途中まで採点も受ける）
 2. `feeling` は ≤2000 文字・空可
 3. `grades[].answer` は任意・≤500 文字——自動採点時のユーザー回答入力。study-set が翌晩の適応で「何をどう間違えたか」まで読めるようにするための素材（自己採点問題では省略される）
-4. UPSERT（やり直し・上書き可）。`completed_at` は `Clock`
+4. 同じ `(date, lane)` は UPSERT（やり直し・上書き可）。他レーンの成績には影響しない。`completed_at` は `Clock`
 5. **タスクの消し込みはここではやらない**（画面が既存 `POST /api/days/today/checks/{taskId}` を別途叩く。責務を混ぜない）
 
 ### 3.4 適応の読み出し
 
-`GET /api/learning/sets/{date}/result` は記録をそのまま返す（無ければ 404）。study-set は翌晩、前日 date でこれを読み:
+`GET /api/learning/sets/{date}/result?lane={lane}` はそのレーンの記録をそのまま返す（無ければ 404）。study-set は翌晩、前日 date でこれを読み:
 
 - result あり → ×△の問題領域を翌日のセットに混ぜる（**間隔反復は「過去ファイルの見返し」でなく「生成への混ぜ込み」で実現する**。2026-07-29 決定）
 - result なし → 既存ルール「前日未着手ならスキップ」を踏襲

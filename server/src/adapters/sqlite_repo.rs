@@ -792,6 +792,7 @@ impl LearningRepository for SqliteTaskRepository {
     fn save_learning_result(
         &self,
         date: &str,
+        lane: &str,
         grades: &str,
         feeling: &str,
         completed_at: &str,
@@ -800,10 +801,10 @@ impl LearningRepository for SqliteTaskRepository {
             .map_err(RepositoryError::new)?
             .execute(
                 "INSERT INTO learning_results (date, lane, grades, feeling, completed_at)
-                 VALUES (?1, 'main', ?2, ?3, ?4)
+                 VALUES (?1, ?2, ?3, ?4, ?5)
                  ON CONFLICT(date, lane) DO UPDATE SET
-                   grades = ?2, feeling = ?3, completed_at = ?4",
-                params![date, grades, feeling, completed_at],
+                   grades = ?3, feeling = ?4, completed_at = ?5",
+                params![date, lane, grades, feeling, completed_at],
             )
             .map_err(|source| RepositoryError::new(SqliteRepositoryError::Query(source)))?;
         Ok(())
@@ -812,14 +813,15 @@ impl LearningRepository for SqliteTaskRepository {
     fn get_learning_result(
         &self,
         date: &str,
+        lane: &str,
     ) -> Result<Option<StoredLearningResult>, RepositoryError> {
         self.connection()
             .map_err(RepositoryError::new)?
             .query_row(
                 "SELECT grades, feeling, completed_at
                  FROM learning_results
-                 WHERE date = ?1 AND lane = 'main'",
-                [date],
+                 WHERE date = ?1 AND lane = ?2",
+                [date, lane],
                 |row| {
                     Ok(StoredLearningResult {
                         grades: row.get(0)?,
@@ -2396,7 +2398,7 @@ mod tests {
             .unwrap();
         assert_eq!(set.raw, r#"{"theme":"最初の学習"}"#);
         let result = repository
-            .get_learning_result("2026-07-29")
+            .get_learning_result("2026-07-29", "main")
             .unwrap()
             .unwrap();
         assert_eq!(result.grades, r#"[{"no":1,"grade":"o"}]"#);
@@ -2406,14 +2408,17 @@ mod tests {
                 .save_learning_set(date, "main", "updated", "main-time")
                 .unwrap();
             repository
-                .save_learning_result(date, "[]", "updated feeling", "main-time")
+                .save_learning_result(date, "main", "[]", "updated feeling", "main-time")
                 .unwrap();
             let set = repository.get_learning_set(date, "main").unwrap().unwrap();
             assert_eq!(
                 (set.raw.as_str(), set.received_at.as_str()),
                 ("updated", "main-time")
             );
-            let result = repository.get_learning_result(date).unwrap().unwrap();
+            let result = repository
+                .get_learning_result(date, "main")
+                .unwrap()
+                .unwrap();
             assert_eq!(
                 (
                     result.grades.as_str(),
