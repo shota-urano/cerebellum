@@ -34,7 +34,8 @@ const MIGRATION_V4: &str = include_str!("migrations/004_learning.sql");
 const MIGRATION_V5: &str = include_str!("migrations/005_harness.sql");
 const MIGRATION_V6: &str = include_str!("migrations/006_intake.sql");
 const MIGRATION_V7: &str = include_str!("migrations/007_inbox.sql");
-const LATEST_SCHEMA_VERSION: i64 = 7;
+const MIGRATION_V8: &str = include_str!("migrations/008_learning_lanes.sql");
+const LATEST_SCHEMA_VERSION: i64 = 8;
 
 pub struct SqliteTaskRepository {
     connection: Mutex<Connection>,
@@ -75,6 +76,7 @@ impl SqliteTaskRepository {
                 MIGRATION_V5,
                 MIGRATION_V6,
                 MIGRATION_V7,
+                MIGRATION_V8,
             ][..],
             1 => &[
                 MIGRATION_V2,
@@ -83,6 +85,7 @@ impl SqliteTaskRepository {
                 MIGRATION_V5,
                 MIGRATION_V6,
                 MIGRATION_V7,
+                MIGRATION_V8,
             ][..],
             2 => &[
                 MIGRATION_V3,
@@ -90,11 +93,19 @@ impl SqliteTaskRepository {
                 MIGRATION_V5,
                 MIGRATION_V6,
                 MIGRATION_V7,
+                MIGRATION_V8,
             ][..],
-            3 => &[MIGRATION_V4, MIGRATION_V5, MIGRATION_V6, MIGRATION_V7][..],
-            4 => &[MIGRATION_V5, MIGRATION_V6, MIGRATION_V7][..],
-            5 => &[MIGRATION_V6, MIGRATION_V7][..],
-            6 => &[MIGRATION_V7][..],
+            3 => &[
+                MIGRATION_V4,
+                MIGRATION_V5,
+                MIGRATION_V6,
+                MIGRATION_V7,
+                MIGRATION_V8,
+            ][..],
+            4 => &[MIGRATION_V5, MIGRATION_V6, MIGRATION_V7, MIGRATION_V8][..],
+            5 => &[MIGRATION_V6, MIGRATION_V7, MIGRATION_V8][..],
+            6 => &[MIGRATION_V7, MIGRATION_V8][..],
+            7 => &[MIGRATION_V8][..],
             LATEST_SCHEMA_VERSION => return Ok(()),
             version => return Err(SqliteRepositoryError::UnsupportedSchemaVersion(version)),
         };
@@ -747,9 +758,9 @@ impl LearningRepository for SqliteTaskRepository {
         self.connection()
             .map_err(RepositoryError::new)?
             .execute(
-                "INSERT INTO learning_sets (date, raw, received_at)
-                 VALUES (?1, ?2, ?3)
-                 ON CONFLICT(date) DO UPDATE SET raw = ?2, received_at = ?3",
+                "INSERT INTO learning_sets (date, lane, raw, received_at)
+                 VALUES (?1, 'main', ?2, ?3)
+                 ON CONFLICT(date, lane) DO UPDATE SET raw = ?2, received_at = ?3",
                 params![date, raw, received_at],
             )
             .map_err(|source| RepositoryError::new(SqliteRepositoryError::Query(source)))?;
@@ -760,7 +771,7 @@ impl LearningRepository for SqliteTaskRepository {
         self.connection()
             .map_err(RepositoryError::new)?
             .query_row(
-                "SELECT raw, received_at FROM learning_sets WHERE date = ?1",
+                "SELECT raw, received_at FROM learning_sets WHERE date = ?1 AND lane = 'main'",
                 [date],
                 |row| {
                     Ok(StoredLearningSet {
@@ -783,9 +794,9 @@ impl LearningRepository for SqliteTaskRepository {
         self.connection()
             .map_err(RepositoryError::new)?
             .execute(
-                "INSERT INTO learning_results (date, grades, feeling, completed_at)
-                 VALUES (?1, ?2, ?3, ?4)
-                 ON CONFLICT(date) DO UPDATE SET
+                "INSERT INTO learning_results (date, lane, grades, feeling, completed_at)
+                 VALUES (?1, 'main', ?2, ?3, ?4)
+                 ON CONFLICT(date, lane) DO UPDATE SET
                    grades = ?2, feeling = ?3, completed_at = ?4",
                 params![date, grades, feeling, completed_at],
             )
@@ -802,7 +813,7 @@ impl LearningRepository for SqliteTaskRepository {
             .query_row(
                 "SELECT grades, feeling, completed_at
                  FROM learning_results
-                 WHERE date = ?1",
+                 WHERE date = ?1 AND lane = 'main'",
                 [date],
                 |row| {
                     Ok(StoredLearningResult {
@@ -1812,7 +1823,7 @@ mod tests {
 
     use super::{
         MIGRATION_V1, MIGRATION_V2, MIGRATION_V3, MIGRATION_V4, MIGRATION_V5, MIGRATION_V6,
-        SqliteTaskRepository,
+        MIGRATION_V7, SqliteTaskRepository,
     };
     use crate::{
         domain::{
@@ -1976,7 +1987,7 @@ mod tests {
             )
             .expect("routine index should be queryable");
 
-        assert_eq!(version, 7);
+        assert_eq!(version, 8);
         assert_eq!(
             tables,
             vec![
@@ -2037,7 +2048,7 @@ mod tests {
 
         connection
             .execute(
-                "INSERT INTO learning_sets (date, raw, received_at) VALUES (?1, ?2, ?3)",
+                "INSERT INTO learning_sets (date, lane, raw, received_at) VALUES (?1, 'main', ?2, ?3)",
                 params![
                     "2026-07-29",
                     r#"{"theme":"SQLite","lesson_md":"lesson","problems":[]}"#,
@@ -2047,8 +2058,8 @@ mod tests {
             .expect("learning set should insert after migration");
         connection
             .execute(
-                "INSERT INTO learning_results (date, grades, feeling, completed_at)
-                 VALUES (?1, ?2, ?3, ?4)",
+                "INSERT INTO learning_results (date, lane, grades, feeling, completed_at)
+                 VALUES (?1, 'main', ?2, ?3, ?4)",
                 params![
                     "2026-07-29",
                     r#"[{"no":1,"grade":"o"}]"#,
@@ -2067,7 +2078,7 @@ mod tests {
             )
             .expect("learning tables should be queryable");
 
-        assert_eq!(version, 7);
+        assert_eq!(version, 8);
         assert_eq!(existing_digest, "existing digest");
         assert_eq!(learning_rows, 2);
     }
@@ -2149,7 +2160,7 @@ mod tests {
             })
             .expect("harness proposals should be queryable");
 
-        assert_eq!(version, 7);
+        assert_eq!(version, 8);
         assert_eq!(learning_raw, r#"{"theme":"existing learning set"}"#);
         assert_eq!(proposal_count, 1);
     }
@@ -2175,7 +2186,7 @@ mod tests {
         let version_after: i64 = connection
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .unwrap();
-        assert_eq!(version_after, 7);
+        assert_eq!(version_after, 8);
         for table in [
             "intake_days",
             "intake_candidates",
@@ -2230,7 +2241,195 @@ mod tests {
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .unwrap();
 
-        assert_eq!(version_after, 7);
+        assert_eq!(version_after, 8);
+    }
+
+    fn version_seven_learning_database() -> Connection {
+        let connection = Connection::open_in_memory().unwrap();
+        for migration in [
+            MIGRATION_V1,
+            MIGRATION_V2,
+            MIGRATION_V3,
+            MIGRATION_V4,
+            MIGRATION_V5,
+            MIGRATION_V6,
+            MIGRATION_V7,
+        ] {
+            connection.execute_batch(migration).unwrap();
+        }
+        for (date, raw, grades, feeling, timestamp) in [
+            (
+                "2026-07-29",
+                r#"{"theme":"最初の学習"}"#,
+                r#"[{"no":1,"grade":"o"}]"#,
+                "",
+                "2026-07-29T08:00:00+09:00",
+            ),
+            (
+                "2026-09-22",
+                "{\n  \"theme\": \"今日の学習\"\n}",
+                r#"[{"no":2,"grade":"x"}]"#,
+                "復習\nしたい",
+                "2026-09-22T09:10:11+09:00",
+            ),
+        ] {
+            connection
+                .execute(
+                    "INSERT INTO learning_sets (date, raw, received_at) VALUES (?1, ?2, ?3)",
+                    params![date, raw, timestamp],
+                )
+                .unwrap();
+            connection
+                .execute(
+                    "INSERT INTO learning_results (date, grades, feeling, completed_at)
+                 VALUES (?1, ?2, ?3, ?4)",
+                    params![date, grades, feeling, timestamp],
+                )
+                .unwrap();
+        }
+        let version: i64 = connection
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, 7);
+        connection
+    }
+
+    fn learning_rows(connection: &Connection, query: &str) -> Vec<Vec<String>> {
+        let mut statement = connection.prepare(query).unwrap();
+        let columns = statement.column_count();
+        statement
+            .query_map([], |row| {
+                (0..columns).map(|column| row.get(column)).collect()
+            })
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap()
+    }
+
+    #[test]
+    fn migrates_version_seven_learning_rows_to_main_idempotently() {
+        let mut connection = version_seven_learning_database();
+        let sets = learning_rows(
+            &connection,
+            "SELECT date, 'main', raw, received_at FROM learning_sets ORDER BY date",
+        );
+        let results = learning_rows(
+            &connection,
+            "SELECT date, 'main', grades, feeling, completed_at FROM learning_results ORDER BY date",
+        );
+
+        for _ in 0..2 {
+            SqliteTaskRepository::migrate(&mut connection).unwrap();
+            let version: i64 = connection
+                .pragma_query_value(None, "user_version", |row| row.get(0))
+                .unwrap();
+            assert_eq!(version, 8);
+            assert_eq!(
+                learning_rows(
+                    &connection,
+                    "SELECT date, lane, raw, received_at FROM learning_sets ORDER BY date"
+                ),
+                sets
+            );
+            assert_eq!(
+                learning_rows(
+                    &connection,
+                    "SELECT date, lane, grades, feeling, completed_at FROM learning_results ORDER BY date"
+                ),
+                results
+            );
+        }
+    }
+
+    #[test]
+    fn learning_composite_keys_keep_legacy_repository_on_main() {
+        use crate::usecase::ports::LearningRepository;
+
+        let repository =
+            SqliteTaskRepository::from_connection(version_seven_learning_database()).unwrap();
+        {
+            let mut connection = repository.connection().unwrap();
+            for (table, columns) in [
+                ("learning_sets", "date, lane, raw, received_at"),
+                (
+                    "learning_results",
+                    "date, lane, grades, feeling, completed_at",
+                ),
+            ] {
+                let payload = if table == "learning_sets" {
+                    "'english', 'en-time'"
+                } else {
+                    "'[]', 'english feeling', 'en-time'"
+                };
+                let insert = format!("INSERT INTO {table} ({columns}) VALUES (?1, ?2, {payload})");
+                connection
+                    .execute(&insert, params!["2026-07-29", "en"])
+                    .unwrap();
+                let duplicate = connection
+                    .execute(&insert, params!["2026-07-29", "en"])
+                    .unwrap_err();
+                assert_eq!(
+                    duplicate.sqlite_error_code(),
+                    Some(rusqlite::ErrorCode::ConstraintViolation)
+                );
+                assert!(
+                    connection
+                        .execute(&insert, params!["2026-07-30", Option::<String>::None])
+                        .is_err()
+                );
+                assert!(
+                    connection
+                        .execute(&insert, params![Option::<String>::None, "main"])
+                        .is_err()
+                );
+            }
+            SqliteTaskRepository::migrate(&mut connection).unwrap();
+        }
+        let set = repository.get_learning_set("2026-07-29").unwrap().unwrap();
+        assert_eq!(set.raw, r#"{"theme":"最初の学習"}"#);
+        let result = repository
+            .get_learning_result("2026-07-29")
+            .unwrap()
+            .unwrap();
+        assert_eq!(result.grades, r#"[{"no":1,"grade":"o"}]"#);
+
+        for date in ["2026-07-29", "2026-09-23"] {
+            repository
+                .save_learning_set(date, "updated", "main-time")
+                .unwrap();
+            repository
+                .save_learning_result(date, "[]", "updated feeling", "main-time")
+                .unwrap();
+            let set = repository.get_learning_set(date).unwrap().unwrap();
+            assert_eq!(
+                (set.raw.as_str(), set.received_at.as_str()),
+                ("updated", "main-time")
+            );
+            let result = repository.get_learning_result(date).unwrap().unwrap();
+            assert_eq!(
+                (
+                    result.grades.as_str(),
+                    result.feeling.as_str(),
+                    result.completed_at.as_str()
+                ),
+                ("[]", "updated feeling", "main-time")
+            );
+        }
+        let connection = repository.connection().unwrap();
+        assert_eq!(
+            learning_rows(
+                &connection,
+                "SELECT raw, received_at FROM learning_sets WHERE lane = 'en'"
+            ),
+            vec![vec!["english", "en-time"]]
+        );
+        assert_eq!(
+            learning_rows(
+                &connection,
+                "SELECT grades, feeling, completed_at FROM learning_results WHERE lane = 'en'"
+            ),
+            vec![vec!["[]", "english feeling", "en-time"]]
+        );
     }
 
     #[test]
@@ -2764,7 +2963,7 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM routines", [], |row| row.get(0))
             .expect("routines should be queryable");
 
-        assert_eq!(version, 7);
+        assert_eq!(version, 8);
         assert_eq!(
             stored,
             (
@@ -2776,7 +2975,7 @@ mod tests {
         );
         assert_eq!(routine_count, 0);
         println!(
-            "migration v1→v7: user_version={version}, existing_task_days=1, \
+            "migration v1→v8: user_version={version}, existing_task_days=1, \
              existing_task_checks=1, routines={routine_count}"
         );
     }
