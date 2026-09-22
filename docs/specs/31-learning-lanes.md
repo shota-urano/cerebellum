@@ -1,5 +1,6 @@
 ---
-status: draft
+status: confirmed
+confirmed_rev: 2164be0
 ---
 
 # 31. 学習レーンの複線化（本線＋英語の2枠）
