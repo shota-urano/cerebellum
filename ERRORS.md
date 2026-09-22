@@ -9,3 +9,12 @@
 
 - 失敗: `make verify` の `next build --turbopack` が `creating new process → binding to a port → Operation not permitted` で停止した
 - 成功: 同じ `make verify` をサンドボックス外で再実行する。コードや期待値は変更しない
+
+## 2026-09-22: 学習レーン API（cerebellum-8p5.2）の検証
+
+- 失敗: 新規 worktree の `make verify` が `tsc: command not found` で停止した
+- 成功: `web/` で `npm ci`（キャッシュも worktree 内）を実行して依存を導入し、同じ検証を再実行した
+- 失敗: 語彙外 lane のエラーが既存の共通変換で `bad request: unknown lane: english` となり、仕様31の文言検証が失敗した
+- 成功: 学習セットのキー検証に限定して理由文字列を直接 API エラーへ変換し、Rust テスト161件が成功した
+- 失敗: E2E の Chromium 起動が `MachPortRendezvousServer: Permission denied (1100)` で停止した
+- 成功: `make verify` をサンドボックス外で実行すると Chromium が起動し、release バイナリ＋使い捨てDBで検証できた。Makefile・期待値は変更しない

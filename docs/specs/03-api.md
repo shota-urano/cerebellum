@@ -24,8 +24,8 @@ Rust（axum）と Next.js（`shared/api/types.ts` に手動同期）が共有す
 | DELETE | `/api/routines/{id}` | ルーティン行の削除（論理削除） | [05](./05-day-usecase.md) |
 | POST | `/api/digests` | 朝ダイジェストの取り込み（second-brain の deliver.sh が送る） | [11](./11-digest.md) |
 | GET | `/api/digests/{date}` | その日のダイジェスト（構造化済み）。`{date}`=`today` 可 | [11](./11-digest.md) |
-| POST | `/api/learning/sets` | 学習セットの取り込み（second-brain の night-study が送る） | [14](./14-learning.md) |
-| GET | `/api/learning/sets/{date}` | その日の学習セット。`{date}`=`today` 可 | [14](./14-learning.md) |
+| POST | `/api/learning/sets` | 学習セットの取り込み（body の lane 省略時 `main`） | [14](./14-learning.md) |
+| GET | `/api/learning/sets/{date}?lane={lane}` | そのレーンの学習セット。`{date}`=`today` 可・lane 省略時 `main` | [14](./14-learning.md)・[31](./31-learning-lanes.md) |
 | POST | `/api/learning/sets/{date}/result` | その日の自己採点・感想を記録。`{date}`=`today` 可 | [14](./14-learning.md) |
 | GET | `/api/learning/sets/{date}/result` | 記録済みの自己採点・感想を取得。`{date}`=`today` 可 | [14](./14-learning.md) |
 | POST | `/api/harness/proposals` | ハーネス取り込み提案を日単位で取り込む | [17](./17-harness-approval.md) |
@@ -120,6 +120,7 @@ Rust（axum）と Next.js（`shared/api/types.ts` に手動同期）が共有す
 // body（date とセットを同じオブジェクトで送る）
 {
   "date": "today",                     // YYYY-MM-DD も可
+  "lane": "main",                    // 任意・省略時 main。main | en
   "theme": "SQLite の WAL とロック",
   "source": "theme",                   // theme | memo。省略時 theme
   "lessonMd": "...",
@@ -140,9 +141,9 @@ Rust（axum）と Next.js（`shared/api/types.ts` に手動同期）が共有す
 }
 // → 200
 { "date": "2026-07-29", "receivedAt": "2026-07-29T06:30:00+09:00" }
-// 同じ date への再送はセット全体と receivedAt を上書き
+// 同じ (date, lane) への再送はセット全体と receivedAt を上書き
 
-// GET /api/learning/sets/2026-07-29   （"today" も可）
+// GET /api/learning/sets/2026-07-29?lane=main   （"today" も可）
 {
   "date": "2026-07-29",
   "receivedAt": "2026-07-29T06:30:00+09:00",
@@ -396,7 +397,8 @@ Rust（axum）と Next.js（`shared/api/types.ts` に手動同期）が共有す
 - `POST /api/learning/sets` の検証（400 `bad_request`）: body が 256KiB 超 ／ `date` が `%Y-%m-%d` でも `today` でもない ／ `theme`・`lessonMd`・`problems` または各問題の `no`・`questionMd`・`answerMd` が欠落・空 ／ `problems` が1〜10件でない ／ `no` が重複 ／ `source`・`kind`・`answerType` が上記語彙外 ／ `answerType` 指定時に `expected` が欠落・空 ／ `answerType` が `choice` なのに `choices` が2〜6件でない・重複あり・`expected` が `choices` に含まれない ／ `answerType` が `choice` 以外なのに `choices` あり ／ `answerType` が `number` なのに `expected` が数値（整数・小数）として解釈できない。検証失敗時は保存しない
 - `POST /api/learning/sets/{date}/result` の検証（400 `bad_request`）: `date` が `%Y-%m-%d` でも `today` でもない ／ `grades`・`feeling` が欠落 ／ `grade` が `o`・`d`・`x` 以外 ／ `grades[].no` が対応するセットの `problems[].no` に存在しない ／ `grades[].answer` が500文字超 ／ `feeling` が2000文字超。`grades` は空配列および全問未満でも可・`answer` は任意。対応するセットが未取り込みなら 404
 - ダイジェストが未受信の日は **404 にせず** `sections: []` を 200 で返す
-- 学習セットが未取り込みの日は 404 `not_found`
+- 学習セットの POST body／GET query の `lane` は `main` | `en`（省略時 `main`）。検証順は `date` → `lane` → body。語彙外は 400 `bad_request`（`unknown lane: {value}`）。詳細は [31](./31-learning-lanes.md) §3.3
+- 学習セットが未取り込みの `(date, lane)` は 404 `not_found`
 - 学習成績が未記録の日は 404 `not_found`
 - `POST /api/harness/proposals` の検証（400 `bad_request`）: 詳細は [17](./17-harness-approval.md) §3.1〜§3.2。body は 512KiB 以下、`proposals` は1〜30件、`detailMd` は1件128KiB以下。`adopt` / `experiment` は `challengeVerdict` 必須
 - ハーネス一覧 GET のクエリは、`date` だけ（省略時 `today`）／`status=approved&applyState=pending`／`applyState=failed` の**3形のみ**（2026-07-29 に failed 形を追加）。未知パラメータ・混在・値違い・条件の片方欠落など、その他は理由文字列つきの 400 `bad_request`

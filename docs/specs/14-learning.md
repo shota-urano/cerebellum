@@ -17,8 +17,8 @@ sharpen の `study-set`（旧名 night-study・2026-09-10 に second-brain か�
 
 ## 2. 入出力
 
-- **入力**: `POST /api/learning/sets`（body に date とセット JSON）。送信元は sharpen の `study-set` skill（生成後に送る）
-- **出力**: `GET /api/learning/sets/{date}`（`today` 可）
+- **入力**: `POST /api/learning/sets`（body に date・任意の lane とセット JSON）。送信元は sharpen の `study-set` skill（生成後に送る）
+- **出力**: `GET /api/learning/sets/{date}?lane={lane}`（`today` 可・lane 省略時 `main`）
 - **成績**: `POST /api/learning/sets/{date}/result`（自己採点・感想）／`GET /api/learning/sets/{date}/result`（study-set が翌晩の適応に読む）
 - **依存ポート**: `LearningRepository`（`learning_sets` / `learning_results` の読み書き）・`Clock`
 
@@ -40,8 +40,11 @@ HTTP DTO の具体形は [`03-api.md`](./03-api.md) §3 を正とする。
 ### 3.2 取り込み（save_learning_set）
 
 1. `date` は `%Y-%m-%d` または `today`（`Clock` で解決）。それ以外は `bad_request`
-2. body はサイズ上限 256KiB。必須フィールド欠落・`problems` 空・`no` 重複・自動採点フィールドの不整合（`answerType` 語彙外／`expected` 欠落／`choices` の件数・重複・`expected` 不一致／`number` なのに数値でない——具体則は [`03-api.md`](./03-api.md) §3 を正とする）は `bad_request`——**digest と違い崩れた入力は保存しない**。学習セットは構造が本体であり、壊れたまま画面に出すと「今日の学習」が壊れた体験になる。失敗は送信側（study-set）が🚨通知する契約（沈黙しない）
-3. 同じ date は UPSERT（再生成・再送で上書き）。`received_at` は `Clock`
+2. `lane` は `main` | `en`、省略時 `main`。語彙外は `bad_request`（`unknown lane: {value}`）。検証順は `date` → `lane` → body（[31](./31-learning-lanes.md) §3.1・§3.3）。
+   body はサイズ上限 256KiB。必須フィールド欠落・`problems` 空・`no` 重複・自動採点フィールドの不整合（`answerType` 語彙外／`expected` 欠落／`choices` の件数・重複・`expected` 不一致／`number` なのに数値でない——具体則は [`03-api.md`](./03-api.md) §3 を正とする）は `bad_request`——**digest と違い崩れた入力は保存しない**。学習セットは構造が本体であり、壊れたまま画面に出すと「今日の学習」が壊れた体験になる。失敗は送信側（study-set）が🚨通知する契約（沈黙しない）
+3. 同じ `(date, lane)` は UPSERT（再生成・再送で上書き）。他レーンには影響しない。`received_at` は `Clock`（[31](./31-learning-lanes.md) §3.3）
+
+取得も `(date, lane)` 単位で、指定レーンが未取り込みなら 404。
 
 ### 3.3 成績記録（save_learning_result）
 
