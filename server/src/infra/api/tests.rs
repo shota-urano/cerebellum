@@ -648,6 +648,163 @@ async fn learning_set_round_trip_resolves_today_applies_defaults_and_upserts() {
     assert_eq!(replaced["closingMd"], "まとめ");
 }
 
+fn lane_set_payload(lane: &str, theme: &str) -> Value {
+    json!({
+        "date": "today", "lane": lane, "theme": theme, "lessonMd": "lesson",
+        "problems": [{ "no": 1, "questionMd": "q", "answerMd": "a" }]
+    })
+}
+
+#[tokio::test]
+async fn learning_set_omitted_lane_is_main() {
+    let app = test_app();
+    let mut payload = lane_set_payload("main", "default main");
+    payload.as_object_mut().unwrap().remove("lane");
+    let response = call_json(app.clone(), "POST", "/api/learning/sets", payload).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let explicit = call(app.clone(), "GET", "/api/learning/sets/today?lane=main").await;
+    assert_eq!(explicit.status(), StatusCode::OK);
+    let explicit = json_body(explicit).await;
+    assert_eq!(explicit["theme"], "default main");
+    let implicit = call(app, "GET", "/api/learning/sets/2026-07-25").await;
+    assert_eq!(implicit.status(), StatusCode::OK);
+    assert_eq!(json_body(implicit).await, explicit);
+}
+
+#[tokio::test]
+async fn learning_set_lanes_are_independent_and_each_lane_upserts() {
+    let app = test_app();
+    for (lane, theme, main, en) in [
+        ("main", "main first", "main first", None),
+        ("en", "en first", "main first", Some("en first")),
+        ("main", "main replaced", "main replaced", Some("en first")),
+        ("en", "en replaced", "main replaced", Some("en replaced")),
+    ] {
+        let response = call_json(
+            app.clone(),
+            "POST",
+            "/api/learning/sets",
+            lane_set_payload(lane, theme),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        for (read_lane, expected) in [("main", Some(main)), ("en", en)] {
+            let response = call(
+                app.clone(),
+                "GET",
+                &format!("/api/learning/sets/2026-07-25?lane={read_lane}"),
+            )
+            .await;
+            if let Some(expected) = expected {
+                assert_eq!(response.status(), StatusCode::OK);
+                assert_eq!(json_body(response).await["theme"], expected);
+            } else {
+                assert_eq!(response.status(), StatusCode::NOT_FOUND);
+                assert_eq!(json_body(response).await["error"]["code"], "not_found");
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn learning_set_missing_lane_returns_404_even_when_other_lane_exists() {
+    for (present, missing) in [("main", "en"), ("en", "main")] {
+        let app = test_app();
+        let response = call_json(
+            app.clone(),
+            "POST",
+            "/api/learning/sets",
+            lane_set_payload(present, "present"),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let response = call(
+            app,
+            "GET",
+            &format!("/api/learning/sets/today?lane={missing}"),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_eq!(json_body(response).await["error"]["code"], "not_found");
+    }
+}
+
+#[tokio::test]
+async fn learning_set_unknown_lane_is_bad_request_before_body_validation() {
+    for (lane, query) in [
+        ("english", "english"),
+        ("", ""),
+        ("MAIN", "MAIN"),
+        (" en ", "%20en%20"),
+    ] {
+        let app = test_app();
+        for payload in [
+            lane_set_payload(lane, "valid"),
+            json!({"date":"today", "lane":lane}),
+            json!({"date":"today", "lane":lane, "problems":"not an array"}),
+        ] {
+            let response = call_json(app.clone(), "POST", "/api/learning/sets", payload).await;
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+            assert_eq!(
+                json_body(response).await["error"],
+                json!({
+                    "code": "bad_request", "message": format!("unknown lane: {lane}")
+                })
+            );
+        }
+        let response = call(
+            app.clone(),
+            "GET",
+            &format!("/api/learning/sets/today?lane={query}"),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(
+            json_body(response).await["error"],
+            json!({"code":"bad_request", "message":format!("unknown lane: {lane}")})
+        );
+        for valid in ["main", "en"] {
+            assert_eq!(
+                call(
+                    app.clone(),
+                    "GET",
+                    &format!("/api/learning/sets/today?lane={valid}")
+                )
+                .await
+                .status(),
+                StatusCode::NOT_FOUND
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn learning_set_date_validation_precedes_lane_and_body() {
+    let app = test_app();
+    let baseline = json_body(call(app.clone(), "GET", "/api/learning/sets/tomorrow").await).await;
+    let get = call(
+        app.clone(),
+        "GET",
+        "/api/learning/sets/tomorrow?lane=unknown",
+    )
+    .await;
+    assert_eq!(get.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(json_body(get).await, baseline);
+    for lane in [json!("unknown"), json!(null), json!(42)] {
+        let response = call_json(
+            app.clone(),
+            "POST",
+            "/api/learning/sets",
+            json!({
+                "date": "tomorrow", "lane": lane, "problems": "invalid"
+            }),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(json_body(response).await, baseline);
+    }
+}
+
 #[tokio::test]
 async fn learning_set_accepts_and_returns_automatic_grading_fields() {
     let app = test_app();

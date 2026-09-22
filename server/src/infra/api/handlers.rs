@@ -13,6 +13,7 @@ use serde::Deserialize;
 use crate::domain::harness::MAX_PROPOSAL_BODY_BYTES;
 use crate::domain::learning::MAX_LEARNING_SET_BYTES;
 use crate::domain::{inbox::MAX_INBOX_BODY_BYTES, intake::MAX_INTAKE_BODY_BYTES};
+use crate::usecase::error::UsecaseError;
 
 use super::{
     AppState,
@@ -22,9 +23,10 @@ use super::{
         HarnessProposalResponseDto, HarnessProposalsDto, HealthDto, InboxApplyResultInputDto,
         InboxBatchInputDto, InboxBatchSavedDto, InboxDecisionInputDto, InboxItemResponseDto,
         InboxItemsDto, InboxSummaryDto, IntakeApplyResultInputDto, IntakeBatchInputDto,
-        IntakeDecisionInputDto, IntakeListDto, IntakeResponseDto, IntakeSavedDto, LearningInputDto,
-        LearningResultDto, LearningResultInputDto, LearningSetDto, LearningStoredDto,
-        RoutineInputDto, RoutineResponseDto, RoutinesDto, SummaryDto,
+        IntakeDecisionInputDto, IntakeListDto, IntakeResponseDto, IntakeSavedDto,
+        LearningEnvelopeDto, LearningInputDto, LearningResultDto, LearningResultInputDto,
+        LearningSetDto, LearningStoredDto, RoutineInputDto, RoutineResponseDto, RoutinesDto,
+        SummaryDto,
     },
     error::ApiError,
 };
@@ -167,6 +169,13 @@ pub(super) async fn get_digest(
     Ok(Json(view.into()))
 }
 
+fn learning_key_error(error: UsecaseError) -> ApiError {
+    match error {
+        UsecaseError::BadRequest(message) => ApiError::bad_request(message),
+        other => other.into(),
+    }
+}
+
 pub(super) async fn save_learning_set(
     State(state): State<Arc<AppState>>,
     request: Request,
@@ -183,27 +192,48 @@ pub(super) async fn save_learning_set(
             "body must not exceed {MAX_LEARNING_SET_BYTES} bytes"
         )));
     }
-    let input: LearningInputDto =
+    let envelope: LearningEnvelopeDto =
         serde_json::from_slice(&body).map_err(|error| ApiError::bad_request(error.to_string()))?;
-    let date = input.date.clone();
+    let lane = match envelope.lane {
+        serde_json::Value::String(lane) => lane,
+        other => other.to_string(),
+    };
     let usecase = Arc::clone(&state.manage_learning);
+    let date = usecase
+        .validate_set_key(&envelope.date, &lane)
+        .map_err(learning_key_error)?;
+    let input: LearningInputDto = serde_json::from_value(envelope.body)
+        .map_err(|error| ApiError::bad_request(error.to_string()))?;
     let stored =
-        tokio::task::spawn_blocking(move || usecase.save_learning_set(&date, input.into()))
+        tokio::task::spawn_blocking(move || usecase.save_learning_set(&date, &lane, input.into()))
             .await
             .map_err(ApiError::from_join)??;
 
     Ok(Json(stored.into()))
 }
 
+#[derive(Deserialize)]
+pub(super) struct LearningSetQuery {
+    lane: Option<String>,
+}
+
 pub(super) async fn get_learning_set(
     State(state): State<Arc<AppState>>,
     path: Result<Path<String>, PathRejection>,
+    query: Result<Query<LearningSetQuery>, QueryRejection>,
 ) -> Result<Json<LearningSetDto>, ApiError> {
     let Path(date) = path.map_err(|error| ApiError::bad_request(error.to_string()))?;
     let usecase = Arc::clone(&state.manage_learning);
-    let view = tokio::task::spawn_blocking(move || usecase.get_learning_set(&date))
-        .await
-        .map_err(ApiError::from_join)??;
+    let Query(query) = query.map_err(|error| ApiError::bad_request(error.to_string()))?;
+    let lane = query.lane.as_deref().unwrap_or("main");
+    let date = usecase
+        .validate_set_key(&date, lane)
+        .map_err(learning_key_error)?;
+    let view = tokio::task::spawn_blocking(move || {
+        usecase.get_learning_set(&date, query.lane.as_deref().unwrap_or("main"))
+    })
+    .await
+    .map_err(ApiError::from_join)??;
 
     Ok(Json(view.into()))
 }

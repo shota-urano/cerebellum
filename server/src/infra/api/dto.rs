@@ -320,8 +320,21 @@ impl From<Block> for BlockDto {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(super) struct LearningInputDto {
+pub(super) struct LearningEnvelopeDto {
     pub(super) date: String,
+    #[serde(default = "default_learning_lane")]
+    pub(super) lane: serde_json::Value,
+    #[serde(flatten)]
+    pub(super) body: serde_json::Value,
+}
+
+fn default_learning_lane() -> serde_json::Value {
+    serde_json::Value::String("main".to_owned())
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct LearningInputDto {
     theme: Option<String>,
     source: Option<String>,
     lesson_md: Option<String>,
