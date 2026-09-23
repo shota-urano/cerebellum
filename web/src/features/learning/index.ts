@@ -8,8 +8,14 @@
 export { LearningSession } from './components/LearningSession';
 export type { LearningSessionProps } from './components/LearningSession';
 /**
- * 「今日」第2段の状態1行（docs/specs/25-web-inbox.md §3.1・§5）。
- * `features/day` からは import せず、`app/page.tsx` が3段を並べる（features 間 import 禁止）。
+ * `?lane=` の読み取り（docs/specs/31-learning-lanes.md §3.4）。
+ * 経路のクエリを解くのは app 層の仕事なので、語彙の判定だけを公開する。
+ */
+export { DEFAULT_LEARNING_LANE, parseLearningLane } from './lib/lane';
+/**
+ * 「今日」の LEARNING 段（docs/specs/25-web-inbox.md §3.1・§5）。
+ * **レーンごとに1行**（`本線` → `英語`・docs/specs/31-learning-lanes.md §3.5）。
+ * `features/day` からは import せず、`app/page.tsx` が枠を並べる（features 間 import 禁止）。
  */
 export { LearningTodayLine } from './components/LearningTodayLine';
 export type { LearningTodayLineProps } from './components/LearningTodayLine';

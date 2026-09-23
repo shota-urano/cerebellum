@@ -66,6 +66,7 @@ Phase 2.0 = 人間待ち項目の汎用化（[24](./24-inbox.md)・[25](./25-web
 | 28 | [`28-inbox-history.md`](./28-inbox-history.md) | 決着済み人間待ち項目の日付読み出し（`?date=`。24 の増分） | Backend |
 | 29 | [`29-web-inbox-history.md`](./29-web-inbox-history.md) | 「あなた待ち」の決着済み表示と日付切り替え（25 の増分） | Frontend |
 | 30 | [`30-web-today-order.md`](./30-web-today-order.md) | 「今日」画面の段の並び替え（計器盤を残して WAITING → LEARNING → TASKS。25 の増分） | Frontend |
+| 31 | [`31-learning-lanes.md`](./31-learning-lanes.md) | 学習レーンの複線化（本線＋英語の2枠。主キーに lane を追加。14/15/25 の増分） | 共通 |
 
 ## 4. 確定済みの初期値（横断・変更禁止）
 
@@ -74,7 +75,7 @@ Phase 2.0 = 人間待ち項目の汎用化（[24](./24-inbox.md)・[25](./25-web
 | ルーティン表の正本 | SQLite `routines`（2026-07-27 に Vault md から移管）。編集は `/api/routines` と「ルーティン」画面から | [02](./02-data-model.md)・[10](./10-web-routines.md) |
 | Vault の扱い | `import-routines`（初期移行）でのみ読む。`serve` は参照しない。**書き込みは常に禁止** | [06](./06-cli-serve.md) |
 | ダイジェスト | second-brain 側が生成し `POST /api/digests` で送る（push）。cerebellum は生成も Slack 送信もしない | [11](./11-digest.md) |
-| 学習セット | second-brain の `night-study` が生成し `POST /api/learning/sets` で送る（push）。正本は cerebellum SQLite（2026-07-29 に Vault `40_Projects/learning` から移管決定）。cerebellum は生成も verify 実行もしない | [14](./14-learning.md) |
+| 学習セット | sharpen の `study-set`（旧 night-study）が生成し `POST /api/learning/sets` で送る（push）。正本は cerebellum SQLite（2026-07-29 に Vault `40_Projects/learning` から移管決定）。cerebellum は生成も verify 実行もしない | [14](./14-learning.md) |
 | ハーネス提案 | second-brain の `night-harness` が判定し `POST /api/harness/proposals` で送る（push）。画面のチェック＝承認の正本、翌朝06:20 の無人 `--apply` がそれを読んで適用する。cerebellum は判定も適用もしない（2026-07-29 決定・Slack 廃止） | [17](./17-harness-approval.md) |
 | daily取り込み候補 | second-brain の `daily-harness` が毎晩 00:40 に仕分けて `POST /api/intake/candidates` で送る（push・0件の日も送る）。**正本は Vault の候補ファイル**で、画面の✅は同じ 00:40 の実行冒頭に候補ファイルへ書き戻されてから適用される。cerebellum は仕分けも適用も Linear 起票もしない（2026-08-29 決定） | [22](./22-daily-intake.md) |
 | 人間待ち項目 | second-brain の各 skill が `POST /api/inbox/batches` で送る（push・**0件でも送る**）。kind は `approve` / `choose` / `read` / `alert` の4値固定。cerebellum が持つのは人間の意思（`status`）と機械の結果（`apply_state`）だけ。「今日届いているべき送信元」は名簿（office.json の `profile.review`）が正本で、サーバは受信の事実だけを持つ。ハーネス承認（17）と daily取り込み（22）はこの口へ移し、専用 API は移行完了後に撤去する（2026-09-02 決定） | [24](./24-inbox.md) |

@@ -55,17 +55,21 @@ CREATE TABLE digests (
 
 -- 学習セット（second-brain の night-study が生成した構造化 JSON）
 CREATE TABLE learning_sets (
-  date        TEXT PRIMARY KEY,    -- "YYYY-MM-DD"（ローカルタイム）
+  date        TEXT NOT NULL,       -- "YYYY-MM-DD"（ローカルタイム）
+  lane        TEXT NOT NULL,       -- "main" | "en"
   raw         TEXT NOT NULL,       -- §14.3.1 のセット JSON をそのまま保持
-  received_at TEXT NOT NULL        -- ISO8601 オフセット付き
+  received_at TEXT NOT NULL,       -- ISO8601 オフセット付き
+  PRIMARY KEY (date, lane)
 );
 
 -- 学習成績（自己採点と当日の感想）
 CREATE TABLE learning_results (
-  date         TEXT PRIMARY KEY,   -- 対応する learning_sets.date
+  date         TEXT NOT NULL,      -- 対応する learning_sets.date
+  lane         TEXT NOT NULL,      -- "main" | "en"
   grades       TEXT NOT NULL,      -- §14.3.3 の grades 配列を JSON のまま保持
   feeling      TEXT NOT NULL,      -- 当日の感想（空文字可）
-  completed_at TEXT NOT NULL       -- ISO8601 オフセット付き
+  completed_at TEXT NOT NULL,      -- ISO8601 オフセット付き
+  PRIMARY KEY (date, lane)
 );
 
 -- ハーネス取り込み提案（second-brain の night-harness が生成。§17）
@@ -215,6 +219,9 @@ task_id = hex(sha1("{間隔}|{時刻}|{内容}"))[0..12]   # 16進小文字・�
 | 5 | `harness_proposals` を追加（ハーネス承認。[`17-harness-approval.md`](./17-harness-approval.md)。2026-07-29） |
 | 6 | `intake_days` / `intake_candidates` を追加（daily取り込み承認。[`22-daily-intake.md`](./22-daily-intake.md)。2026-08-29） |
 | 7 | `inbox_receipts` / `inbox_items` を追加（人間待ち項目。[`24-inbox.md`](./24-inbox.md)。2026-09-02） |
+| 8 | `learning_sets` / `learning_results` の主キーを `(date, lane)` に変更（[`31-learning-lanes.md`](./31-learning-lanes.md)。2026-09-22） |
+
+- v8 は両テーブルを再作成し、既存行を全て `lane = 'main'` としてコピーする。他の列の値は保持する。
 
 - v3 の列追加は `ALTER TABLE ... ADD COLUMN`（既定 NULL）。**既存 `task_days` 行の値は書き換えない**（追加列が NULL のまま残るのは正常。過去日に詳細は無い）
 

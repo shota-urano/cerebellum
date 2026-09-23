@@ -49,6 +49,7 @@ export type {
   LearningAnswerType,
   LearningGrade,
   LearningGradeDto,
+  LearningLane,
   LearningProblemDto,
   LearningResultInput,
   LearningResultResponse,

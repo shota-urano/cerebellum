@@ -17,7 +17,7 @@
 1. （エラー時のみ）ErrorBanner
 2. HeaderPanel（計器盤カード。日付・進捗バー・`CLEARED`・確認待ちの赤点）
 3. InboxSummaryStrip（WAITING・パネル。kind 別4件数＋未着行）
-4. LearningTodayLine（LEARNING・パネル。状態1行）
+4. LearningTodayLine（LEARNING・パネル。レーンごとに1行）
 5. （全完了時）AllClear ／（空時）EmptyState
 6. TaskList（TASKS・ヘッダ行付きパネル）
 
@@ -45,7 +45,7 @@
 | CheckRing | — | 22px リング。done: accent 枠＋内点 9px 発光（transform遷移 .18s）。未完了: border 枠・内点透明 |
 | HeaderPanel 赤点（`.hdr__alert`） | — （`aria-label="確認待ちに異常があります"`・`role="img"`） | `CLEARED` ラベルの行末（計器盤の右端）に 7px の error 色の丸＋グロー。**第3段の異常が1件でもあるときだけ**出す（specs 25 §3.1）。押す操作は持たない。**進捗・ALL CLEAR の判定には入らない** |
 | AllClear | `ALL CLEAR` ＋ `本日のタスクはすべて消し込み済みです` | accent 枠・淡い accent 背景・内側グロー・タグは .24em＋text-shadow。判定は日課の `done === total > 0` だけ（第3段の異常に影響されない） |
-| LearningTodayLine（`.lx__today`） | ヘッダ `LEARNING` / `今日の学習`。1行に `未着` ／ `未回答` ／ `済 ○x △y ×z` | 行全体が `/learning` へのリンク（44px 以上・右端にシェブロン）。未着は異常様式＝左辺 3px error 色＋文字も error 色 |
+| LearningTodayLine（`.lx__today`） | ヘッダ `LEARNING` / `今日の学習`。**レーンごとに1行**（`本線` → `英語` の固定順・specs 31 §3.5）。各行に `未着` ／ `未回答` ／ `済 ○x △y ×z` | 行全体が `/learning?lane={lane}`（本線はクエリ無し）へのリンク（44px 以上・右端にシェブロン）。行頭のレーン名は muted・10.5px・字送り .12em で幅を固定し、状態の文字列を縦にそろえる。2本目の行だけ上罫線。未着は異常様式＝左辺 3px error 色＋文字も error 色 |
 | InboxSummaryStrip（`.wt__strip`） | ヘッダ `WAITING` / `確認待ち`。件数4つ `⚠ 異常` / `承認` / `選択` / `読む` | 4等分グリッド（区切りは縦 border）。件数は 19px・accent、**0 は muted＋opacity .6 で薄く残す**。各枠が `/waiting?kind=…` へのリンク（66px 以上）。下に未着行（`.dg__warn` 様式・specs 25 §3.3） |
 | EmptyState | `今日のタスクはありません` | 破線 border・muted・中央寄せ |
 

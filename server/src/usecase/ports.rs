@@ -87,13 +87,19 @@ pub trait LearningRepository: Send + Sync {
     fn save_learning_set(
         &self,
         date: &str,
+        lane: &str,
         raw: &str,
         received_at: &str,
     ) -> Result<(), RepositoryError>;
-    fn get_learning_set(&self, date: &str) -> Result<Option<StoredLearningSet>, RepositoryError>;
+    fn get_learning_set(
+        &self,
+        date: &str,
+        lane: &str,
+    ) -> Result<Option<StoredLearningSet>, RepositoryError>;
     fn save_learning_result(
         &self,
         date: &str,
+        lane: &str,
         grades: &str,
         feeling: &str,
         completed_at: &str,
@@ -101,6 +107,7 @@ pub trait LearningRepository: Send + Sync {
     fn get_learning_result(
         &self,
         date: &str,
+        lane: &str,
     ) -> Result<Option<StoredLearningResult>, RepositoryError>;
 }
 

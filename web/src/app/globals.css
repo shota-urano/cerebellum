@@ -640,6 +640,13 @@ a.of__ml-node:hover { border-color: var(--accent); color: var(--text); }
    ——それでも合図は出す（黙って消えるのが最悪。docs/specs/24-inbox.md §9 と同じ姿勢） */
 .lx__todayrow--bad { border-left: 3px solid var(--error); }
 .lx__todayrow--bad .lx__todaystate { color: var(--error); }
+/* レーンごとに1行（docs/specs/31-learning-lanes.md §3.5）。段は1つのまま・行が2本になるだけ
+   なので、2本目だけ罫線を戻して行の境目を出す（1本目は .list__head の下罫線が兼ねる） */
+.lx__lane + .lx__lane .lx__todayrow { border-top: 1px solid var(--border); }
+.lx__todaybody { display: flex; align-items: baseline; gap: 12px; }
+/* レーン名（本線 / 英語）は見出し側の語彙なので .list__head と同じ muted・字送り。
+   幅を固定して状態の文字列を縦にそろえる——2行を上下で見比べるための列 */
+.lx__todaylane { flex: none; min-width: 3.4em; font-size: 10.5px; letter-spacing: .12em; color: var(--muted); }
 .wt__strip { margin-top: 12px; }
 .wt__strip__banner { padding: 12px 14px 0; }
 /* kind 別の件数4つ（§3.1）。390px で4列＝1列 88px ほど。潰れないよう文字を小さくする */

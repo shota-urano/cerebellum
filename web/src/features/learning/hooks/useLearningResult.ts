@@ -6,23 +6,25 @@ import {
   ApiError,
   apiPost,
   fetcher,
+  type LearningLane,
   type LearningResultInput,
   type LearningResultResponse,
 } from '@/shared/api';
-import { LEARNING_SWR, learningSetKey } from './useLearningSet';
+import { DEFAULT_LEARNING_LANE } from '../lib/lane';
+import { LEARNING_SWR, learningLaneQuery, learningSetPath } from './useLearningSet';
 
-/** `GET|POST /api/learning/sets/{date}/result` */
-export function learningResultKey(date: string) {
-  return learningSetKey(date) + '/result';
+/** `GET|POST /api/learning/sets/{date}/result?lane={lane}`（lane 省略時は本線）。 */
+export function learningResultKey(date: string, lane: LearningLane = DEFAULT_LEARNING_LANE) {
+  return learningSetPath(date) + '/result' + learningLaneQuery(lane);
 }
 
 /**
- * その日の記録済み成績（docs/specs/15-web-learning.md §4 の「result 送信済みの日に再訪」）。
+ * その日・そのレーンの記録済み成績（docs/specs/15-web-learning.md §4 の「result 送信済みの日に再訪」）。
  * 未記録は 404 なので、`result === undefined && !isLoading` が「まだ記録していない」。
  */
-export function useLearningResult(date: string) {
+export function useLearningResult(date: string, lane: LearningLane = DEFAULT_LEARNING_LANE) {
   const { data, error, isLoading, mutate } = useSWR<LearningResultResponse, ApiError>(
-    learningResultKey(date),
+    learningResultKey(date, lane),
     fetcher,
     LEARNING_SWR,
   );
@@ -30,7 +32,8 @@ export function useLearningResult(date: string) {
 }
 
 /**
- * 成績の記録（docs/specs/15-web-learning.md §3.4）。
+ * 成績の記録（docs/specs/15-web-learning.md §3.4）。**開いているレーンへ送る**
+ * （docs/specs/31-learning-lanes.md §3.4）。
  *
  * 成功したかどうかを真偽値で返す——**呼び出し側は真のときだけ消し込みへ進む**
  * （記録なしにタスクが消えるのが最悪ケース。同 §4）。失敗はトーストで再試行させるため
@@ -39,6 +42,7 @@ export function useLearningResult(date: string) {
 export function useSaveLearningResult(
   date: string,
   onSaved: (saved: LearningResultResponse) => void,
+  lane: LearningLane = DEFAULT_LEARNING_LANE,
 ) {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<ApiError | null>(null);
@@ -48,7 +52,7 @@ export function useSaveLearningResult(
       setSaving(true);
       setSaveError(null);
       try {
-        const saved = await apiPost<LearningResultResponse>(learningResultKey(date), input);
+        const saved = await apiPost<LearningResultResponse>(learningResultKey(date, lane), input);
         onSaved(saved);
         return true;
       } catch (cause) {
@@ -58,7 +62,7 @@ export function useSaveLearningResult(
         setSaving(false);
       }
     },
-    [date, onSaved],
+    [date, lane, onSaved],
   );
 
   return { save, saving, saveError, clearSaveError: () => setSaveError(null) };

@@ -183,7 +183,21 @@ function Inline({ text }: { text: string }) {
         if (link) {
           const href = safeHref(link[2]);
           if (href) {
-            return <a className="dg__note md__link" href={href} key={index}>{link[1]}</a>;
+            // 外部（http(s)）は新しいタブで開く。画面は「読む場所」なので、記事へ飛んで戻れなくならないようにする
+            // （docs/specs/07-web-foundation.md §4。本人 2026-09-14「記事を開くは _blank で」）。
+            // 相対パス・`#` は同じタブのまま。`rel` は opener を渡さないため。
+            const external = /^https?:\/\//i.test(href);
+            return (
+              <a
+                className="dg__note md__link"
+                href={href}
+                key={index}
+                rel={external ? 'noopener noreferrer' : undefined}
+                target={external ? '_blank' : undefined}
+              >
+                {link[1]}
+              </a>
+            );
           }
         }
         // 素のテキストは要素で包まない（DOM を余計に深くしない）

@@ -37,13 +37,22 @@ impl ManageLearning {
         Self { repository, clock }
     }
 
+    pub fn validate_set_key(&self, date: &str, lane: &str) -> Result<String, UsecaseError> {
+        let today = self.clock.now().date_naive();
+        let date = resolve_date(date, today)?.format("%Y-%m-%d").to_string();
+        if !matches!(lane, "main" | "en") {
+            return Err(UsecaseError::BadRequest(format!("unknown lane: {lane}")));
+        }
+        Ok(date)
+    }
+
     pub fn save_learning_set(
         &self,
         date: &str,
+        lane: &str,
         input: LearningSetInput,
     ) -> Result<LearningStoredAt, UsecaseError> {
-        let today = self.clock.now().date_naive();
-        let date = resolve_date(date, today)?.format("%Y-%m-%d").to_string();
+        let date = self.validate_set_key(date, lane)?;
         let learning_set = input
             .validate()
             .map_err(|error| UsecaseError::BadRequest(error.to_string()))?;
@@ -52,18 +61,21 @@ impl ManageLearning {
         let received_at = self.clock.now().to_rfc3339();
 
         self.repository
-            .save_learning_set(&date, &raw, &received_at)
+            .save_learning_set(&date, lane, &raw, &received_at)
             .map_err(repository_error)?;
 
         Ok(LearningStoredAt { date, received_at })
     }
 
-    pub fn get_learning_set(&self, date: &str) -> Result<LearningSetView, UsecaseError> {
-        let today = self.clock.now().date_naive();
-        let date = resolve_date(date, today)?.format("%Y-%m-%d").to_string();
+    pub fn get_learning_set(
+        &self,
+        date: &str,
+        lane: &str,
+    ) -> Result<LearningSetView, UsecaseError> {
+        let date = self.validate_set_key(date, lane)?;
         let stored = self
             .repository
-            .get_learning_set(&date)
+            .get_learning_set(&date, lane)
             .map_err(repository_error)?
             .ok_or_else(|| UsecaseError::NotFound(date.clone()))?;
         let learning_set = serde_json::from_str(&stored.raw)
@@ -79,11 +91,11 @@ impl ManageLearning {
     pub fn save_learning_result(
         &self,
         date: &str,
+        lane: &str,
         input: LearningResultInput,
     ) -> Result<LearningResultView, UsecaseError> {
-        let today = self.clock.now().date_naive();
-        let date = resolve_date(date, today)?.format("%Y-%m-%d").to_string();
-        let learning_set = self.load_learning_set(&date)?;
+        let date = self.validate_set_key(date, lane)?;
+        let learning_set = self.load_learning_set(&date, lane)?;
         let problem_numbers = learning_set
             .problems
             .iter()
@@ -97,7 +109,7 @@ impl ManageLearning {
         let completed_at = self.clock.now().to_rfc3339();
 
         self.repository
-            .save_learning_result(&date, &grades, &result.feeling, &completed_at)
+            .save_learning_result(&date, lane, &grades, &result.feeling, &completed_at)
             .map_err(repository_error)?;
 
         Ok(LearningResultView {
@@ -107,12 +119,15 @@ impl ManageLearning {
         })
     }
 
-    pub fn get_learning_result(&self, date: &str) -> Result<LearningResultView, UsecaseError> {
-        let today = self.clock.now().date_naive();
-        let date = resolve_date(date, today)?.format("%Y-%m-%d").to_string();
+    pub fn get_learning_result(
+        &self,
+        date: &str,
+        lane: &str,
+    ) -> Result<LearningResultView, UsecaseError> {
+        let date = self.validate_set_key(date, lane)?;
         let stored = self
             .repository
-            .get_learning_result(&date)
+            .get_learning_result(&date, lane)
             .map_err(repository_error)?
             .ok_or_else(|| UsecaseError::NotFound(date.clone()))?;
         let grades = serde_json::from_str::<Vec<LearningGrade>>(&stored.grades)
@@ -128,10 +143,10 @@ impl ManageLearning {
         })
     }
 
-    fn load_learning_set(&self, date: &str) -> Result<LearningSet, UsecaseError> {
+    fn load_learning_set(&self, date: &str, lane: &str) -> Result<LearningSet, UsecaseError> {
         let stored = self
             .repository
-            .get_learning_set(date)
+            .get_learning_set(date, lane)
             .map_err(repository_error)?
             .ok_or_else(|| UsecaseError::NotFound(date.to_owned()))?;
         serde_json::from_str(&stored.raw).map_err(|error| UsecaseError::Internal(Box::new(error)))
