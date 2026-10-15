@@ -120,7 +120,7 @@ Rust（axum）と Next.js（`shared/api/types.ts` に手動同期）が共有す
 // body（date とセットを同じオブジェクトで送る）
 {
   "date": "today",                     // YYYY-MM-DD も可
-  "lane": "main",                    // 任意・省略時 main。main | en
+  "lane": "main",                    // 任意・省略時 main。main | en | liberal
   "theme": "SQLite の WAL とロック",
   "source": "theme",                   // theme | memo。省略時 theme
   "lessonMd": "...",
@@ -397,7 +397,7 @@ Rust（axum）と Next.js（`shared/api/types.ts` に手動同期）が共有す
 - `POST /api/learning/sets` の検証（400 `bad_request`）: body が 256KiB 超 ／ `date` が `%Y-%m-%d` でも `today` でもない ／ `theme`・`lessonMd`・`problems` または各問題の `no`・`questionMd`・`answerMd` が欠落・空 ／ `problems` が1〜60件でない（[31](./31-learning-lanes.md) §3.6） ／ `no` が重複 ／ `source`・`kind`・`answerType` が上記語彙外 ／ `answerType` 指定時に `expected` が欠落・空 ／ `answerType` が `choice` なのに `choices` が2〜6件でない・重複あり・`expected` が `choices` に含まれない ／ `answerType` が `choice` 以外なのに `choices` あり ／ `answerType` が `number` なのに `expected` が数値（整数・小数）として解釈できない。検証失敗時は保存しない
 - `POST /api/learning/sets/{date}/result` の検証（400 `bad_request`）: `date` が `%Y-%m-%d` でも `today` でもない ／ `grades`・`feeling` が欠落 ／ `grade` が `o`・`d`・`x` 以外 ／ `grades[].no` が同じ `(date, lane)` のセットの `problems[].no` に存在しない ／ `grades[].answer` が500文字超 ／ `feeling` が2000文字超。`grades` は空配列および全問未満でも可・`answer` は任意。同じ `(date, lane)` のセットが未取り込みなら 404
 - ダイジェストが未受信の日は **404 にせず** `sections: []` を 200 で返す
-- 学習セットの POST body／GET query と成績 API の POST／GET query の `lane` は `main` | `en`（省略時 `main`）。検証順は `date` → `lane` → body。語彙外は 400 `bad_request`（`unknown lane: {value}`）。詳細は [31](./31-learning-lanes.md) §3.3
+- 学習セットの POST body／GET query と成績 API の POST／GET query の `lane` は `main` | `en` | `liberal`（省略時 `main`。`liberal` は 2026-10-15 追加）。検証順は `date` → `lane` → body。語彙外は 400 `bad_request`（`unknown lane: {value}`）。詳細は [31](./31-learning-lanes.md) §3.3
 - 学習セットが未取り込みの `(date, lane)` は 404 `not_found`
 - 学習成績が未記録の `(date, lane)` は 404 `not_found`
 - `POST /api/harness/proposals` の検証（400 `bad_request`）: 詳細は [17](./17-harness-approval.md) §3.1〜§3.2。body は 512KiB 以下、`proposals` は1〜30件、`detailMd` は1件128KiB以下。`adopt` / `experiment` は `challengeVerdict` 必須

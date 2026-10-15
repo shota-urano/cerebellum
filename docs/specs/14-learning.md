@@ -40,7 +40,7 @@ HTTP DTO の具体形は [`03-api.md`](./03-api.md) §3 を正とする。
 ### 3.2 取り込み（save_learning_set）
 
 1. `date` は `%Y-%m-%d` または `today`（`Clock` で解決）。それ以外は `bad_request`
-2. `lane` は `main` | `en`、省略時 `main`。語彙外は `bad_request`（`unknown lane: {value}`）。検証順は `date` → `lane` → body（[31](./31-learning-lanes.md) §3.1・§3.3）。
+2. `lane` は `main` | `en` | `liberal`、省略時 `main`（`liberal` は 2026-10-15 追加。sharpen の教養レーン `docs/教養レーン.md`）。語彙外は `bad_request`（`unknown lane: {value}`）。検証順は `date` → `lane` → body（[31](./31-learning-lanes.md) §3.1・§3.3）。
    body はサイズ上限 256KiB。必須フィールド欠落・`problems` 空・`no` 重複・自動採点フィールドの不整合（`answerType` 語彙外／`expected` 欠落／`choices` の件数・重複・`expected` 不一致／`number` なのに数値でない——具体則は [`03-api.md`](./03-api.md) §3 を正とする）は `bad_request`——**digest と違い崩れた入力は保存しない**。学習セットは構造が本体であり、壊れたまま画面に出すと「今日の学習」が壊れた体験になる。失敗は送信側（study-set）が🚨通知する契約（沈黙しない）
 3. 同じ `(date, lane)` は UPSERT（再生成・再送で上書き）。他レーンには影響しない。`received_at` は `Clock`（[31](./31-learning-lanes.md) §3.3）
 

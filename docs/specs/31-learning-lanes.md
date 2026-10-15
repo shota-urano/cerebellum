@@ -3,13 +3,15 @@ status: confirmed
 confirmed_rev: 6bb3d4e
 ---
 
-# 31. 学習レーンの複線化（本線＋英語の2枠）
+# 31. 学習レーンの複線化（本線＋英語＋教養の3枠）
 
 **親**: [`00-overview.md`](./00-overview.md) ｜ **担当**: Backend（§3.1〜3.3）＋ Frontend（§3.4〜3.5） ｜ **範囲**: `domain/learning.rs`・`usecase/manage_learning.rs`・`infra/api`（`/api/learning`）・`app/learning/page.tsx`・`features/learning/`
 
 ## 1. 目的
 
 学習を **1日1セット**から **1日1レーン1セット**に広げる。本人が「英語は恒久的に1枠確保して毎日やりたい」と決めた（2026-09-22）ことが要件。
+
+2026-10-15 改訂: 3レーン目 `liberal`（表示名 `教養`）を足す。理由は sharpen の教養レーン（`docs/教養レーン.md`）。教養は水・日に生成しない（配らない日がある）レーンで、その日の行は `未着` になる（§3.5）。
 
 現状は `learning_sets` の主キーが `date` 単独（[`02-data-model.md`](./02-data-model.md) §2）なので、同じ日に2セット目を POST すると1セット目を UPSERT で上書きする（[`14-learning.md`](./14-learning.md) §3.2-3）。**リポジトリを分けても、曜日で分けても解けない**（前者は同じ API に同じ日付で当たるだけ、後者は本線の進みが恒久的に半減する）。主キーにレーンを足すのが唯一の筋。
 
@@ -26,7 +28,7 @@ confirmed_rev: 6bb3d4e
 
 ### 3.1 lane の語彙
 
-- `lane` は **`main` | `en` の2値固定**。未知の値は `bad_request`
+- `lane` は **`main` | `en` | `liberal` の3値固定**。未知の値は `bad_request`（`liberal` は 2026-10-15 に追加。sharpen の教養レーン `docs/教養レーン.md`）
 - **省略時は `main`**。これにより sharpen の現行 `study-set` は**無改修のまま**本線レーンに書き続ける（後方互換）
 - 語彙を自由文字列にしない。`detail_ref`（[`02`](./02-data-model.md) §6）と同じ姿勢で、増やすときは本仕様を改訂する。自由文字列にすると送信側のタイポが静かに新レーンを作り、画面に出ない学習セットが生まれる
 
@@ -37,7 +39,7 @@ confirmed_rev: 6bb3d4e
 ```sql
 CREATE TABLE learning_sets (
   date        TEXT NOT NULL,        -- "YYYY-MM-DD"（ローカルタイム）
-  lane        TEXT NOT NULL,        -- "main" | "en"
+  lane        TEXT NOT NULL,        -- "main" | "en" | "liberal"
   raw         TEXT NOT NULL,        -- 14 §3.1 のセット JSON をそのまま保持
   received_at TEXT NOT NULL,
   PRIMARY KEY (date, lane)
@@ -54,6 +56,7 @@ CREATE TABLE learning_results (
 ```
 
 - 既存行は全て `lane = 'main'` になる（学習は 2026-07-29 以降の本線1本しか無いため、これで過去の記録の意味は変わらない）
+- `lane` 列に CHECK 制約は置かない。語彙の正は §3.1（usecase の検証）だけなので、**語彙を増やすときに migration は要らない**（2026-10-15 の `liberal` 追加も migration なし）
 - 移行は値を保持する再作成であって、[`AGENTS.md`](../../AGENTS.md) ルール3（確定済み `task_days` の不変性）の対象ではない。学習セットは UPSERT 前提の生成物
 
 ### 3.3 API
@@ -79,10 +82,11 @@ CREATE TABLE learning_results (
 
 ### 3.5 「今日」画面の LEARNING 段
 
-- LEARNING 段を**レーンごとに1行**（`main` → `en` の固定順・最大2行）にする。並びの正は [`30-web-today-order.md`](./30-web-today-order.md) §3.1 のまま（計器盤 → WAITING → LEARNING → TASKS）
+- LEARNING 段を**レーンごとに1行**（`main` → `en` → `liberal` の固定順・最大3行）にする。並びの正は [`30-web-today-order.md`](./30-web-today-order.md) §3.1 のまま（計器盤 → WAITING → LEARNING → TASKS）
 - 各行の状態判定・文言・異常様式は [`25-web-inbox.md`](./25-web-inbox.md) §3.1 第2段のまま（`未着` / `未回答` / `済 ○x △y ×z`）。**セットの 404 を先に見る**規則もそのまま
-- 行の頭にレーン名を出す（`本線` / `英語`）。**表示名は画面が持つ**（サーバは `main` / `en` しか知らない）
-- 学習の未着・未決を計器盤の赤点に含めない（[`25`](./25-web-inbox.md) §3.1）——**2行になっても変えない**。常時点灯すると合図が死ぬ
+- 行の頭にレーン名を出す（`本線` / `英語` / `教養`）。**表示名は画面が持つ**（サーバは `main` / `en` / `liberal` しか知らない）
+- 学習の未着・未決を計器盤の赤点に含めない（[`25`](./25-web-inbox.md) §3.1）——**2行・3行になっても変えない**。常時点灯すると合図が死ぬ
+- 教養（`liberal`）は水・日に配られない（sharpen `docs/教養レーン.md`）。その日の教養行は `未着` になるが、上の規則どおり赤点には含めない。**曜日で行を隠したり文言を変えたりしない**（判定は他レーンと同じ 404 だけで行う。画面は送信側の曜日規則を知らない）
 - タップ先は `/learning?lane={lane}`
 
 ### 3.6 `problems` の件数上限を 60 へ引き上げる
@@ -114,14 +118,14 @@ CREATE TABLE learning_results (
 
 | 事象 | 応答 |
 |---|---|
-| `lane` が語彙外（`main` / `en` 以外） | 400 `bad_request`（`unknown lane: {value}`） |
+| `lane` が語彙外（`main` / `en` / `liberal` 以外） | 400 `bad_request`（`unknown lane: {value}`） |
 | そのレーンのセット未取り込みの GET | 404 `not_found`（画面は当該行を `未着` にする） |
 | そのレーンのセット未取り込みへの result POST | 404 `not_found` |
 | そのレーンの result 未記録の GET | 404 `not_found`（送信側は「未着手」と解釈） |
 
 ## 7. スコープ外
 
-- 3レーン目以降（増やすときは §3.1 の語彙を改訂する）
+- 4レーン目以降（増やすときは §3.1 の語彙を改訂する）
 - レーンごとの画面・体験の作り分け（§3.4）
 - 過去セットの一覧・レーン横断の成績集計（当日集中モデルのまま）
 - 英語レーンの中身（到達目標・出題形式）——sharpen `docs/学習テーマ.md` の責務
@@ -145,3 +149,7 @@ CREATE TABLE learning_results (
   - 受け入れ基準: E2E（`web/e2e/<task-id>.spec.ts`）で ①`/learning?lane=en` が英語セットを描く ②`lane` 省略で本線が描かれる（既存 E2E が無改修で PASS） ③完了時の result が開いているレーンに送られる ④レーン切り替えタブが画面内に無いことを検証。`make verify` PASS
 - [ ] [Frontend] 「今日」画面の LEARNING 段を2行に（`本線` / `英語`・固定順・状態判定は据え置き）。[`25-web-inbox.md`](./25-web-inbox.md) §3.1 への追記とセット
   - 受け入れ基準: E2E で ①LEARNING が `本線` → `英語` の順で2行出る ②各行が `未着` / `未回答` / `済 ○x △y ×z` を独立に出す ③行のタップが `/learning?lane={lane}` へ遷移する ④学習の未着が計器盤の赤点に**含まれない** ⑤`/` の段の並び（計器盤 → WAITING → LEARNING → TASKS）が無変更（[`30`](./30-web-today-order.md) の既存 E2E が無改修で PASS）を検証。`make verify` PASS
+- [ ] [Backend] lane 語彙に `liberal` を足す（§3.1。2026-10-15 改訂・migration なし）。[`03-api.md`](./03-api.md)・[`14-learning.md`](./14-learning.md) への追記とセット
+  - 受け入れ基準: ①`liberal` のセットと成績が受理され、同じ date の `main` / `en` と**独立に残る** ②語彙外 lane は従来どおり `bad_request` ③既存の `main` / `en` のテストが無改修で PASS。`make verify` PASS
+- [ ] [Frontend] LEARNING 段に3行目 `教養` を足す（§3.5。`/learning?lane=liberal` も描ける）。[`15-web-learning.md`](./15-web-learning.md) §2・[`25-web-inbox.md`](./25-web-inbox.md) §3.1 への追記とセット
+  - 受け入れ基準: E2E で ①LEARNING が `本線` → `英語` → `教養` の順で3行出る ②教養行が `未着` / `未回答` / `済 ○x △y ×z` を独立に出す ③教養行のタップが `/learning?lane=liberal` へ遷移し、教養のセットが描かれる ④教養の未着が計器盤の赤点に含まれない。`make verify` PASS

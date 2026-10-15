@@ -778,6 +778,111 @@ async fn learning_set_unknown_lane_is_bad_request_before_body_validation() {
     }
 }
 
+/// 教養レーン `liberal`（docs/specs/31-learning-lanes.md §3.1。2026-10-15 追加）。
+/// 同じ date の `main` / `en` と相互に上書きせず、UPSERT はそのレーンだけに効く。
+#[tokio::test]
+async fn learning_set_liberal_lane_is_accepted_and_independent_of_main_and_en() {
+    let app = test_app();
+    for (lane, theme) in [
+        ("main", "main only"),
+        ("en", "en only"),
+        ("liberal", "liberal first"),
+        ("liberal", "liberal replaced"),
+    ] {
+        let response = call_json(
+            app.clone(),
+            "POST",
+            "/api/learning/sets",
+            lane_set_payload(lane, theme),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+    for (lane, expected) in [
+        ("main", "main only"),
+        ("en", "en only"),
+        ("liberal", "liberal replaced"),
+    ] {
+        let response = call(
+            app.clone(),
+            "GET",
+            &format!("/api/learning/sets/2026-07-25?lane={lane}"),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(json_body(response).await["theme"], expected);
+    }
+    // lane 省略は従来どおり本線（liberal を既定にしない）
+    let implicit = json_body(call(app, "GET", "/api/learning/sets/today").await).await;
+    assert_eq!(implicit["theme"], "main only");
+}
+
+#[tokio::test]
+async fn learning_set_liberal_missing_is_404_while_main_and_en_exist() {
+    let app = test_app();
+    for lane in ["main", "en"] {
+        let response = call_json(
+            app.clone(),
+            "POST",
+            "/api/learning/sets",
+            lane_set_payload(lane, lane),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+    for uri in [
+        "/api/learning/sets/today?lane=liberal",
+        "/api/learning/sets/today/result?lane=liberal",
+    ] {
+        let response = call(app.clone(), "GET", uri).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_eq!(json_body(response).await["error"]["code"], "not_found");
+    }
+    let response = call_json(
+        app,
+        "POST",
+        "/api/learning/sets/today/result?lane=liberal",
+        json!({"grades":[],"feeling":""}),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn learning_set_near_miss_liberal_lanes_stay_bad_request() {
+    for (lane, query) in [
+        ("Liberal", "Liberal"),
+        ("liberals", "liberals"),
+        ("kyoyo", "kyoyo"),
+        (" liberal", "%20liberal"),
+    ] {
+        let app = test_app();
+        let response = call_json(
+            app.clone(),
+            "POST",
+            "/api/learning/sets",
+            lane_set_payload(lane, "valid"),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(
+            json_body(response).await["error"],
+            json!({"code":"bad_request", "message":format!("unknown lane: {lane}")})
+        );
+        for uri in [
+            format!("/api/learning/sets/today?lane={query}"),
+            format!("/api/learning/sets/today/result?lane={query}"),
+        ] {
+            let response = call(app.clone(), "GET", &uri).await;
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+            assert_eq!(
+                json_body(response).await["error"],
+                json!({"code":"bad_request", "message":format!("unknown lane: {lane}")})
+            );
+        }
+    }
+}
+
 #[tokio::test]
 async fn learning_set_date_validation_precedes_lane_and_body() {
     let app = test_app();
@@ -1185,6 +1290,64 @@ async fn learning_result_matches_problem_numbers_only_in_its_lane() {
         assert_eq!(json_body(response).await["error"]["code"], "bad_request");
         assert_eq!(json_body(call(app.clone(), "GET", &uri).await).await, saved);
     }
+}
+
+/// 教養レーンの成績（docs/specs/31-learning-lanes.md §3.3）。`grades[].no` は教養のセットと
+/// だけ突き合わせ、`main` / `en` の成績とは独立に UPSERT・取得できる。
+#[tokio::test]
+async fn learning_result_liberal_lane_is_independent_of_main_and_en() {
+    let app = test_app();
+    import_result_lane(app.clone(), "main", 1).await;
+    import_result_lane(app.clone(), "en", 2).await;
+    import_result_lane(app.clone(), "liberal", 3).await;
+    let liberal = "/api/learning/sets/today/result?lane=liberal";
+    for other in [1, 2] {
+        let response = call_json(
+            app.clone(),
+            "POST",
+            liberal,
+            json!({"grades":[{"no":other,"grade":"o"}],"feeling":"invalid"}),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(json_body(response).await["error"]["code"], "bad_request");
+    }
+    let mut saved = Value::Null;
+    for (grade, feeling) in [("x", "liberal first"), ("d", "liberal replaced")] {
+        let response = call_json(
+            app.clone(),
+            "POST",
+            liberal,
+            json!({"grades":[{"no":3,"grade":grade}],"feeling":feeling}),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        saved = json_body(response).await;
+        assert_eq!(saved["feeling"], feeling);
+    }
+    assert_eq!(
+        json_body(call(app.clone(), "GET", liberal).await).await,
+        saved
+    );
+    // main / en の成績は教養の記録で生まれない（未記録のまま 404）
+    for lane in ["main", "en"] {
+        let response = call(
+            app.clone(),
+            "GET",
+            &format!("/api/learning/sets/today/result?lane={lane}"),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+    let response = call_json(
+        app.clone(),
+        "POST",
+        "/api/learning/sets/today/result?lane=main",
+        json!({"grades":[{"no":1,"grade":"o"}],"feeling":"main"}),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(json_body(call(app, "GET", liberal).await).await, saved);
 }
 
 #[tokio::test]

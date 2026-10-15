@@ -123,10 +123,10 @@ export interface DigestResponse {
 }
 
 /**
- * 03-api.md §3: 学習レーン（31-learning-lanes.md §3.1）。`main` | `en` の2値固定で、
+ * 03-api.md §3: 学習レーン（31-learning-lanes.md §3.1）。`main` | `en` | `liberal` の3値固定で、
  * クエリ・body を省略したときは `main`。語彙外はサーバが 400 `bad_request` を返す。
  */
-export type LearningLane = 'main' | 'en';
+export type LearningLane = 'main' | 'en' | 'liberal';
 
 /** 03-api.md §3: 自動採点の回答形式。null は自己採点（従来動作） */
 export type LearningAnswerType = 'choice' | 'number' | 'text';

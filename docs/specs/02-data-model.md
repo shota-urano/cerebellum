@@ -56,7 +56,7 @@ CREATE TABLE digests (
 -- 学習セット（second-brain の night-study が生成した構造化 JSON）
 CREATE TABLE learning_sets (
   date        TEXT NOT NULL,       -- "YYYY-MM-DD"（ローカルタイム）
-  lane        TEXT NOT NULL,       -- "main" | "en"
+  lane        TEXT NOT NULL,       -- "main" | "en" | "liberal"
   raw         TEXT NOT NULL,       -- §14.3.1 のセット JSON をそのまま保持
   received_at TEXT NOT NULL,       -- ISO8601 オフセット付き
   PRIMARY KEY (date, lane)
@@ -65,7 +65,7 @@ CREATE TABLE learning_sets (
 -- 学習成績（自己採点と当日の感想）
 CREATE TABLE learning_results (
   date         TEXT NOT NULL,      -- 対応する learning_sets.date
-  lane         TEXT NOT NULL,      -- "main" | "en"
+  lane         TEXT NOT NULL,      -- "main" | "en" | "liberal"
   grades       TEXT NOT NULL,      -- §14.3.3 の grades 配列を JSON のまま保持
   feeling      TEXT NOT NULL,      -- 当日の感想（空文字可）
   completed_at TEXT NOT NULL,      -- ISO8601 オフセット付き

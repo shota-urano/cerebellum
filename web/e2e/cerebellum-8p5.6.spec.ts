@@ -10,6 +10,10 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 //   ④ 学習の未着が計器盤の赤点に**含まれない**（25 §3.1。2行になっても変えない）
 //   ⑤ `/` の段の並び（計器盤 → WAITING → LEARNING → TASKS）が無変更（30 §3.1）
 //
+// 2026-10-15 改訂: 教養レーン（`liberal`）が3行目に加わった（31 §3.5）。本ファイルは本線・英語の
+// 検証を据え置き、行数の数え方だけ3行に合わせる。教養行そのものの検証は
+// cerebellum-learning-lane-liberal.spec.ts が持つ（stub は教養を既定で未着にする）。
+//
 // 入力（日課・学習・受信・名簿）と「いま」はすべて固定する（hn6.3・y7o.1 と同じ方針）。
 // **学習だけはレーンで応答を出し分ける**——`?lane=` を見ない stub だと「独立に出る」ことを
 // 検証できず、両レーンが同じ状態になった画面しか見ないまま通ってしまう。
@@ -55,7 +59,7 @@ function dayJson(tasks: TaskSeed[]) {
 
 // ---- 学習（レーン別・docs/specs/31-learning-lanes.md §3.3） ----
 
-type Lane = 'main' | 'en';
+type Lane = 'main' | 'en' | 'liberal';
 type GradeSeed = { no: number; grade: 'o' | 'd' | 'x' };
 
 /** そのレーンの状態。`missing`=セット未着（404）／`unanswered`=セットのみ／`done`=成績あり */
@@ -100,7 +104,8 @@ const notFound = (message: string) => ({
 
 /** `?lane=` を読む（省略時は本線・docs/specs/31-learning-lanes.md §3.1） */
 function laneOf(url: string): Lane {
-  return new URL(url).searchParams.get('lane') === 'en' ? 'en' : 'main';
+  const lane = new URL(url).searchParams.get('lane');
+  return lane === 'en' || lane === 'liberal' ? lane : 'main';
 }
 
 // ---- 受信（docs/specs/03-api.md §3 の InboxSourceSummaryDto） ----
@@ -164,6 +169,7 @@ async function openToday(page: Page, options: Options = {}) {
   const lanes: Record<Lane, LaneSeed> = {
     main: options.main ?? MISSING,
     en: options.en ?? MISSING,
+    liberal: MISSING,
   };
 
   await page.route(
@@ -214,9 +220,9 @@ test('LEARNING は `本線` → `英語` の順で2行出る', async ({ page }) 
     summary: [{ source: 'night-harness', open: { approve: 2 } }],
   });
 
-  // 段は1つ・行が2本（段を2つに割らない）
+  // 段は1つ・行はレーンの数だけ（段を割らない）。3本目は教養（2026-10-15 改訂・31 §3.5）
   await expect(learningPanel(page)).toHaveCount(1);
-  await expect(learningPanel(page).locator('.lx__todayrow')).toHaveCount(2);
+  await expect(learningPanel(page).locator('.lx__todayrow')).toHaveCount(3);
 
   // 並びは main → en の固定順。**実際の縦位置**でも確かめる
   await expect(laneRow(page, 0)).toContainText('本線');
@@ -309,8 +315,10 @@ test('2レーンとも未着でも計器盤に赤点は出ない（進捗・ALL 
     summary: [{ source: 'night-harness', open: { approve: 5, choose: 2, read: 9 } }],
   });
 
-  // 2行とも未着＝異常様式は2本出る（気づくための合図は出す）
-  await expect(learningPanel(page).locator('.lx__todayrow--bad')).toHaveCount(2);
+  // 本線・英語とも未着＝異常様式は2本出る（気づくための合図は出す）。教養も未着なので計3本
+  await expect(laneRow(page, 0)).toHaveClass(/lx__todayrow--bad/);
+  await expect(laneRow(page, 1)).toHaveClass(/lx__todayrow--bad/);
+  await expect(learningPanel(page).locator('.lx__todayrow--bad')).toHaveCount(3);
 
   // それでも赤点は点かない——常時点灯すると WAITING の異常の合図が死ぬ
   await expect(redDot(page)).toHaveCount(0);
@@ -325,7 +333,7 @@ test('2レーンとも未着でも計器盤に赤点は出ない（進捗・ALL 
     tasks: CLEARED_DAY,
     summary: [{ source: 'night-harness', open: { alert: 1 } }],
   });
-  await expect(learningPanel(page).locator('.lx__todayrow--bad')).toHaveCount(2);
+  await expect(learningPanel(page).locator('.lx__todayrow--bad')).toHaveCount(3);
   await expect(redDot(page)).toBeVisible();
 });
 
