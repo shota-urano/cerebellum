@@ -31,7 +31,8 @@ export type DetailRef =
   | 'digest.consolidate'
   | 'nightshift.report'
   | 'learning.session'
-  | 'harness.proposals';
+  | 'harness.proposals'
+  | 'vocab.app';
 
 /** 03-api.md §3: `progress` */
 export interface ProgressDto {

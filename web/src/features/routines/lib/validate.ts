@@ -52,6 +52,8 @@ export const DETAIL_REF_OPTIONS: { value: DetailRef | ''; label: string }[] = [
   // ハーネス承認の行は人間がこの画面から追加する（docs/specs/17-harness-approval.md §5）。
   // 選択肢が無いと「今日」→ /harness の導線を作る手段が UI に存在しなくなる
   { value: 'harness.proposals', label: 'ハーネス承認（取り込み提案）' },
+  // sharpen の単語帳（同じホストの :48330・外部アプリ）。docs/specs/02-data-model.md §6
+  { value: 'vocab.app', label: '単語帳（sharpen）' },
 ];
 
 /** trim 済みの入力を検証する。返り値が空オブジェクトなら送信してよい。 */

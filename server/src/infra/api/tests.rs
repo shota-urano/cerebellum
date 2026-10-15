@@ -1658,6 +1658,43 @@ async fn detail_ref_is_validated_and_reaches_the_day_response() {
     assert_eq!(without_detail["detailRef"], Value::Null);
 }
 
+/// 既存のルーティンへ後から `vocab.app`（sharpen の単語帳）を付けられる（02-data-model.md §6）
+#[tokio::test]
+async fn vocab_app_detail_ref_can_be_set_on_an_existing_routine() {
+    let app = test_app();
+
+    let created = call_json(
+        app.clone(),
+        "POST",
+        "/api/routines",
+        json!({
+            "interval": "毎日", "time": "", "effort": "", "tool": "",
+            "content": "英単語",
+        }),
+    )
+    .await;
+    assert_eq!(created.status(), StatusCode::OK);
+    let created = json_body(created).await;
+    assert_eq!(created["routine"]["detailRef"], Value::Null);
+    let id = created["routine"]["id"].clone();
+
+    let updated = call_json(
+        app.clone(),
+        "PUT",
+        &format!("/api/routines/{id}"),
+        json!({
+            "interval": "毎日", "time": "", "effort": "", "tool": "",
+            "content": "英単語", "detailRef": "vocab.app",
+        }),
+    )
+    .await;
+    assert_eq!(updated.status(), StatusCode::OK);
+    assert_eq!(
+        json_body(updated).await["routine"]["detailRef"],
+        "vocab.app"
+    );
+}
+
 fn harness_batch(date: &str, slug: &str, verdict: &str) -> Value {
     let challenge = if verdict == "killed" {
         Value::Null
