@@ -40,7 +40,7 @@ impl ManageLearning {
     pub fn validate_set_key(&self, date: &str, lane: &str) -> Result<String, UsecaseError> {
         let today = self.clock.now().date_naive();
         let date = resolve_date(date, today)?.format("%Y-%m-%d").to_string();
-        if !matches!(lane, "main" | "en") {
+        if !matches!(lane, "main" | "en" | "liberal") {
             return Err(UsecaseError::BadRequest(format!("unknown lane: {lane}")));
         }
         Ok(date)

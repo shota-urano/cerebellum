@@ -15,8 +15,8 @@ export type LearningTodayLineProps = {
 /**
  * 「今日」の LEARNING 段（docs/specs/25-web-inbox.md §3.1・docs/specs/31-learning-lanes.md §3.5）。
  *
- * **レーンごとに1行**（`本線` → `英語` の固定順・最大2行）。学習が1日1セットから
- * 1日1レーン1セットに広がったので（31 §1）、段の行が2本になる。**段そのもの**
+ * **レーンごとに1行**（`本線` → `英語` → `教養` の固定順・最大3行）。学習が1日1セットから
+ * 1日1レーン1セットに広がったので（31 §1）、段の行がレーンの数だけ並ぶ。**段そのもの**
  * （枠・見出し・並びの位置・タップ先の作り）は変えない——変わるのは行の本数だけ。
  *
  * **状態1行と導線だけ**を持つのは従来どおり。学習セッション本体
@@ -48,7 +48,7 @@ export function LearningTodayLine({ date = 'today' }: LearningTodayLineProps) {
 type LearningLaneRowProps = {
   date: string;
   lane: LearningLane;
-  /** 行の頭に出すレーン名（`本線` / `英語`）。**表示名は画面が持つ**（31 §3.5） */
+  /** 行の頭に出すレーン名（`本線` / `英語` / `教養`）。**表示名は画面が持つ**（31 §3.5） */
   name: string;
   /** 行を囲む枠の読み上げ名（`LEARNING` を名乗るのは本線行だけ・`lib/lane.ts` の注記） */
   region: string;
