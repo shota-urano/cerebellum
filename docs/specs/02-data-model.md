@@ -232,13 +232,14 @@ task_id = hex(sha1("{間隔}|{時刻}|{内容}"))[0..12]   # 16進小文字・�
 
 タスク行から「その日の詳細」を開くための結び付け。
 
-- `detail_ref` の語彙は**次の9つのみ**（これ以外は保存時に `bad_request`）:
-  `digest.connection` ／ `digest.derive` ／ `digest.idea` ／ `digest.consolidate` ／ `nightshift.report` ／ `learning.session` ／ `harness.proposals` ／ `intake.candidates` ／ `inbox.items`
+- `detail_ref` の語彙は**次の10個のみ**（これ以外は保存時に `bad_request`）:
+  `digest.connection` ／ `digest.derive` ／ `digest.idea` ／ `digest.consolidate` ／ `nightshift.report` ／ `learning.session` ／ `harness.proposals` ／ `intake.candidates` ／ `inbox.items` ／ `vocab.app`
 - `nightshift.report` はダイジェストではなく**夜勤詳細ビュー**（`/nightshift`・[`13-web-nightshift.md`](./13-web-nightshift.md)）への結び付け（2026-07-28 追加）。サーバーは語彙検証のみ行い、データは cerebellum を経由しない（表示側が夜勤ビューアの `runs.json` を直接読む）
 - `learning.session` は**学習詳細ビュー**（`/learning`・[`15-web-learning.md`](./15-web-learning.md)）への結び付け。対応する学習セットと成績は `learning_sets` / `learning_results` に保存する（[`14-learning.md`](./14-learning.md)）
 - `harness.proposals` は**ハーネス提案画面**（`/harness`・[`18-web-harness.md`](./18-web-harness.md)）への結び付け。対応する提案と承認・適用状態は `harness_proposals` に保存する（[`17-harness-approval.md`](./17-harness-approval.md)）
 - `intake.candidates` は**あなた待ち画面**（`/waiting`・[`23-web-waiting.md`](./23-web-waiting.md)）への結び付け。対応する受信記録・候補・承認・適用状態は `intake_days` / `intake_candidates` に保存する（[`22-daily-intake.md`](./22-daily-intake.md)）
 - `inbox.items` は**人間待ち画面**（`/inbox`・[`25-web-inbox.md`](./25-web-inbox.md)）への結び付け。対応する受信記録・項目・決定・適用状態は `inbox_receipts` / `inbox_items` に保存する（[`24-inbox.md`](./24-inbox.md)）
+- `vocab.app` は**sharpen の単語帳**（外部アプリ。cerebellum と同じホストの `:48330`・sharpen リポジトリの `apps/vocab/`）への結び付け（2026-10-15 追加）。サーバーは語彙検証のみ行い、データは cerebellum を経由しない。表示側は `http://{表示中のホスト名}:48330/` を開く（[`12-web-digest.md`](./12-web-digest.md) §3.1）
 - スナップショット確定時に `routines.detail_ref` を `task_days.detail_ref` へコピーする。以後マスタ側を変えても過去日の結び付きは変わらない（§4 不変性と同じ理由）
 - `digests.body` は**受信原文をそのまま保存**する。セクション分割・整形は表示時のパースで行い、保存時には行わない（[`11-digest.md`](./11-digest.md) §3）。フォーマットが変わっても再パースで救えるようにするため
 - 同じ date への再 POST は**上書き**（`received_at` を更新）。ダイジェストは生成物であり、`task_days` のような不変記録ではない

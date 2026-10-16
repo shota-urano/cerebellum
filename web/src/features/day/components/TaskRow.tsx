@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { useSyncExternalStore } from 'react';
 import type { DetailRef, TaskDto } from '@/shared/api';
 import { GLOW } from '@/shared/lib';
 import { CheckRing } from '@/shared/ui';
@@ -13,6 +14,9 @@ import { metaOf } from '../lib/meta';
  * - `harness.proposals` → ハーネス承認（docs/specs/18-web-harness.md §2）
  * - `digest.*`          → ダイジェスト詳細（docs/specs/12-web-digest.md §3.1。section 付き）
  *
+ * `vocab.app`（sharpen の単語帳・外部アプリ）だけはアプリ外へ出るので、ここではなく
+ * `vocabHref` で解決し、`next/link` でなく通常の `<a>` で開く。
+ *
  * `digest.*` 以外は**必ず明示的に分岐させる**。catch-all に落ちると、有効な語彙が
  * `/digest?section=...` へ誤遷移する（引数の型が 02 §6 の7語彙と揃っていることが前提）。
  */
@@ -23,6 +27,24 @@ function detailHref(detailRef: DetailRef, date: string, taskId: string) {
   if (detailRef === 'learning.session') return `/learning?date=${day}&taskId=${task}`;
   if (detailRef === 'harness.proposals') return `/harness?date=${day}&taskId=${task}`;
   return `/digest?date=${day}&section=${encodeURIComponent(detailRef)}&taskId=${task}`;
+}
+
+/** sharpen の単語帳（apps/vocab/server.py・launchd 常駐）のポート */
+const VOCAB_PORT = '48330';
+
+const subscribeNothing = () => () => {};
+
+/**
+ * 単語帳の URL。cerebellum と同じホストで動くので、ホスト名は window.location から借りる
+ * （PC=localhost / スマホ=MagicDNS 名のどちらで開いても届く）。単語帳は http 配信のみ。
+ * 静的 export のプリレンダ時は window が無いので null（hydration 後に埋まる）。
+ */
+function useVocabHref(): string | null {
+  return useSyncExternalStore(
+    subscribeNothing,
+    () => 'http://' + window.location.hostname + ':' + VOCAB_PORT + '/',
+    () => null,
+  );
 }
 
 type Props = {
@@ -36,6 +58,7 @@ type Props = {
 /** タスク1行。見た目の正本は `docs/design/02-today.md`（`.row` in globals.css）。 */
 export function TaskRow({ task, onToggle, date }: Props) {
   const meta = metaOf(task);
+  const vocabHref = useVocabHref();
   const background = task.done ? 'rgba(56, 229, 255, ' + (0.018 + 0.02 * GLOW) + ')' : undefined;
 
   const body = (
@@ -56,7 +79,18 @@ export function TaskRow({ task, onToggle, date }: Props) {
    * リングは 22px だが、タップ領域は 44px 以上を確保する（同 §3.1）。
    */
   if (task.detailRef) {
-    const href = detailHref(task.detailRef, date, task.id);
+    const label = task.content + ' の詳細を開く';
+    const link =
+      task.detailRef === 'vocab.app' ? (
+        // 外部アプリなので通常の <a>（同じタブで開く）。href 未確定（プリレンダ）中は遷移しない
+        <a className="row__link" href={vocabHref ?? undefined} aria-label={label}>
+          {body}
+        </a>
+      ) : (
+        <Link className="row__link" href={detailHref(task.detailRef, date, task.id)} aria-label={label}>
+          {body}
+        </Link>
+      );
 
     return (
       <div className="row row--split" style={{ background }}>
@@ -75,9 +109,7 @@ export function TaskRow({ task, onToggle, date }: Props) {
             <CheckRing done={task.done} />
           </span>
         )}
-        <Link className="row__link" href={href} aria-label={task.content + ' の詳細を開く'}>
-          {body}
-        </Link>
+        {link}
       </div>
     );
   }

@@ -9,7 +9,9 @@
 /// `nightshift.report` はダイジェストではなく夜勤詳細ビュー（/nightshift・
 /// docs/specs/13-web-nightshift.md）への結び付け。サーバーは語彙検証のみで、
 /// データは表示側が夜勤ビューア（:48310）の runs.json を直接読む。
-pub const DETAIL_REFS: [&str; 9] = [
+/// `vocab.app` は sharpen の単語帳（同じホストの :48330・外部アプリ）への結び付けで、
+/// サーバーは語彙検証のみ行う。
+pub const DETAIL_REFS: [&str; 10] = [
     "digest.connection",
     "digest.derive",
     "digest.idea",
@@ -19,6 +21,7 @@ pub const DETAIL_REFS: [&str; 9] = [
     "harness.proposals",
     "intake.candidates",
     "inbox.items",
+    "vocab.app",
 ];
 
 pub fn is_valid_detail_ref(value: &str) -> bool {
@@ -269,6 +272,14 @@ mod tests {
     }
 
     #[test]
+    fn detail_ref_accepts_vocab_app() {
+        // sharpen の単語帳（:48330）への結び付け（docs/specs/02-data-model.md §6）
+        assert!(is_valid_detail_ref("vocab.app"));
+        assert!(!is_valid_detail_ref("vocab"));
+        assert!(!is_valid_detail_ref("Vocab.app"));
+    }
+
+    #[test]
     fn detail_ref_vocabulary_is_closed() {
         assert!(is_valid_detail_ref("digest.connection"));
         assert!(is_valid_detail_ref("learning.session"));
@@ -276,6 +287,7 @@ mod tests {
         assert!(is_valid_detail_ref("intake.candidates"));
         assert!(is_valid_detail_ref("inbox.items"));
         assert!(!is_valid_detail_ref("learning.unknown"));
+        assert!(!is_valid_detail_ref("vocab.unknown"));
         assert!(!is_valid_detail_ref(""));
     }
 }
